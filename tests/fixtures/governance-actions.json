@@ -1,0 +1,26 @@
+{
+  "assistant": {
+    "kind": "assistant_analysis",
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "external": true
+  },
+  "localStt": {
+    "kind": "local_stt_transcription",
+    "provider": "whisper-local",
+    "model": "small.en",
+    "external": false
+  },
+  "approvalTool": {
+    "kind": "tool_route",
+    "provider": "future-tool",
+    "external": true,
+    "toolRisk": "external_write"
+  },
+  "deniedTool": {
+    "kind": "tool_route",
+    "provider": "future-tool",
+    "external": true,
+    "toolRisk": "system_write"
+  }
+}

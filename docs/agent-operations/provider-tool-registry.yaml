@@ -1,0 +1,75 @@
+schema_version: 1
+project_id: coqpi-local
+entries:
+  - id: openai-assistant-analysis
+    kind: provider
+    modalities: [text]
+    tool_calling: false
+    structured_output: true
+    streaming: false
+    async_operations: false
+    location: cloud
+    required_secret_names: [OPENAI_API_KEY]
+    data_egress: approved transcript context and optional reviewed profile/session context
+    availability:
+      status: declared
+      checked_at: null
+      evidence: [src/backend/services/assistant-service.ts]
+    cost_observation: { observed_at: null, source: null, value: unknown }
+    rate_limit_observation: { observed_at: null, source: null, value: unknown }
+    authority: proposal
+    side_effects: [external provider request]
+  - id: openai-realtime-transcription
+    kind: provider
+    modalities: [audio, text]
+    tool_calling: false
+    structured_output: false
+    streaming: true
+    async_operations: false
+    location: cloud
+    required_secret_names: [OPENAI_API_KEY]
+    data_egress: audio during active realtime listening
+    availability:
+      status: declared
+      checked_at: null
+      evidence: [src/backend/services/realtime-transcription-service.ts]
+    cost_observation: { observed_at: null, source: null, value: unknown }
+    rate_limit_observation: { observed_at: null, source: null, value: unknown }
+    authority: read
+    side_effects: [external provider request, audio egress while active]
+  - id: ollama-assistant-analysis
+    kind: provider
+    modalities: [text]
+    tool_calling: false
+    structured_output: false
+    streaming: false
+    async_operations: false
+    location: local
+    required_secret_names: []
+    data_egress: none
+    availability:
+      status: unavailable
+      checked_at: null
+      evidence: [docs/LOCAL_STT_DECISION.md]
+    cost_observation: { observed_at: null, source: null, value: local-compute-only }
+    rate_limit_observation: { observed_at: null, source: null, value: unknown }
+    authority: proposal
+    side_effects: []
+  - id: local-stt
+    kind: provider
+    modalities: [audio, text]
+    tool_calling: false
+    structured_output: false
+    streaming: false
+    async_operations: false
+    location: local
+    required_secret_names: []
+    data_egress: none
+    availability:
+      status: unavailable
+      checked_at: null
+      evidence: [docs/LOCAL_STT_DECISION.md]
+    cost_observation: { observed_at: null, source: null, value: local-compute-only }
+    rate_limit_observation: { observed_at: null, source: null, value: unknown }
+    authority: read
+    side_effects: []

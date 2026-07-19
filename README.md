@@ -1,0 +1,158 @@
+# CoqPi
+
+CoqPi is a private local desktop application for stressful interview and professional call situations in English and French. It runs as an Electron + React + TypeScript app, keeps API access in the Electron backend, and is designed to stay readable under pressure.
+
+## Current scope
+
+- Realtime transcription v0 over OpenAI Realtime
+- Automatic assistant analysis after each completed utterance, with manual override
+- Mock Transcript Mode for local UI testing
+- Local profile and per-call session context
+- Audio input selection and local level meter
+- Secure local API key storage via Electron `safeStorage` when available
+- Cost guardrails and session counters
+- Local append-only receipts for external provider decisions and latency
+
+No phone system integration, voice output, system audio routing, vector DB, or new AI capabilities are implemented in this step.
+
+## Local installation
+
+1. Install [pnpm](https://pnpm.io/).
+2. Run `pnpm install`.
+3. Copy `.env.example` to `.env`.
+4. Optionally set `OPENAI_API_KEY` in `.env` for development.
+
+## Run in development
+
+- `pnpm dev`
+- `pnpm typecheck`
+- `pnpm lint`
+- `pnpm build`
+- `pnpm format`
+
+## API key setup
+
+CoqPi resolves the OpenAI API key in this order:
+
+1. Secure stored key saved from the app Settings screen
+2. `OPENAI_API_KEY` from local `.env`
+
+The renderer never receives the real key value. It can only read safe status booleans.
+
+### In-app key setup
+
+1. Open `Settings / Debug`.
+2. Enter the key in `Save secure local key`.
+3. Click `Save Stored Key`.
+
+You can also delete the stored key from the same screen. If `safeStorage` is unavailable, CoqPi shows a clear local error and `.env` remains the fallback for development.
+
+## Environment variables
+
+```env
+OPENAI_API_KEY=
+OPENAI_ASSISTANT_MODEL=gpt-4o-mini
+OPENAI_ASSISTANT_MODEL_ECONOMY=
+OPENAI_ASSISTANT_MODEL_BALANCED=
+OPENAI_ASSISTANT_MODEL_QUALITY=
+OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper
+OPENAI_REALTIME_TRANSCRIPTION_DELAY=low
+OPENAI_SAFETY_IDENTIFIER=coqpi-local-user
+COQPI_GOVERNANCE_DIR=./data/governance
+COQPI_GOVERNANCE_MODE=shadow
+```
+
+- `OPENAI_ASSISTANT_MODEL` remains the fallback assistant model.
+- Cost mode overrides can be set with:
+  - `OPENAI_ASSISTANT_MODEL_ECONOMY`
+  - `OPENAI_ASSISTANT_MODEL_BALANCED`
+  - `OPENAI_ASSISTANT_MODEL_QUALITY`
+
+`.env` is local-only and must never be committed.
+
+## Local Governance
+
+External assistant and realtime-provider calls create local JSONL receipts in `data/governance/receipts.jsonl`. They contain only safe operational metadata: correlation ID, action fingerprint, decision, latency, provider/model, and tokens when returned by the provider. Transcripts, context, secrets, prompts, raw errors, and hidden reasoning are excluded.
+
+Receipt writes are best-effort so a local disk failure cannot interrupt a live call.
+
+`shadow` is the default and preserves existing routes. `enforce` is reserved for future tool routes; it can block system writes or require approval for external writes. Local STT/audio has no governance I/O or policy round trip.
+
+## UX modes
+
+- `Live Call`: primary cockpit with realtime health, transcript, Russian meaning, suggested answers, and keywords.
+- `Prepare`: mock transcript controls, manual analysis actions, cost counters, and collapsible profile context.
+- `Settings / Debug`: secure API key handling, defaults, audio advanced controls, realtime diagnostics, and privacy info.
+
+## Mock Transcript Mode
+
+Mock mode is for UI testing only.
+
+- It does not use the microphone.
+- It does not send audio.
+- It follows the same transcript-to-analysis path as a live completed utterance. Analysis therefore calls the configured assistant provider when auto-analysis or a manual action is enabled.
+
+Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.
+
+## Profile context
+
+The profile context lives in:
+
+- [data/profile/profile_context.md](/Users/antonbiletskiy-volokh/Downloads/Projects/CoqPi/data/profile/profile_context.md)
+
+Edit that file manually in your editor, then use `Reload Profile` inside the app. The profile text can optionally be included in assistant requests, and the current setting is controlled from `Settings / Debug`.
+
+## Realtime smoke test
+
+Manual realtime verification steps are documented in:
+
+- [docs/REALTIME_SMOKE_TEST.md](/Users/antonbiletskiy-volokh/Downloads/Projects/CoqPi/docs/REALTIME_SMOKE_TEST.md)
+
+## Local macOS packaging
+
+Build unsigned local artifacts with:
+
+- `pnpm pack:mac`
+- `pnpm dist:mac`
+
+Output goes to:
+
+- `dist-packages/`
+
+Notes:
+
+- Packaging excludes `.env` files.
+- No code signing or notarization is configured.
+- No GitHub release flow is configured.
+- On macOS, an unsigned app may require right-click -> `Open`.
+
+## Project structure
+
+```text
+src/
+  main/       Electron main process and preload
+  renderer/   React UI, tabs, realtime client, audio UI
+  backend/    Local backend services
+  shared/     Shared types and cost/transcript helpers
+data/
+  profile/    Local profile context markdown
+  sessions/   Future local session artifacts
+  governance/ Append-only safe provider receipts
+docs/
+  ARCHITECTURE.md
+  REALTIME_SMOKE_TEST.md
+  UX_PRINCIPLES.md
+```
+
+## Next planned steps
+
+1. Test the live loop with a microphone and real calls; tune turn segmentation and transcript quality.
+2. Add OpenAI-to-Ollama fallback for text assistant analysis only.
+3. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
+4. Add training mode using the same profile, session-context, and assistant-provider layers.
+
+The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).
+
+## Agent operations
+
+Named agents, long-running work, memory scopes, and provider capability claims follow the local [Agent Operations Contract](docs/AGENT_OPERATIONS_CONTRACT.md). It is descriptive and fail-closed: schedules and provider configuration never grant external-action authority.
