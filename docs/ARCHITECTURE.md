@@ -81,6 +81,8 @@ Transcript persistence is still not enabled by default.
 
 The `Context` screen is the owner-controlled ingress UI for a future shared Cortex/CoqPi RAG. It creates explicitly selected, CoqPi-only pending records with provenance, pending classification, retention/TTL, retrieval scope, and an explicit-audit promotion boundary. It does not scan, parse, upload, watch, fetch, retrieve, or expose any source.
 
+An explicit file-only capture action may locally hash and classify supported plaintext sources for the `coqpi_interview_en_fr` retrieval scope. This retrieval runs only during assistant analysis, never in the realtime audio path.
+
 Promotion to Cortex personal context, cross-tenant retrieval, public-surface exposure, and external actions are denied by default. A compact personal context pack remains a possible later scoped export, not the only ingress. See [docs/CORTEX_CONTEXT_CONTRACT.md](/Volumes/Work/Work/CoqPi/docs/CORTEX_CONTEXT_CONTRACT.md).
 
 ## Local Governance Receipts

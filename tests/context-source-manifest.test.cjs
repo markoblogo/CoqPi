@@ -67,3 +67,43 @@ test('rejects non-web links before they can enter the manifest', async () => {
     /Only http and https links/
   )
 })
+
+test('captures an explicitly selected text file for EN/FR interview retrieval', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-capture-'))
+  const filePath = path.join(directory, 'profile.md')
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+  await fs.writeFile(
+    filePath,
+    'I lead AI product strategy and digital transformation projects.',
+    'utf8'
+  )
+
+  try {
+    const added = await service.addContextSource({ kind: 'file', location: filePath })
+    const source = added.manifest.sources[0]
+    const captured = await service.captureAndClassifyContextSource(source.id)
+    const classified = captured.manifest.sources[0]
+
+    assert.equal(classified.status, 'retrieval_ready')
+    assert.equal(classified.classification, 'private')
+    assert.match(classified.contentHash, /^[a-f0-9]{64}$/)
+    assert.deepEqual(classified.retrievalScopes, ['coqpi_interview_en_fr'])
+
+    const retrieval = await service.getPersonalInterviewRetrieval(
+      'Tell me about your AI product strategy experience.',
+      'en'
+    )
+    assert.match(retrieval, /AI product strategy/)
+    assert.doesNotMatch(retrieval, new RegExp(filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})

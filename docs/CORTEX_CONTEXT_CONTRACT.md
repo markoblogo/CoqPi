@@ -52,3 +52,11 @@ CoqPi may later append structured interview artifacts only: company, role, date,
 This manifest is local state, not a provider/tool route and not part of the realtime STT hot path. It produces no governance receipt because no provider request, filesystem content read, or external side effect occurs.
 
 When classification or promotion exists, Cortex must create an append-only, allowlisted receipt. It may record owner/source IDs, provenance digest, classification, retention, scope, decision, reason, and derived pack ID; it must not record source contents, local paths, PII, credentials, transcript text, or hidden reasoning.
+
+## Explicit file capture and EN/FR retrieval
+
+The current capture action is deliberately narrow. The owner must select `Capture & classify` for one `file` record. CoqPi then reads that file locally, calculates its SHA-256, and records a private append-only capture event. Only `.md`, `.txt`, `.csv`, and `.json` files up to 10 MB may produce a local text excerpt for retrieval in this phase.
+
+Folders, manual paths, links, binary files, PDFs, office documents, external URL fetching, and recursive scans remain pending. They cannot enter retrieval merely because they were recorded as ingress.
+
+Assistant retrieval is limited to sources explicitly captured into `coqpi_interview_en_fr`. It is a compact local keyword retrieval for English/French interview and self-presentation guidance. If it finds no eligible evidence, the assistant prompt requires a concise clarification or neutral answer instead of an invented personal fact. The core excerpt is read only after assistant analysis begins; it is never used by the realtime audio hot path.

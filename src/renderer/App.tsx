@@ -1251,6 +1251,30 @@ export const App = () => {
     }
   }
 
+  const captureAndClassifySource = async (id: string) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingContextSources(true)
+    setContextSourcesError(null)
+    setContextSourcesNotice(null)
+
+    try {
+      const payload = await window.coqpi.contextSources.captureAndClassify(id)
+      applyContextSourceManifest(payload.manifest.sources)
+      setContextSourcesNotice(
+        'Local content hash captured. Retrieval is enabled only for supported text in EN/FR interview assistance.'
+      )
+    } catch (error) {
+      setContextSourcesError(getContextSourceErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingContextSources(false)
+    }
+  }
+
   const refreshAudioDevices = async () => {
     if (!isAudioInputApiAvailable()) {
       setAudioPermissionStatus('error')
@@ -3205,19 +3229,34 @@ export const App = () => {
                       </label>
                       <div className="context-source-details">
                         <strong>{source.label}</strong>
-                        <span>{source.kind} · pending classification</span>
+                        <span>{source.kind} · {source.status.replaceAll('_', ' ')}</span>
                         <span>
-                          scope: {source.retrievalScopes[0]} · content hash pending
+                          scope: {source.retrievalScopes[0] ?? 'none'} · content hash{' '}
+                          {source.contentHash ? 'captured' : 'pending'}
                         </span>
                         <code>{source.location}</code>
                       </div>
-                      <button
-                        disabled={isSavingContextSources}
-                        onClick={() => void removeStagedContextSource(source.id)}
-                        type="button"
-                      >
-                        Remove
-                      </button>
+                      <div className="context-source-actions">
+                        {source.kind === 'file' &&
+                        source.status === 'pending_classification' ? (
+                          <button
+                            disabled={isSavingContextSources}
+                            onClick={() =>
+                              void captureAndClassifySource(source.id)
+                            }
+                            type="button"
+                          >
+                            Capture & classify
+                          </button>
+                        ) : null}
+                        <button
+                          disabled={isSavingContextSources}
+                          onClick={() => void removeStagedContextSource(source.id)}
+                          type="button"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   ))
                 )}

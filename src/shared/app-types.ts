@@ -104,21 +104,21 @@ export interface ContextSource {
   location: string
   label: string
   selected: boolean
-  status: 'pending_classification'
+  status: 'pending_classification' | 'hash_captured' | 'retrieval_ready'
   createdAt: string
   ownerId: 'owner'
   provenance: {
     sourceId: string
     locatorSha256: string
   }
-  contentHash: null
-  classification: 'pending'
+  contentHash: string | null
+  classification: 'pending' | 'private'
   retention: {
     mode: 'manual_deletion_required'
     maxAgeDays: number
     expiresAt: string
   }
-  retrievalScopes: ['coqpi_pending_classification']
+  retrievalScopes: string[]
   promotion: 'explicit_audit_required'
 }
 

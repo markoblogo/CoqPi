@@ -37,6 +37,7 @@ import {
 } from '../backend/services/session-context-service'
 import {
   addContextSource,
+  captureAndClassifyContextSource,
   getContextSourceManifest,
   removeContextSource,
   setContextSourceSelected
@@ -91,6 +92,12 @@ const registerIpcHandlers = () => {
     async (): Promise<SessionContextResult> => {
       return getSessionContext()
     }
+  )
+
+  ipcMain.handle(
+    'coqpi:context-sources:capture-and-classify',
+    async (_event, id: string): Promise<ContextSourceManifestResult> =>
+      captureAndClassifyContextSource(id)
   )
 
   ipcMain.handle(

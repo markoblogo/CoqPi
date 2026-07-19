@@ -740,6 +740,13 @@ button:disabled {
   gap: 2px;
 }
 
+.context-source-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
 .context-source-details strong {
   color: #e5edf4;
   font-size: var(--font-sm);

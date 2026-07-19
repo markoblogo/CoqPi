@@ -8,6 +8,7 @@ import type {
 } from '../../shared/app-types'
 import { PROFILE_CONTEXT_CHARS_LIMIT_BY_MODE } from '../../shared/cost-estimator'
 import { getProfileContext } from './profile-service'
+import { getPersonalInterviewRetrieval } from './context-source-service'
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
 import {
@@ -197,6 +198,25 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
 
   if (sessionContext) {
     sections.push('', 'Current session context:', sessionContext)
+  }
+
+  const personalKnowledgeContext = await getPersonalInterviewRetrieval(
+    request.transcriptText,
+    request.answerLanguage
+  )
+
+  if (personalKnowledgeContext) {
+    sections.push(
+      '',
+      'Personal Knowledge Core retrieval (private, EN/FR interview scope only):',
+      personalKnowledgeContext,
+      'Use this only as evidence-backed personal context. Do not invent details beyond it.'
+    )
+  } else {
+    sections.push(
+      '',
+      'Personal Knowledge Core: no suitable current EN/FR interview context was retrieved. Do not claim owner-specific facts from this source; ask a concise clarifying question or use a neutral answer when such facts are needed.'
+    )
   }
 
   sections.push(

@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:context-sources:add', draft),
     setSelected: (id: string, selected: boolean) =>
       ipcRenderer.invoke('coqpi:context-sources:set-selected', id, selected),
+    captureAndClassify: (id: string) =>
+      ipcRenderer.invoke('coqpi:context-sources:capture-and-classify', id),
     remove: (id: string) => ipcRenderer.invoke('coqpi:context-sources:remove', id),
     pickFiles: () => ipcRenderer.invoke('coqpi:context-sources:pick-files'),
     pickFolder: () => ipcRenderer.invoke('coqpi:context-sources:pick-folder')

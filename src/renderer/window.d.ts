@@ -37,6 +37,7 @@ declare global {
           id: string,
           selected: boolean
         ) => Promise<ContextSourceManifestResult>
+        captureAndClassify: (id: string) => Promise<ContextSourceManifestResult>
         remove: (id: string) => Promise<ContextSourceManifestResult>
         pickFiles: () => Promise<string[]>
         pickFolder: () => Promise<string | null>
