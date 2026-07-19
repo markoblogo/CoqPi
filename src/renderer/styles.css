@@ -184,7 +184,7 @@ button:disabled {
   gap: var(--space-2);
   flex: 1;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .scroll-section {
@@ -195,6 +195,8 @@ button:disabled {
 }
 
 .control-strip {
+  position: relative;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -204,7 +206,7 @@ button:disabled {
   border: 1px solid #29313c;
   border-radius: 4px;
   background: #14191f;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .control-group {
@@ -221,7 +223,7 @@ button:disabled {
 .live-selectors {
   justify-content: flex-end;
   flex: 1 1 auto;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .control-strip button,
@@ -682,6 +684,74 @@ button:disabled {
   min-height: 76px;
 }
 
+.context-sources-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+}
+
+.context-sources-description,
+.context-source-empty {
+  color: #9eafbe !important;
+  font-size: var(--font-sm) !important;
+}
+
+.context-source-form {
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #171d24;
+}
+
+.context-source-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.context-source-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #1a212a;
+}
+
+.context-source-select {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: #c7d2dc;
+  font-size: var(--font-xs);
+  white-space: nowrap;
+}
+
+.context-source-select input {
+  width: 13px;
+  height: 13px;
+  accent-color: #79bbf6;
+}
+
+.context-source-details {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.context-source-details strong {
+  color: #e5edf4;
+  font-size: var(--font-sm);
+}
+
+.context-source-details span,
+.context-source-details code {
+  color: #99abbc;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
 .settings-shell {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
@@ -909,6 +979,14 @@ button:disabled {
   .settings-row-textarea {
     grid-template-columns: 1fr;
     gap: var(--space-1);
+  }
+
+  .context-source-item {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .context-source-select {
+    grid-column: 1 / -1;
   }
 
   .settings-actions {

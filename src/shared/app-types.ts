@@ -26,6 +26,7 @@ export interface AppInfo {
   profileDirectory: string
   sessionsDirectory: string
   governanceDirectory: string
+  personalKnowledgeCoreDirectory: string
 }
 
 export type GovernanceMode = 'shadow' | 'enforce'
@@ -88,6 +89,48 @@ export interface SessionContext {
 export interface SessionContextResult {
   context: SessionContext
 }
+
+export type ContextSourceKind = 'link' | 'file' | 'folder' | 'path'
+
+export interface ContextSourceDraft {
+  kind: ContextSourceKind
+  location: string
+  label?: string
+}
+
+export interface ContextSource {
+  id: string
+  kind: ContextSourceKind
+  location: string
+  label: string
+  selected: boolean
+  status: 'pending_classification'
+  createdAt: string
+  ownerId: 'owner'
+  provenance: {
+    sourceId: string
+    locatorSha256: string
+  }
+  contentHash: null
+  classification: 'pending'
+  retention: {
+    mode: 'manual_deletion_required'
+    maxAgeDays: number
+    expiresAt: string
+  }
+  retrievalScopes: ['coqpi_pending_classification']
+  promotion: 'explicit_audit_required'
+}
+
+export interface ContextSourceManifest {
+  version: 1
+  sources: ContextSource[]
+}
+
+export interface ContextSourceManifestResult {
+  manifest: ContextSourceManifest
+}
+
 
 export interface ConfigStatus {
   hasEnvFile: boolean

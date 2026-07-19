@@ -14,7 +14,7 @@
     "build": "pnpm build:renderer && pnpm build:electron",
     "build:renderer": "vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
-    "test:governance": "pnpm build:electron && node --test tests/governance.test.cjs",
+    "test:governance": "pnpm build:electron && node --test tests/governance.test.cjs tests/context-source-manifest.test.cjs",
     "pack:mac": "pnpm build && electron-builder --mac dir",
     "dist:mac": "pnpm build && electron-builder --mac dmg",
     "typecheck": "tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.electron.json",

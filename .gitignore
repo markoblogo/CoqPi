@@ -6,6 +6,7 @@ dist-electron
 .env.local
 .env.*.local
 coverage
+data/
 tmp
 dist-packages/
 build/

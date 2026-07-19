@@ -4,9 +4,12 @@ import type {
 } from '../../shared/app-types'
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
+import {
+  buildRealtimeCallFormData,
+  type RealtimeCallSessionConfig
+} from './realtime-call-form-data'
 
-const DEFAULT_REALTIME_TRANSCRIPTION_MODEL = 'gpt-realtime-whisper'
-const DEFAULT_REALTIME_TRANSCRIPTION_DELAY = 'low'
+const DEFAULT_REALTIME_TRANSCRIPTION_MODEL = 'gpt-4o-transcribe'
 const DEFAULT_SAFETY_IDENTIFIER = 'coqpi-local-user'
 
 const getRealtimeModel = () => {
@@ -16,17 +19,24 @@ const getRealtimeModel = () => {
   )
 }
 
-const getRealtimeDelay = () => {
-  return (
-    process.env.OPENAI_REALTIME_TRANSCRIPTION_DELAY?.trim() ||
-    DEFAULT_REALTIME_TRANSCRIPTION_DELAY
-  )
-}
-
 const getSafetyIdentifier = () => {
   return (
     process.env.OPENAI_SAFETY_IDENTIFIER?.trim() || DEFAULT_SAFETY_IDENTIFIER
   )
+}
+
+const getTranscriptionPrompt = (
+  callLanguage: RealtimeTranscriptionStartRequest['callLanguage']
+) => {
+  if (callLanguage === 'en') {
+    return 'Transcribe spoken English only. Ignore other languages and background speech. Do not translate.'
+  }
+
+  if (callLanguage === 'fr') {
+    return 'Transcribe spoken French only. Ignore other languages and background speech. Do not translate.'
+  }
+
+  return 'Transcribe spoken English or French only. Ignore all other languages and background speech. Do not translate.'
 }
 
 const getApiKey = async () => {
@@ -43,14 +53,14 @@ const getApiKey = async () => {
 
 const buildSessionConfig = (
   callLanguage: RealtimeTranscriptionStartRequest['callLanguage']
-) => {
+): RealtimeCallSessionConfig => {
   const transcriptionConfig: {
     model: string
-    delay: string
     language?: 'en' | 'fr'
+    prompt: string
   } = {
     model: getRealtimeModel(),
-    delay: getRealtimeDelay()
+    prompt: getTranscriptionPrompt(callLanguage)
   }
 
   if (callLanguage === 'en' || callLanguage === 'fr') {
@@ -62,9 +72,12 @@ const buildSessionConfig = (
     audio: {
       input: {
         transcription: transcriptionConfig,
-        // Per the current realtime transcription docs, gpt-realtime-whisper
-        // should use manual commits rather than server VAD.
-        turn_detection: null
+        turn_detection: {
+          type: 'server_vad',
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 800
+        }
       }
     }
   }
@@ -84,19 +97,17 @@ const toOpenAIErrorMessage = async (response: Response) => {
 export const createRealtimeTranscriptionAnswer = async (
   request: RealtimeTranscriptionStartRequest
 ): Promise<RealtimeTranscriptionSdpResult> => {
-  const offerSdp = request.offerSdp.trim()
+  const offerSdp = request.offerSdp
 
-  if (!offerSdp) {
+  if (!offerSdp.trim()) {
     throw new Error(
       'SDP offer is empty. Unable to start realtime transcription.'
     )
   }
 
-  const formData = new FormData()
-  formData.set('sdp', offerSdp)
-  formData.set(
-    'session',
-    JSON.stringify(buildSessionConfig(request.callLanguage))
+  const formData = buildRealtimeCallFormData(
+    offerSdp,
+    buildSessionConfig(request.callLanguage)
   )
 
   const response = await runGovernedProviderAction(
@@ -121,9 +132,9 @@ export const createRealtimeTranscriptionAnswer = async (
     throw new Error(await toOpenAIErrorMessage(response))
   }
 
-  const answerSdp = (await response.text()).trim()
+  const answerSdp = await response.text()
 
-  if (!answerSdp) {
+  if (!answerSdp.trim()) {
     throw new Error('OpenAI Realtime API returned an empty SDP answer.')
   }
 

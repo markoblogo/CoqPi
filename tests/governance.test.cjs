@@ -15,6 +15,9 @@ const {
 const {
   executeGovernedProviderAction
 } = require('../dist-electron/backend/services/governance-action-runner.js')
+const {
+  buildRealtimeCallFormData
+} = require('../dist-electron/backend/services/realtime-call-form-data.js')
 
 test('routes known providers and fingerprints only public action metadata', () => {
   const evaluation = evaluateGovernanceAction(fixtures.assistant, 'shadow')
@@ -138,4 +141,31 @@ test('local STT remains off the governance receipt path', async () => {
 
   assert.equal(result, 'transcribed locally')
   assert.equal(receipts.length, 0)
+})
+
+test('realtime request keeps SDP and session as multipart text fields', () => {
+  const formData = buildRealtimeCallFormData(
+    'v=0\r\no=- test\r\n',
+    {
+      type: 'transcription',
+      audio: {
+        input: {
+          transcription: {
+            model: 'gpt-4o-transcribe',
+            language: 'en',
+            prompt: 'Transcribe spoken English only.'
+          },
+          turn_detection: {
+            type: 'server_vad',
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 800
+          }
+        }
+      }
+    }
+  )
+
+  assert.equal(formData.get('sdp'), 'v=0\r\no=- test\r\n')
+  assert.match(String(formData.get('session')), /"type":"transcription"/)
 })

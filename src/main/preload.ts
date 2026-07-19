@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppUserSettings,
   AssistantAnalysisRequest,
+  ContextSourceDraft,
   RealtimeTranscriptionStartRequest,
   SessionContext
 } from '../shared/app-types'
@@ -18,6 +19,16 @@ contextBridge.exposeInMainWorld('coqpi', {
     getContext: () => ipcRenderer.invoke('coqpi:session:get-context'),
     saveContext: (context: SessionContext) =>
       ipcRenderer.invoke('coqpi:session:save-context', context)
+  },
+  contextSources: {
+    get: () => ipcRenderer.invoke('coqpi:context-sources:get'),
+    add: (draft: ContextSourceDraft) =>
+      ipcRenderer.invoke('coqpi:context-sources:add', draft),
+    setSelected: (id: string, selected: boolean) =>
+      ipcRenderer.invoke('coqpi:context-sources:set-selected', id, selected),
+    remove: (id: string) => ipcRenderer.invoke('coqpi:context-sources:remove', id),
+    pickFiles: () => ipcRenderer.invoke('coqpi:context-sources:pick-files'),
+    pickFolder: () => ipcRenderer.invoke('coqpi:context-sources:pick-folder')
   },
   secrets: {
     getOpenAIKeyStatus: () =>

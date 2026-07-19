@@ -2,6 +2,8 @@ import type {
   AppUserSettings,
   AssistantAnalysisRequest,
   AssistantAnalysisResponse,
+  ContextSourceDraft,
+  ContextSourceManifestResult,
   ConfigStatus,
   DeleteOpenAIKeyResult,
   OpenAIKeyStatus,
@@ -27,6 +29,17 @@ declare global {
       session: {
         getContext: () => Promise<SessionContextResult>
         saveContext: (context: SessionContext) => Promise<SessionContextResult>
+      }
+      contextSources: {
+        get: () => Promise<ContextSourceManifestResult>
+        add: (draft: ContextSourceDraft) => Promise<ContextSourceManifestResult>
+        setSelected: (
+          id: string,
+          selected: boolean
+        ) => Promise<ContextSourceManifestResult>
+        remove: (id: string) => Promise<ContextSourceManifestResult>
+        pickFiles: () => Promise<string[]>
+        pickFolder: () => Promise<string | null>
       }
       secrets: {
         getOpenAIKeyStatus: () => Promise<OpenAIKeyStatus>

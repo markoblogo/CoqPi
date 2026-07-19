@@ -70,11 +70,18 @@ Shared cost constants live in:
 
 - **Profile context**: `data/profile/profile_context.md`
 - **Current session context**: `data/sessions/current-session.json`
+- **Shared-RAG ingress manifest**: `data/context-sources/manifest.json` (owner-created, CoqPi-only pending records; no source content)
 - **User settings**: JSON under `app.getPath("userData")`
 - **Stored encrypted API key**: file under `app.getPath("userData")/secrets/`
 - **Governance receipts**: `data/governance/receipts.jsonl`
 
 Transcript persistence is still not enabled by default.
+
+## Cortex Context Boundary
+
+The `Context` screen is the owner-controlled ingress UI for a future shared Cortex/CoqPi RAG. It creates explicitly selected, CoqPi-only pending records with provenance, pending classification, retention/TTL, retrieval scope, and an explicit-audit promotion boundary. It does not scan, parse, upload, watch, fetch, retrieve, or expose any source.
+
+Promotion to Cortex personal context, cross-tenant retrieval, public-surface exposure, and external actions are denied by default. A compact personal context pack remains a possible later scoped export, not the only ingress. See [docs/CORTEX_CONTEXT_CONTRACT.md](/Volumes/Work/Work/CoqPi/docs/CORTEX_CONTEXT_CONTRACT.md).
 
 ## Local Governance Receipts
 

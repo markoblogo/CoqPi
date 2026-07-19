@@ -26,12 +26,23 @@ export const getAppInfo = (): AppInfo => {
     process.env.COQPI_GOVERNANCE_DIR,
     ['data', 'governance']
   )
+  const personalKnowledgeCoreDirectory = process.env
+    .COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    ? path.resolve(process.cwd(), process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR)
+    : path.resolve(
+        process.cwd(),
+        '..',
+        'CortexABV-private',
+        'data',
+        'personal-knowledge-core'
+      )
 
   return {
-    appName: app.getName(),
+    appName: app?.getName?.() ?? 'CoqPi',
     profileDirectory,
     sessionsDirectory,
-    governanceDirectory
+    governanceDirectory,
+    personalKnowledgeCoreDirectory
   }
 }
 

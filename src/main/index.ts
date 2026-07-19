@@ -1,11 +1,13 @@
 import 'dotenv/config'
 import path from 'node:path'
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type {
   AppUserSettings,
   AssistantAnalysisError,
   AssistantAnalysisRequest,
   AssistantAnalysisResponse,
+  ContextSourceDraft,
+  ContextSourceManifestResult,
   DeleteOpenAIKeyResult,
   OpenAIKeyStatus,
   RealtimeTranscriptionError,
@@ -33,6 +35,12 @@ import {
   getSessionContext,
   saveSessionContext
 } from '../backend/services/session-context-service'
+import {
+  addContextSource,
+  getContextSourceManifest,
+  removeContextSource,
+  setContextSourceSelected
+} from '../backend/services/context-source-service'
 
 const createMainWindow = async () => {
   const window = new BrowserWindow({
@@ -42,13 +50,18 @@ const createMainWindow = async () => {
     minHeight: 320,
     title: 'CoqPi',
     backgroundColor: '#0f1115',
-    ...(process.platform === 'darwin' ? { titleBarStyle: 'hiddenInset' } : {}),
+    alwaysOnTop: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   })
+
+  if (process.platform === 'darwin') {
+    window.setAlwaysOnTop(true, 'floating')
+    window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
+  }
 
   const devServerUrl = process.env.VITE_DEV_SERVER_URL
 
@@ -79,6 +92,54 @@ const registerIpcHandlers = () => {
       return getSessionContext()
     }
   )
+
+  ipcMain.handle(
+    'coqpi:context-sources:get',
+    async (): Promise<ContextSourceManifestResult> => getContextSourceManifest()
+  )
+
+  ipcMain.handle(
+    'coqpi:context-sources:add',
+    async (
+      _event,
+      draft: ContextSourceDraft
+    ): Promise<ContextSourceManifestResult> => addContextSource(draft)
+  )
+
+  ipcMain.handle(
+    'coqpi:context-sources:set-selected',
+    async (
+      _event,
+      id: string,
+      selected: boolean
+    ): Promise<ContextSourceManifestResult> =>
+      setContextSourceSelected(id, selected)
+  )
+
+  ipcMain.handle(
+    'coqpi:context-sources:remove',
+    async (_event, id: string): Promise<ContextSourceManifestResult> =>
+      removeContextSource(id)
+  )
+
+  ipcMain.handle('coqpi:context-sources:pick-files', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Stage local files',
+      properties: ['openFile', 'multiSelections']
+    })
+
+    return result.canceled ? [] : result.filePaths
+  })
+
+  ipcMain.handle('coqpi:context-sources:pick-folder', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Stage a local folder',
+      properties: ['openDirectory']
+    })
+
+    return result.canceled ? null : (result.filePaths[0] ?? null)
+  })
+
 
   ipcMain.handle(
     'coqpi:session:save-context',

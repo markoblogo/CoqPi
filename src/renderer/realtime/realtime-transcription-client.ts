@@ -25,7 +25,31 @@ export interface StartRealtimeTranscriptionOptions {
   onError: (message: string) => void
 }
 
-const COMMIT_INTERVAL_MS = 2500
+const ICE_GATHERING_TIMEOUT_MS = 2000
+
+const waitForIceGathering = (peerConnection: RTCPeerConnection) => {
+  if (peerConnection.iceGatheringState === 'complete') {
+    return Promise.resolve()
+  }
+
+  return new Promise<void>((resolve) => {
+    const timeoutId = window.setTimeout(finish, ICE_GATHERING_TIMEOUT_MS)
+
+    function finish() {
+      window.clearTimeout(timeoutId)
+      peerConnection.removeEventListener('icegatheringstatechange', onChange)
+      resolve()
+    }
+
+    function onChange() {
+      if (peerConnection.iceGatheringState === 'complete') {
+        finish()
+      }
+    }
+
+    peerConnection.addEventListener('icegatheringstatechange', onChange)
+  })
+}
 
 const getRealtimeMicrophoneErrorMessage = (error: unknown) => {
   if (error instanceof DOMException) {
@@ -56,7 +80,6 @@ export class RealtimeTranscriptionClient {
   private peerConnection: RTCPeerConnection | null = null
   private dataChannel: RTCDataChannel | null = null
   private mediaStream: MediaStream | null = null
-  private commitIntervalId: number | null = null
   private isStopping = false
 
   async start(options: StartRealtimeTranscriptionOptions) {
@@ -124,8 +147,6 @@ export class RealtimeTranscriptionClient {
       dataChannel.addEventListener('open', () => {
         options.onDataChannelStateChange(dataChannel.readyState)
         options.onStatusChange('listening')
-        this.sendControlEvent({ type: 'input_audio_buffer.clear' })
-        this.startCommitLoop()
         options.onLifecycleLog('data channel open')
       })
 
@@ -156,10 +177,12 @@ export class RealtimeTranscriptionClient {
       const offer = await peerConnection.createOffer()
       options.onLifecycleLog('SDP offer created')
       await peerConnection.setLocalDescription(offer)
+      await waitForIceGathering(peerConnection)
+      options.onLifecycleLog('ICE gathering completed or timed out')
 
-      const localDescription = peerConnection.localDescription?.sdp?.trim()
+      const localDescription = peerConnection.localDescription?.sdp
 
-      if (!localDescription) {
+      if (!localDescription?.trim()) {
         throw new Error('SDP creation failed. No local offer was produced.')
       }
 
@@ -192,13 +215,6 @@ export class RealtimeTranscriptionClient {
 
   async stop() {
     this.isStopping = true
-    this.stopCommitLoop()
-
-    try {
-      this.sendControlEvent({ type: 'input_audio_buffer.commit' })
-    } catch {
-      // Ignore final commit failures during teardown.
-    }
 
     this.dataChannel?.close()
     this.dataChannel = null
@@ -210,25 +226,4 @@ export class RealtimeTranscriptionClient {
     this.mediaStream = null
   }
 
-  private startCommitLoop() {
-    this.stopCommitLoop()
-    this.commitIntervalId = window.setInterval(() => {
-      this.sendControlEvent({ type: 'input_audio_buffer.commit' })
-    }, COMMIT_INTERVAL_MS)
-  }
-
-  private stopCommitLoop() {
-    if (this.commitIntervalId !== null) {
-      window.clearInterval(this.commitIntervalId)
-      this.commitIntervalId = null
-    }
-  }
-
-  private sendControlEvent(payload: Record<string, unknown>) {
-    if (this.dataChannel?.readyState !== 'open') {
-      return
-    }
-
-    this.dataChannel.send(JSON.stringify(payload))
-  }
 }

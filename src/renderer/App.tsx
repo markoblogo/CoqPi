@@ -16,6 +16,8 @@ import {
   type AudioLevelReading,
   type CallLanguage,
   type ConfigStatus,
+  type ContextSource,
+  type ContextSourceKind,
   type ControlState,
   type OpenAIKeyStatus,
   type RealtimeConnectionStatus,
@@ -88,6 +90,16 @@ const emptySessionContext: SessionContext = {
   context: '',
   goal: '',
   notes: ''
+}
+
+const emptyContextSourceDraft: {
+  kind: ContextSourceKind
+  location: string
+  label: string
+} = {
+  kind: 'link',
+  location: '',
+  label: ''
 }
 
 const permissionLabels: Record<AudioInputPermissionStatus, string> = {
@@ -373,14 +385,15 @@ export const App = () => {
     ((options: RunAssistantAnalysisOptions) => Promise<void>) | null
   >(null)
   const hasReceivedFirstRealtimeEventRef = useRef(false)
+  const contextSourceMutationRef = useRef(false)
 
   if (!realtimeClientRef.current) {
     realtimeClientRef.current = new RealtimeTranscriptionClient()
   }
 
-  const [activeTab, setActiveTab] = useState<'live' | 'prepare' | 'settings'>(
-    'live'
-  )
+  const [activeTab, setActiveTab] = useState<
+    'live' | 'prepare' | 'context' | 'settings'
+  >('live')
   const [controls, setControls] = useState<ControlState>(defaultControlState)
   const [configStatus, setConfigStatus] =
     useState<ConfigStatus>(missingConfigStatus)
@@ -402,6 +415,17 @@ export const App = () => {
     string | null
   >(null)
   const [isSavingSessionContext, setIsSavingSessionContext] = useState(false)
+  const [contextSources, setContextSources] = useState<ContextSource[]>([])
+  const [contextSourceDraft, setContextSourceDraft] = useState(
+    emptyContextSourceDraft
+  )
+  const [contextSourcesError, setContextSourcesError] = useState<string | null>(
+    null
+  )
+  const [contextSourcesNotice, setContextSourcesNotice] = useState<string | null>(
+    null
+  )
+  const [isSavingContextSources, setIsSavingContextSources] = useState(false)
   const [audioPermissionStatus, setAudioPermissionStatus] =
     useState<AudioInputPermissionStatus>('unknown')
   const [audioDevices, setAudioDevices] = useState<AudioInputDevice[]>([])
@@ -500,11 +524,12 @@ export const App = () => {
   useEffect(() => {
     const loadInitialState = async () => {
       try {
-        const [status, profile, session, settingsPayload, keyState] =
+        const [status, profile, session, contextSourcePayload, settingsPayload, keyState] =
           await Promise.all([
             window.coqpi.config.getStatus(),
             window.coqpi.profile.getContext(),
             window.coqpi.session.getContext(),
+            window.coqpi.contextSources.get(),
             window.coqpi.settings.get(),
             window.coqpi.secrets.getOpenAIKeyStatus()
           ])
@@ -515,6 +540,8 @@ export const App = () => {
         setSessionContext(session.context)
         setSessionContextDraft(session.context)
         setSessionContextError(null)
+        setContextSources(contextSourcePayload.manifest.sources)
+        setContextSourcesError(null)
         setKeyStatus(keyState)
         setSettingsForm(settingsPayload.settings)
         setSettingsMeta(settingsPayload.meta)
@@ -532,6 +559,7 @@ export const App = () => {
         setProfileContext('')
         setSessionContext(emptySessionContext)
         setSessionContextDraft(emptySessionContext)
+        setContextSources([])
         setProfileError(
           error instanceof Error
             ? error.message
@@ -1061,6 +1089,165 @@ export const App = () => {
       )
     } finally {
       setIsSavingSessionContext(false)
+    }
+  }
+
+  const applyContextSourceManifest = (sources: ContextSource[]) => {
+    setContextSources(sources)
+    setContextSourcesError(null)
+  }
+
+  const getContextSourceErrorMessage = (error: unknown) => {
+    const message =
+      error instanceof Error ? error.message : 'Unable to update context sources.'
+
+    return message.replace(
+      /^Error invoking remote method '[^']+': Error: /,
+      ''
+    )
+  }
+
+  const stageContextSource = async (
+    draft = contextSourceDraft,
+    resetDraft = true
+  ) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingContextSources(true)
+    setContextSourcesError(null)
+    setContextSourcesNotice(null)
+
+    try {
+      const payload = await window.coqpi.contextSources.add(draft)
+      applyContextSourceManifest(payload.manifest.sources)
+
+      if (resetDraft) {
+        setContextSourceDraft(emptyContextSourceDraft)
+      }
+
+      setContextSourcesNotice(
+        'Source recorded for shared RAG classification. Contents are not read or sent yet.'
+      )
+    } catch (error) {
+      setContextSourcesError(getContextSourceErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingContextSources(false)
+    }
+  }
+
+  const chooseContextFiles = async () => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingContextSources(true)
+    setContextSourcesError(null)
+    setContextSourcesNotice(null)
+
+    try {
+      const filePaths = await window.coqpi.contextSources.pickFiles()
+
+      if (filePaths.length === 0) {
+        return
+      }
+
+      let latestSources = contextSources
+      for (const location of filePaths) {
+        const payload = await window.coqpi.contextSources.add({
+          kind: 'file',
+          location
+        })
+        latestSources = payload.manifest.sources
+      }
+
+      applyContextSourceManifest(latestSources)
+      setContextSourcesNotice(
+        `${filePaths.length} file${filePaths.length === 1 ? '' : 's'} recorded for shared RAG classification. Contents were not read.`
+      )
+    } catch (error) {
+      setContextSourcesError(getContextSourceErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingContextSources(false)
+    }
+  }
+
+  const chooseContextFolder = async () => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingContextSources(true)
+    setContextSourcesError(null)
+    setContextSourcesNotice(null)
+
+    try {
+      const location = await window.coqpi.contextSources.pickFolder()
+
+      if (!location) {
+        return
+      }
+
+      const payload = await window.coqpi.contextSources.add({
+        kind: 'folder',
+        location
+      })
+      applyContextSourceManifest(payload.manifest.sources)
+      setContextSourcesNotice(
+        'Folder recorded for shared RAG classification. It was not scanned.'
+      )
+    } catch (error) {
+      setContextSourcesError(getContextSourceErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingContextSources(false)
+    }
+  }
+
+  const setContextSourceSelection = async (id: string, selected: boolean) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingContextSources(true)
+    setContextSourcesError(null)
+
+    try {
+      const payload = await window.coqpi.contextSources.setSelected(id, selected)
+      applyContextSourceManifest(payload.manifest.sources)
+    } catch (error) {
+      setContextSourcesError(getContextSourceErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingContextSources(false)
+    }
+  }
+
+  const removeStagedContextSource = async (id: string) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingContextSources(true)
+    setContextSourcesError(null)
+
+    try {
+      const payload = await window.coqpi.contextSources.remove(id)
+      applyContextSourceManifest(payload.manifest.sources)
+      setContextSourcesNotice('Source removed from the local manifest.')
+    } catch (error) {
+      setContextSourcesError(getContextSourceErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingContextSources(false)
     }
   }
 
@@ -1616,6 +1803,11 @@ export const App = () => {
       window.clearTimeout(autoAnalysisTimeoutRef.current)
     }
 
+    const cooldownDelay = Math.max(
+      0,
+      analysisCooldownUntil - Date.now()
+    )
+
     autoAnalysisTimeoutRef.current = window.setTimeout(() => {
       lastAutoAnalyzedUtteranceIdRef.current = latestFinalUtterance.id
       void runAssistantAnalysisRef.current?.({
@@ -1625,7 +1817,7 @@ export const App = () => {
         trigger: 'auto',
         targetUtteranceId: latestFinalUtterance.id
       })
-    }, AUTO_ANALYSIS_DEBOUNCE_MS)
+    }, AUTO_ANALYSIS_DEBOUNCE_MS + cooldownDelay)
 
     return () => {
       if (autoAnalysisTimeoutRef.current !== null) {
@@ -1633,7 +1825,7 @@ export const App = () => {
         autoAnalysisTimeoutRef.current = null
       }
     }
-  }, [assistantState, transcriptUtterances])
+  }, [analysisCooldownUntil, assistantState, transcriptUtterances])
 
   const realtimeMinutes =
     (accumulatedRealtimeMs +
@@ -1761,7 +1953,7 @@ export const App = () => {
           onClick={clearTranscriptState}
           type="button"
         >
-          Clear
+          New call
         </button>
       </div>
       {transcriptUtterances.length === 0 ? (
@@ -2432,6 +2624,13 @@ export const App = () => {
             Prep
           </button>
           <button
+            className={activeTab === 'context' ? 'tab-active' : ''}
+            onClick={() => setActiveTab('context')}
+            type="button"
+          >
+            Context
+          </button>
+          <button
             className={activeTab === 'settings' ? 'tab-active' : ''}
             onClick={() => setActiveTab('settings')}
             type="button"
@@ -2882,6 +3081,146 @@ export const App = () => {
                     Clear
                   </button>
                 </div>
+              </div>
+            </article>
+          </section>
+        </section>
+      ) : null}
+
+      {activeTab === 'context' ? (
+        <section className="prepare-layout scroll-section">
+          <section className="prepare-grid prepare-grid-single">
+            <article className="panel-card context-sources-card">
+              <div className="panel-header">
+                <div>
+                  <h2>Context Sources</h2>
+                </div>
+                <span>{contextSources.length} pending</span>
+              </div>
+              <p className="context-sources-description">
+                Shared RAG ingress. Every record stays CoqPi-only and pending classification until an explicit audited promotion.
+              </p>
+              {(contextSourcesError || contextSourcesNotice) && (
+                <div className="stack">
+                  {contextSourcesError ? (
+                    <div className="error-box">{contextSourcesError}</div>
+                  ) : null}
+                  {contextSourcesNotice ? (
+                    <div className="info-box">{contextSourcesNotice}</div>
+                  ) : null}
+                </div>
+              )}
+              <div className="compact-form-grid context-source-form">
+                <label className="settings-row">
+                  <span className="settings-row-label">Type</span>
+                  <select
+                    onChange={(event) =>
+                      setContextSourceDraft((current) => ({
+                        ...current,
+                        kind: event.target.value as ContextSourceKind
+                      }))
+                    }
+                    value={contextSourceDraft.kind}
+                  >
+                    <option value="link">Public link</option>
+                    <option value="path">Local path</option>
+                  </select>
+                </label>
+                <label className="settings-row">
+                  <span className="settings-row-label">Location</span>
+                  <input
+                    onChange={(event) =>
+                      setContextSourceDraft((current) => ({
+                        ...current,
+                        location: event.target.value
+                      }))
+                    }
+                    placeholder={
+                      contextSourceDraft.kind === 'link'
+                        ? 'https://linkedin.com/in/...'
+                        : '/Users/.../materials'
+                    }
+                    value={contextSourceDraft.location}
+                  />
+                </label>
+                <label className="settings-row">
+                  <span className="settings-row-label">Label</span>
+                  <input
+                    onChange={(event) =>
+                      setContextSourceDraft((current) => ({
+                        ...current,
+                        label: event.target.value
+                      }))
+                    }
+                    placeholder="Optional local label"
+                    value={contextSourceDraft.label}
+                  />
+                </label>
+                <div className="button-row settings-actions">
+                  <button
+                    disabled={
+                      isSavingContextSources ||
+                      !contextSourceDraft.location.trim()
+                    }
+                    onClick={() => void stageContextSource()}
+                    type="button"
+                  >
+                    Stage source
+                  </button>
+                  <button
+                    disabled={isSavingContextSources}
+                    onClick={() => void chooseContextFiles()}
+                    type="button"
+                  >
+                    Choose files
+                  </button>
+                  <button
+                    disabled={isSavingContextSources}
+                    onClick={() => void chooseContextFolder()}
+                    type="button"
+                  >
+                    Choose folder
+                  </button>
+                </div>
+              </div>
+              <div className="context-source-list" aria-live="polite">
+                {contextSources.length === 0 ? (
+                  <div className="context-source-empty">No sources recorded.</div>
+                ) : (
+                  contextSources.map((source) => (
+                    <div className="context-source-item" key={source.id}>
+                      <label className="context-source-select">
+                        <input
+                          checked={source.selected}
+                          disabled={isSavingContextSources}
+                          onChange={(event) =>
+                            void setContextSourceSelection(
+                              source.id,
+                              event.target.checked
+                            )
+                          }
+                          type="checkbox"
+                        />
+                        <span>{source.selected ? 'Selected' : 'Not selected'}</span>
+                      </label>
+                      <div className="context-source-details">
+                        <strong>{source.label}</strong>
+                        <span>{source.kind} · pending classification</span>
+                        <span>
+                          scope: {source.retrievalScopes[0]} · content hash pending
+                        </span>
+                        <code>{source.location}</code>
+                      </div>
+                      <button
+                        disabled={isSavingContextSources}
+                        onClick={() => void removeStagedContextSource(source.id)}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))
+                )}
               </div>
             </article>
           </section>

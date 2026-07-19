@@ -51,7 +51,8 @@ const ANALYSIS_SCHEMA = {
     'intent',
     'risk',
     'suggestedAnswers',
-    'keywordsToRemember'
+    'keywordsToRemember',
+    'openingPhrase'
   ]
 } as const
 
@@ -163,8 +164,7 @@ const validateAssistantAnalysisResult = (
     candidate.suggestedAnswers.every(validateSuggestedAnswer) &&
     Array.isArray(candidate.keywordsToRemember) &&
     candidate.keywordsToRemember.every((item) => typeof item === 'string') &&
-    (candidate.openingPhrase === undefined ||
-      typeof candidate.openingPhrase === 'string')
+    typeof candidate.openingPhrase === 'string'
   )
 }
 
@@ -274,8 +274,7 @@ export const analyzeRecentTranscript = async (
                 'Structured professional call assistant analysis result.',
               strict: true,
               schema: ANALYSIS_SCHEMA
-            },
-            verbosity: request.costMode === 'quality' ? 'medium' : 'low'
+            }
           }
         }),
       (result) => {
