@@ -94,6 +94,16 @@ Mock mode is for UI testing only.
 
 Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.
 
+### Verified local flow
+
+On 2026-07-20, the local flow was manually verified with a selected plaintext CV source:
+
+1. The source was explicitly captured and classified as private for `coqpi_interview_en_fr`.
+2. Mock English interview questions followed the normal transcript-to-analysis path.
+3. The assistant used the scoped CV evidence in its English response suggestions.
+
+This does not validate unsupported document formats, links, folders, or live-call transcript accuracy.
+
 ## Profile context
 
 The profile context lives in:

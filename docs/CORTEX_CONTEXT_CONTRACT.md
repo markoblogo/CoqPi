@@ -60,3 +60,7 @@ The current capture action is deliberately narrow. The owner must select `Captur
 Folders, manual paths, links, binary files, PDFs, office documents, external URL fetching, and recursive scans remain pending. They cannot enter retrieval merely because they were recorded as ingress.
 
 Assistant retrieval is limited to sources explicitly captured into `coqpi_interview_en_fr`. It is a compact local keyword retrieval for English/French interview and self-presentation guidance. If it finds no eligible evidence, the assistant prompt requires a concise clarification or neutral answer instead of an invented personal fact. The core excerpt is read only after assistant analysis begins; it is never used by the realtime audio hot path.
+
+## Manual verification
+
+On 2026-07-20, an owner-selected plaintext CV was explicitly captured, classified `private`, and marked `retrieval_ready` for `coqpi_interview_en_fr`. In Mock Transcript Mode, English interview prompts produced assistant suggestions grounded in the scoped CV context. No unsupported source type, folder, URL, external fetch, or live-call accuracy claim was validated by that check.
