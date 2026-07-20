@@ -22,6 +22,7 @@ import {
   PatterLikeProviderKind,
   type PatterLikeProviderProfile
 } from '../../shared/app-types'
+import { isRetryableProviderError } from './assistant-service-retry-policy'
 
 type AssistantTextResponse = {
   outputText: string
@@ -413,27 +414,6 @@ const parseStructuredResponse = (payload: string) => {
 
     throw new Error(`Invalid model response: ${message}`)
   }
-}
-
-const isRetryableProviderError = (error: Error) => {
-  const message = error.message
-
-  const nonRetryable = [
-    'Invalid model response',
-    'Model response JSON does not match the expected shape.',
-    'OPENAI_API_KEY',
-    'OPENAI returned an empty response.',
-    'Governance blocked action'
-  ]
-
-  if (
-    nonRetryable.some((value) => message.includes(value)) ||
-    error.name === 'GovernanceBlockedError'
-  ) {
-    return false
-  }
-
-  return true
 }
 
 export const analyzeRecentTranscript = async (
