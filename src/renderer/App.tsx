@@ -18,7 +18,6 @@ import {
   type ConfigStatus,
   type ContextSource,
   type ContextSourceKind,
-  type AssistantAnalysisError,
   type ControlState,
   type OpenAIKeyStatus,
   type RealtimeConnectionStatus,
@@ -29,6 +28,13 @@ import {
   type TranscriptUtterance,
   defaultControlState
 } from '@shared/app-types'
+import {
+  AUTO_ANALYSIS_DEBOUNCE_MS,
+  AssistantState,
+  type AssistantStatusCode,
+  decideAutoAnalysis,
+  getAssistantStatusLabel
+} from '@shared/live-loop'
 import {
   APPROXIMATE_COST_MODEL,
   COST_GUARDRAILS,
@@ -145,75 +151,6 @@ const rendererMediaApiError =
   'Browser/Electron media API is unavailable in this renderer.'
 
 const ANALYSIS_COOLDOWN_MS = 5000
-const AUTO_ANALYSIS_DEBOUNCE_MS = 900
-
-type AssistantStatusCode = AssistantAnalysisError['code'] | null
-
-type AssistantStatusLabelInfo = {
-  label: string
-  classNameSuffix: string
-}
-
-const getAssistantStatusLabel = (
-  assistantState: 'idle' | 'analyzing' | 'error' | 'done',
-  lastAnalyzedUtteranceId: string | null,
-  lastUtteranceId: string | undefined,
-  errorCode: AssistantStatusCode
-): AssistantStatusLabelInfo => {
-  if (assistantState === 'analyzing') {
-    return {
-      label: 'Analyzing',
-      classNameSuffix: 'analyzing'
-    }
-  }
-
-  if (assistantState === 'error' && errorCode) {
-    if (errorCode === 'provider_timeout') {
-      return {
-        label: 'Timeout',
-        classNameSuffix: 'timeout'
-      }
-    }
-
-    if (errorCode === 'analysis_budget_exhausted') {
-      return {
-        label: 'Budget exhausted',
-        classNameSuffix: 'budget-exhausted'
-      }
-    }
-
-    if (errorCode === 'missing_api_key') {
-      return {
-        label: 'Auth missing',
-        classNameSuffix: 'auth-missing'
-      }
-    }
-
-    return {
-      label: 'Error',
-      classNameSuffix: 'error'
-    }
-  }
-
-  if (lastUtteranceId && lastAnalyzedUtteranceId !== lastUtteranceId) {
-    return {
-      label: 'Stale',
-      classNameSuffix: 'stale'
-    }
-  }
-
-  if (assistantState === 'done') {
-    return {
-      label: 'Ready',
-      classNameSuffix: 'ready'
-    }
-  }
-
-  return {
-    label: 'Waiting',
-    classNameSuffix: 'waiting'
-  }
-}
 
 type SessionStats = {
   assistantRequests: number
@@ -450,12 +387,6 @@ const getSessionContextLabel = (context: SessionContext) => {
   return company || role || 'No session'
 }
 
-const makeAutoAnalysisFingerprint = (
-  latestFinalUtterance: TranscriptUtterance,
-  transcriptText: string
-) =>
-  `${latestFinalUtterance.id}::${latestFinalUtterance.speaker}::${transcriptText.slice(-500).trim()}`
-
 export const App = () => {
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
   const noEventTimeoutRef = useRef<number | null>(null)
@@ -532,9 +463,7 @@ export const App = () => {
   const [costMode, setCostMode] = useState<AssistantCostMode>(
     defaultSettings.costMode
   )
-  const [assistantState, setAssistantState] = useState<
-    'idle' | 'analyzing' | 'error' | 'done'
-  >('idle')
+  const [assistantState, setAssistantState] = useState<AssistantState>('idle')
   const [assistantError, setAssistantError] = useState<string | null>(null)
   const [assistantErrorCode, setAssistantErrorCode] =
     useState<AssistantStatusCode>(null)
@@ -1914,20 +1843,15 @@ export const App = () => {
     }
 
     const analysisText = getRecentTranscriptText(transcriptUtterances, 30)
-    const fingerprint = makeAutoAnalysisFingerprint(
+    const decision = decideAutoAnalysis({
       latestFinalUtterance,
-      analysisText
-    )
+      transcriptText: analysisText,
+      lastAutoAnalyzedFingerprint: lastAutoAnalyzedFingerprintRef.current,
+      scheduledAutoAnalysisFingerprint: scheduledAutoAnalysisFingerprintRef.current,
+      assistantState
+    })
 
-    if (fingerprint === lastAutoAnalyzedFingerprintRef.current) {
-      return
-    }
-
-    if (fingerprint === scheduledAutoAnalysisFingerprintRef.current) {
-      return
-    }
-
-    if (assistantState === 'analyzing') {
+    if (!decision.shouldRun || decision.fingerprint === null) {
       return
     }
 
@@ -1945,7 +1869,8 @@ export const App = () => {
         return
       }
 
-      scheduledAutoAnalysisFingerprintRef.current = fingerprint
+      const activeFingerprint = decision.fingerprint
+      scheduledAutoAnalysisFingerprintRef.current = activeFingerprint
 
       void runAssistantAnalysisRef.current({
         recentWindowLabel: '30s',
@@ -1955,10 +1880,12 @@ export const App = () => {
         targetUtteranceId: latestFinalUtterance.id
       }).then((didRun) => {
         if (didRun) {
-          lastAutoAnalyzedFingerprintRef.current = fingerprint
+          lastAutoAnalyzedFingerprintRef.current = activeFingerprint
         }
 
-        if (scheduledAutoAnalysisFingerprintRef.current === fingerprint) {
+        if (
+          scheduledAutoAnalysisFingerprintRef.current === activeFingerprint
+        ) {
           scheduledAutoAnalysisFingerprintRef.current = null
         }
       })
