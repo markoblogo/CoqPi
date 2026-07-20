@@ -60,6 +60,8 @@ OPENAI_REALTIME_TRANSCRIPTION_DELAY=low
 OPENAI_SAFETY_IDENTIFIER=coqpi-local-user
 COQPI_GOVERNANCE_DIR=./data/governance
 COQPI_GOVERNANCE_MODE=shadow
+COQPI_PERSONAL_KNOWLEDGE_CORE_DIR=./data/context-sources
+COQPI_CONTEXT_PACK_SIGNING_KEY=<shared-hmac-key>  # optional, for signed snapshot export
 ```
 
 - `OPENAI_ASSISTANT_MODEL` remains the fallback assistant model.
@@ -117,6 +119,19 @@ Context source governance is also available in the local Personal Knowledge Core
 - `data/context-sources/manifest.json`
 - `data/context-sources/coqpi-context-pack.manifest.md`
 - `data/context-sources/coqpi-context-pack.history.jsonl`
+
+### Handoff snapshot to Cortex (no UI required)
+
+- `pnpm dump-manifest -- --dump-manifest`
+- `pnpm dump-manifest -- --dump-manifest --manifest-dir ./data/context-sources --output ./handoff.snapshot.json`
+- `COQPI_CONTEXT_PACK_SIGNING_KEY=... pnpm dump-manifest -- --dump-manifest --sign`
+
+Snapshot output includes:
+
+- canonical `manifest.json` state,
+- optional `history` entries,
+- `manifestHash` for integrity,
+- optional HMAC `signature` if `--sign` is set.
 
 ## Realtime smoke test
 

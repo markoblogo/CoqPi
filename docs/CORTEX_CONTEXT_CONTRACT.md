@@ -29,6 +29,23 @@ The manifest does not contain file contents, folder inventories, parsed metadata
 
 History lines are appended for each local state mutation and include action, timestamp, manifest hash, previous hash, and optional local git `HEAD` for audit correlation.
 
+## Snapshot handoff for Cortex
+
+For local synchronous handoff, CoqPi exposes a dedicated export snapshot (no UI flow needed):
+
+- `pnpm dump-manifest -- --dump-manifest`
+
+The snapshot includes:
+
+- current `manifest.json` contract,
+- optional append-only history lines from `coqpi-context-pack.history.jsonl`,
+- `manifestHash`,
+- optional `signature` when `--sign` is used.
+
+Signing key resolution:
+
+- `--key <value>` CLI parameter or `COQPI_CONTEXT_PACK_SIGNING_KEY` env var.
+
 ## Explicit admission boundary
 
 Adding a source is an explicit desktop action. Choosing a file or folder returns only the path selected in the native dialog. CoqPi records the ingress metadata but does not inspect it.

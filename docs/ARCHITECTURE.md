@@ -86,6 +86,10 @@ An explicit file-only capture action may locally hash and classify supported pla
 
 Promotion to Cortex personal context, cross-tenant retrieval, public-surface exposure, and external actions are denied by default. A compact personal context pack remains a possible later scoped export, not the only ingress. See [docs/CORTEX_CONTEXT_CONTRACT.md](/Volumes/Work/Work/CoqPi/docs/CORTEX_CONTEXT_CONTRACT.md).
 
+For synchronous handoff workflows, CoqPi can emit an immutable snapshot of this contract state with:
+`pnpm dump-manifest -- --dump-manifest [--sign]`.
+The snapshot uses only local manifest/history artifacts and can be signed for Cortex intake validation.
+
 ## Local Governance Receipts
 
 CoqPi uses a narrow, ODS-inspired policy-and-receipt contract around external provider calls. It is not an agent runtime or a local AI appliance.
