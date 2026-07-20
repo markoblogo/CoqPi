@@ -99,3 +99,65 @@ test('ingests finder payload through backend endpoint: dedupe, batch, malformed 
     )
   })
 })
+
+test('previews finder payload: marks duplicates and invalid entries without mutating packs', async () => {
+  await withCoreDirectory(async () => {
+    const seed = await contextSourceService.ingestCounterpartyFinderPayload(
+      JSON.stringify({
+        kind: 'job',
+        sourceId: 'finder:job:seed-007',
+        partnerName: 'AgriFlow',
+        title: 'Growth PM',
+        summary: 'Baseline profile pack for duplicate detection.'
+      })
+    )
+
+    const before = seed.manifest.counterpartyPacks.length
+
+    const preview = await contextSourceService.previewCounterpartyFinderPayload(
+      JSON.stringify([
+        {
+          kind: 'job',
+          sourceId: 'finder:job:seed-007',
+          partnerName: 'AgriFlow',
+          title: 'Growth PM',
+          summary: 'Duplicate against existing job source.'
+        },
+        {
+          kind: 'partner',
+          sourceId: 'finder:partner:new-001',
+          partnerName: 'Nova',
+          title: 'Pilot partner',
+          summary: 'Fresh candidate for import.'
+        },
+        {
+          kind: 'job',
+          sourceId: 'finder:job:seed-007',
+          partnerName: 'AgriFlow',
+          summary: 'Missing title field is invalid.'
+        }
+      ])
+    )
+
+    assert.equal(preview.requestedCount, 3)
+    assert.equal(preview.validCount, 2)
+    assert.equal(preview.duplicateCount, 1)
+    assert.equal(preview.errors.length, 1)
+    assert.equal(preview.candidates[0].duplicate, true)
+    assert.equal(preview.candidates[1].duplicate, false)
+    assert.equal(preview.candidates[0].index, 0)
+    assert.equal(preview.candidates[1].index, 1)
+
+    const after = await contextSourceService.ingestCounterpartyFinderPayload(
+      JSON.stringify({
+        kind: 'partner',
+        sourceId: 'finder:partner:unchanged',
+        partnerName: 'No-Op',
+        title: 'Preview must not mutate',
+        summary: 'This is from a separate ingest call after preview only.'
+      })
+    )
+
+    assert.equal(after.manifest.counterpartyPacks.length, before + 1)
+  })
+})

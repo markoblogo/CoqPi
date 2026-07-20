@@ -17,6 +17,7 @@ export interface FinderCounterpartyDraftSource {
   context?: string
   links?: string[]
   selected?: boolean
+  index?: number
 }
 
 export interface FinderCounterpartyPayloadError {
@@ -157,7 +158,7 @@ export const parseFinderCounterpartyPayloadTextPermissive = (
       )
 
       if ('sourceId' in parsed && 'kind' in parsed && 'partnerName' in parsed) {
-        drafts.push(parsed)
+        drafts.push({ ...parsed, index })
       } else {
         errors.push(parsed as FinderCounterpartyPayloadError)
       }
@@ -171,7 +172,7 @@ export const parseFinderCounterpartyPayloadTextPermissive = (
     const parsed = parseFinderCounterpartyPayloadItemOrError(payload)
 
     if ('sourceId' in parsed && 'kind' in parsed && 'partnerName' in parsed) {
-      drafts = [parsed]
+      drafts = [{ ...parsed, index: 0 }]
     } else {
       errors = [parsed as FinderCounterpartyPayloadError]
     }

@@ -4,6 +4,7 @@ import type {
   AssistantAnalysisResponse,
   ContextSourceDraft,
   CounterpartyContextPackDraft,
+  CounterpartyFinderPayloadPreviewResult,
   ContextSourceManifestResult,
   ConfigStatus,
   DeleteOpenAIKeyResult,
@@ -43,10 +44,11 @@ declare global {
         pickFiles: () => Promise<string[]>
         pickFolder: () => Promise<string | null>
       }
-      contextPacks: {
+  contextPacks: {
         get: () => Promise<ContextSourceManifestResult>
         add: (packs: CounterpartyContextPackDraft[]) => Promise<ContextSourceManifestResult>
         ingestFinderPayload: (payloadText: string) => Promise<ContextSourceManifestResult>
+        parseFinderPayload: (payloadText: string) => Promise<CounterpartyFinderPayloadPreviewResult>
         setSelected: (id: string, selected: boolean) => Promise<ContextSourceManifestResult>
         remove: (id: string) => Promise<ContextSourceManifestResult>
       }

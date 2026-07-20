@@ -10,6 +10,8 @@ import type {
   ContextSourceManifestResult,
   CounterpartyContextPack,
   CounterpartyContextPackDraft,
+  CounterpartyFinderPayloadPreviewCandidate,
+  CounterpartyFinderPayloadPreviewResult,
   CounterpartyPayloadIngestSummary
 } from '../../shared/app-types'
 import {
@@ -706,6 +708,57 @@ export const ingestCounterpartyFinderPayload = async (
   return {
     manifest: result.manifest,
     counterpartyPayloadIngestSummary: summary
+  }
+}
+
+export const previewCounterpartyFinderPayload = async (
+  payloadText: string
+): Promise<CounterpartyFinderPayloadPreviewResult> => {
+  const parsed = parseFinderCounterpartyPayloadTextPermissive(payloadText)
+
+  const manifest = await readManifest()
+  const existingKeys = new Set(
+    (manifest.counterpartyPacks ?? []).map(
+      (pack) => `${pack.sourceId}::${pack.kind}`
+    )
+  )
+
+  const duplicateCandidates = new Set<string>()
+
+  const candidates: CounterpartyFinderPayloadPreviewCandidate[] = parsed.drafts.map(
+    (draft) => {
+      const key = `${draft.sourceId}::${draft.kind}`
+      const duplicate = existingKeys.has(key) || duplicateCandidates.has(key)
+      duplicateCandidates.add(key)
+
+      return {
+        draft: {
+          sourceId: draft.sourceId,
+          kind: draft.kind,
+          partnerName: draft.partnerName,
+          title: draft.title,
+          summary: draft.summary,
+          context: draft.context,
+          links: draft.links,
+          selected: draft.selected !== false
+        },
+        index: draft.index ?? 0,
+        duplicate
+      }
+    }
+  )
+
+  const duplicateCount = candidates.reduce(
+    (total, candidate) => total + (candidate.duplicate ? 1 : 0),
+    0
+  )
+
+  return {
+    requestedCount: parsed.requestedCount,
+    validCount: candidates.length,
+    duplicateCount,
+    candidates,
+    errors: parsed.errors
   }
 }
 

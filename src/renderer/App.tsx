@@ -20,6 +20,8 @@ import {
   type CounterpartyContextPack,
   type CounterpartyContextPackDraft,
   type CounterpartyContextPackKind,
+  type CounterpartyFinderPayloadPreviewCandidate,
+  type CounterpartyFinderPayloadPreviewResult,
   type ContextSourceKind,
   type ControlState,
   type OpenAIKeyStatus,
@@ -118,6 +120,10 @@ const emptyContextSourceDraft: {
 type CounterpartyPackFormDraft = CounterpartyContextPackDraft & {
   linksText: string
   kind: CounterpartyContextPackKind
+}
+
+type CounterpartyFinderPreviewItem = CounterpartyFinderPayloadPreviewCandidate & {
+  selected: boolean
 }
 
 const emptyCounterpartyPackDraft: CounterpartyPackFormDraft = {
@@ -467,6 +473,10 @@ export const App = () => {
   const [counterpartyPackDraftNotice, setCounterpartyPackDraftNotice] = useState<
     string | null
   >(null)
+  const [counterpartyFinderPayloadPreview, setCounterpartyFinderPayloadPreview] =
+    useState<CounterpartyFinderPayloadPreviewResult | null>(null)
+  const [counterpartyFinderPayloadItems, setCounterpartyFinderPayloadItems] =
+    useState<CounterpartyFinderPreviewItem[]>([])
   const [counterpartyPackImportErrors, setCounterpartyPackImportErrors] = useState<
     string[]
   >([])
@@ -1235,6 +1245,16 @@ export const App = () => {
     setCounterpartyPackDraftNotice('Editing selected counterparty pack.')
   }
 
+  const mapFinderErrorsToMessages = (errors: CounterpartyFinderPayloadPreviewResult['errors']) =>
+    errors.slice(0, 5).map((failure, index) => {
+      const prefix =
+        failure.index === undefined
+          ? `Issue #${index + 1}`
+          : `Item ${failure.index + 1}`
+
+      return `${prefix}: ${failure.reason}`
+    })
+
   const stageCounterpartyPack = async (
     draft = counterpartyPackDraft,
     resetDraft = true
@@ -1278,7 +1298,7 @@ export const App = () => {
     }
   }
 
-  const importCounterpartyPayload = async (
+  const previewFinderPayload = async (
     payloadText = counterpartyPackFinderPayload
   ) => {
     if (!payloadText.trim() || contextSourceMutationRef.current) {
@@ -1291,69 +1311,47 @@ export const App = () => {
     setCounterpartyPackDraftNotice(null)
     setCounterpartyPackImportErrors([])
     try {
-      const manifest = await window.coqpi.contextPacks.ingestFinderPayload(payloadText)
-      applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
-      const summary = manifest.counterpartyPayloadIngestSummary
-      const addedCount = summary?.ingestedCount ?? 0
-      const skippedCount = summary?.skippedCount ?? 0
-      const errors = summary?.errors ?? []
+      const preview = await window.coqpi.contextPacks.parseFinderPayload(
+        payloadText
+      )
 
-      if (addedCount === 0) {
-        const skipSuffix =
-          skippedCount > 0
-            ? ` Skipped ${skippedCount} invalid or duplicate entries.`
-            : ''
+      const nextItems = preview.candidates.map((candidate) => ({
+        ...candidate,
+        selected: !candidate.duplicate
+      }))
 
-        setCounterpartyPackDraftNotice(
-          `No new counterparty packs imported.${skipSuffix}`
-        )
-      } else {
-        setCounterpartyPackDraftNotice(
-          `Imported ${addedCount} counterparty pack${
-            addedCount === 1 ? '' : 's'
-          } from Finder payload.`
+      setCounterpartyFinderPayloadPreview(preview)
+      setCounterpartyFinderPayloadItems(nextItems)
+
+      const notices = [] as string[]
+
+      if (preview.requestedCount > 0) {
+        notices.push(
+          `${preview.requestedCount} total entries parsed. ${preview.validCount} valid.`
         )
       }
 
-      if (errors.length > 0) {
-        const failures = errors.slice(0, 5).map((failure, index) => {
-          const prefix =
-            failure.index === undefined
-              ? `Issue #${index + 1}`
-              : `Item ${failure.index + 1}`
+      if (preview.duplicateCount > 0) {
+        notices.push(
+          `${preview.duplicateCount} duplicate or already-recorded entr${
+            preview.duplicateCount === 1 ? 'y' : 'ies'
+          }. Skipped.`
+        )
+      }
 
-          return `${prefix}: ${failure.reason}`
-        })
-
+      if (preview.errors.length > 0) {
+        const failures = mapFinderErrorsToMessages(preview.errors)
         setCounterpartyPackImportErrors(failures)
-
-        if (typeof process !== 'undefined') {
-          console.warn(
-            '[finder-import] skipped entries:',
-            JSON.stringify({
-              totalErrors: errors.length,
-              sample: failures,
-              requestedCount: summary?.requestedCount
-            })
-          )
-        }
-
-        const errorSummary = skippedCount > 0
-          ? ` ${failures.length} invalid or duplicate ${
-              failures.length === 1 ? 'entry' : 'entries'
-            } skipped.`
-          : ` ${failures.length} invalid entries.`
-
-        setCounterpartyPackDraftNotice((current) =>
-          current
-            ? `${current}${errorSummary}`
-            : `Finder import completed with ${failures.length}/${errors.length} issues.${errorSummary}`
-        )
+        notices.push(`Invalid entries: ${preview.errors.length}`)
       }
 
-      setCounterpartyPackFinderPayload('')
+      setCounterpartyPackDraftNotice(
+        notices.length > 0 ? notices.join(' ') : 'Nothing to import from this payload.'
+      )
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+      setCounterpartyFinderPayloadItems([])
+      setCounterpartyFinderPayloadPreview(null)
       setCounterpartyPackImportErrors([])
     } finally {
       contextSourceMutationRef.current = false
@@ -1362,7 +1360,84 @@ export const App = () => {
   }
 
   const importFinderCandidates = async () => {
-    await importCounterpartyPayload()
+    await previewFinderPayload()
+  }
+
+  const setCounterpartyFinderCandidateSelection = (
+    index: number,
+    selected: boolean
+  ) => {
+    setCounterpartyFinderPayloadItems((current) =>
+      current.map((item) =>
+        item.index === index ? { ...item, selected } : item
+      )
+    )
+  }
+
+  const importSelectedFinderCandidates = async () => {
+    const selected = counterpartyFinderPayloadItems.filter(
+      (candidate) => candidate.selected && !candidate.duplicate
+    )
+
+    if (selected.length === 0) {
+      setCounterpartyPackDraftNotice('Select at least one non-duplicate candidate.')
+      return
+    }
+
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingCounterpartyPacks(true)
+    setCounterpartyPackDraftError(null)
+    setCounterpartyPackDraftNotice(null)
+    setCounterpartyPackImportErrors([])
+    try {
+      const payload = await window.coqpi.contextPacks.add(
+        selected.map((candidate) => candidate.draft)
+      )
+
+      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+
+      const previewDuplicateCount = counterpartyFinderPayloadPreview?.duplicateCount ?? 0
+      const previewErrorCount = counterpartyFinderPayloadPreview?.errors.length ?? 0
+
+      const selectedCount = selected.length
+      setCounterpartyPackDraftNotice(
+        `Imported ${selectedCount} selected counterparty pack${
+          selectedCount === 1 ? '' : 's'
+        }.`
+      )
+
+      if (previewDuplicateCount > 0 || previewErrorCount > 0) {
+        const duplicateSuffix =
+          previewDuplicateCount > 0
+            ? ` ${previewDuplicateCount} duplicate/recorded entr${
+                previewDuplicateCount === 1 ? 'y' : 'ies'
+              } skipped.`
+            : ''
+        const errorSuffix =
+          previewErrorCount > 0
+            ? ` ${previewErrorCount} invalid entr${
+                previewErrorCount === 1 ? 'y' : 'ies'
+              } skipped.`
+            : ''
+
+        setCounterpartyPackDraftNotice((current) =>
+          `${current ?? ''}${duplicateSuffix}${errorSuffix}`.trim()
+        )
+      }
+
+      setCounterpartyPackFinderPayload('')
+      setCounterpartyFinderPayloadItems([])
+      setCounterpartyFinderPayloadPreview(null)
+    } catch (error) {
+      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
+    }
   }
 
   const setCounterpartyPackSelection = async (
@@ -3621,7 +3696,7 @@ export const App = () => {
               <p className="context-sources-description">
                 Compact partner/job/investor packets. Use these to scope which context is visible during a specific interview or negotiation.
               </p>
-              {(counterpartyPackDraftError || counterpartyPackDraftNotice ||
+                {(counterpartyPackDraftError || counterpartyPackDraftNotice ||
                 counterpartyPackImportErrors.length > 0) && (
                 <div className="stack">
                   {counterpartyPackDraftError ? (
@@ -3644,6 +3719,43 @@ export const App = () => {
                   ) : null}
                 </div>
               )}
+              {counterpartyFinderPayloadItems.length > 0 ? (
+                <div className="context-source-list">
+                  {counterpartyFinderPayloadItems.map((item) => (
+                    <div className="context-source-item" key={item.index}>
+                      <label className="context-source-select">
+                        <input
+                          checked={item.selected}
+                          disabled={isSavingCounterpartyPacks || item.duplicate}
+                          onChange={(event) =>
+                            setCounterpartyFinderCandidateSelection(
+                              item.index,
+                              event.target.checked
+                            )
+                          }
+                          type="checkbox"
+                        />
+                        <span>
+                          {item.duplicate ? 'Duplicate' : 'Import'}
+                        </span>
+                      </label>
+                      <div className="context-source-details">
+                        <strong>{item.draft.partnerName}</strong>
+                        <span>
+                          {item.draft.kind} · {item.draft.title}
+                        </span>
+                        <span>
+                          source: {item.draft.sourceId}
+                        </span>
+                        {item.duplicate ? (
+                          <span>status: duplicate</span>
+                        ) : null}
+                        <code>{item.draft.summary}</code>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
               <div className="compact-form-grid context-source-form">
                 <label className="settings-row settings-row-textarea">
                   <span className="settings-row-label">Finder payload (paste JSON)</span>
@@ -3653,6 +3765,8 @@ export const App = () => {
                       setCounterpartyPackFinderPayload(event.target.value)
                       setCounterpartyPackDraftError(null)
                       setCounterpartyPackDraftNotice(null)
+                      setCounterpartyFinderPayloadPreview(null)
+                      setCounterpartyFinderPayloadItems([])
                       setCounterpartyPackImportErrors([])
                     }}
                     placeholder='{"kind":"job","sourceId":"finder:job:uuid","partnerName":"Acme","title":"Senior PM","summary":"...","linksText":"https://...\\nhttps://..."}'
@@ -3666,11 +3780,24 @@ export const App = () => {
                     onClick={() => void importFinderCandidates()}
                     type="button"
                   >
-                    Import Finder JSON
+                    Preview Finder JSON
+                  </button>
+                  <button
+                    disabled={
+                      isSavingCounterpartyPacks ||
+                      counterpartyFinderPayloadItems.filter((candidate) => candidate.selected)
+                        .length === 0
+                    }
+                    onClick={() => void importSelectedFinderCandidates()}
+                    type="button"
+                  >
+                    Import selected candidates
                   </button>
                   <button
                     onClick={() => {
                       setCounterpartyPackFinderPayload('')
+                      setCounterpartyFinderPayloadItems([])
+                      setCounterpartyFinderPayloadPreview(null)
                       setCounterpartyPackDraftError(null)
                       setCounterpartyPackDraftNotice(null)
                       setCounterpartyPackImportErrors([])

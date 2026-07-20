@@ -229,6 +229,20 @@ export interface CounterpartyPayloadIngestSummary {
   errors: CounterpartyPayloadIngestError[]
 }
 
+export interface CounterpartyFinderPayloadPreviewCandidate {
+  draft: CounterpartyContextPackDraft
+  index: number
+  duplicate: boolean
+}
+
+export interface CounterpartyFinderPayloadPreviewResult {
+  requestedCount: number
+  validCount: number
+  duplicateCount: number
+  candidates: CounterpartyFinderPayloadPreviewCandidate[]
+  errors: CounterpartyPayloadIngestError[]
+}
+
 export interface ContextSourceManifestResult {
   manifest: ContextSourceManifest
   counterpartyPayloadIngestSummary?: CounterpartyPayloadIngestSummary
