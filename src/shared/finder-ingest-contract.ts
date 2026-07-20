@@ -19,6 +19,17 @@ export interface FinderCounterpartyDraftSource {
   selected?: boolean
 }
 
+export interface FinderCounterpartyPayloadError {
+  index?: number
+  reason: string
+}
+
+export interface ParsedFinderCounterpartyPayload {
+  requestedCount: number
+  drafts: FinderCounterpartyDraftSource[]
+  errors: FinderCounterpartyPayloadError[]
+}
+
 export const FINDER_COUNTERPARTY_REQUIRED_FIELDS_ERROR =
   'A counterparty pack requires kind, sourceId, partnerName, title and summary.'
 
@@ -98,27 +109,74 @@ const asObject = (candidate: unknown): Record<string, unknown> => {
   return candidate as Record<string, unknown>
 }
 
-const parseFinderCounterpartyPayloadItem = (raw: unknown, index?: number) => {
+const parseFinderCounterpartyPayloadItemOrError = (
+  raw: unknown,
+  index?: number
+): FinderCounterpartyDraftSource | FinderCounterpartyPayloadError => {
   try {
     return normalizeFinderCounterpartyDraft(asObject(raw))
   } catch (error) {
     const suffix = index === undefined ? '' : ` at index ${index}`
-    const message = error instanceof Error ? error.message : String(error)
-    throw new Error(`Invalid finder counterparty payload item${suffix}: ${message}`)
+    const reason = error instanceof Error
+      ? error.message
+      : String(error)
+
+    return {
+      index,
+      reason: `Invalid finder counterparty payload item${suffix}: ${reason}`
+    }
   }
 }
 
 export const parseFinderCounterpartyPayloadText = (
   text: string
 ): FinderCounterpartyDraftSource[] => {
+  const parsed = parseFinderCounterpartyPayloadTextPermissive(text)
+
+  if (parsed.errors.length > 0) {
+    throw new Error(parsed.errors[0]?.reason ?? 'Invalid finder payload.')
+  }
+
+  return parsed.drafts
+}
+
+export const parseFinderCounterpartyPayloadTextPermissive = (
+  text: string
+): ParsedFinderCounterpartyPayload => {
   const payload = JSON.parse(text) as unknown
+  let errors: FinderCounterpartyPayloadError[] = []
+  let drafts: FinderCounterpartyDraftSource[] = []
+  let requestedCount = 0
 
   if (Array.isArray(payload)) {
-    return payload.map((item, index) => parseFinderCounterpartyPayloadItem(item, index))
+    requestedCount = payload.length
+    for (let index = 0; index < payload.length; index += 1) {
+      const parsed = parseFinderCounterpartyPayloadItemOrError(
+        payload[index],
+        index
+      )
+
+      if ('sourceId' in parsed && 'kind' in parsed && 'partnerName' in parsed) {
+        drafts.push(parsed)
+      } else {
+        errors.push(parsed as FinderCounterpartyPayloadError)
+      }
+    }
+
+    return { requestedCount, drafts, errors }
   }
 
   if (payload && typeof payload === 'object') {
-    return [parseFinderCounterpartyPayloadItem(payload)]
+    requestedCount = 1
+    const parsed = parseFinderCounterpartyPayloadItemOrError(payload)
+
+    if ('sourceId' in parsed && 'kind' in parsed && 'partnerName' in parsed) {
+      drafts = [parsed]
+    } else {
+      errors = [parsed as FinderCounterpartyPayloadError]
+    }
+
+    return { requestedCount, drafts, errors }
   }
 
   throw new Error(

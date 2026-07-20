@@ -27,7 +27,7 @@ const withCoreDirectory = async (operation) => {
   }
 }
 
-test('ingests finder payload through backend endpoint: dedupe, batch, malformed reject', async () => {
+test('ingests finder payload through backend endpoint: dedupe, batch, malformed allowed', async () => {
   await withCoreDirectory(async () => {
     const payload = JSON.stringify([
       {
@@ -70,17 +70,28 @@ test('ingests finder payload through backend endpoint: dedupe, batch, malformed 
     const afterDuplicateBatch = await contextSourceService.ingestCounterpartyFinderPayload(payload)
     assert.equal(afterDuplicateBatch.manifest.counterpartyPacks.length, 2)
 
-    await assert.rejects(
-      contextSourceService.ingestCounterpartyFinderPayload(
-        JSON.stringify({
-          kind: 'job',
+    const partial = await contextSourceService.ingestCounterpartyFinderPayload(
+      JSON.stringify([
+        {
+          kind: 'partner',
+          sourceId: 'finder:partner:acme-002',
           partnerName: 'Acme',
+          title: 'Pilot partner',
+          summary: 'Valid pack alongside a malformed one.'
+        },
+        {
+          kind: 'job',
+          partnerName: 'Missing source id',
           title: 'Role',
           summary: 'summary'
-        })
-      ),
-      /A counterparty pack requires kind, sourceId, partnerName, title and summary./
+        }
+      ])
     )
+
+    assert.equal(partial.manifest.counterpartyPacks.length, 3)
+    assert.equal(partial.counterpartyPayloadIngestSummary?.requestedCount, 2)
+    assert.equal(partial.counterpartyPayloadIngestSummary?.ingestedCount, 1)
+    assert.equal(partial.counterpartyPayloadIngestSummary?.errors.length, 1)
 
     await assert.rejects(
       contextSourceService.ingestCounterpartyFinderPayload('42'),

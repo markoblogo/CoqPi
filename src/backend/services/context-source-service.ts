@@ -9,9 +9,12 @@ import type {
   ContextSourceManifest,
   ContextSourceManifestResult,
   CounterpartyContextPack,
-  CounterpartyContextPackDraft
+  CounterpartyContextPackDraft,
+  CounterpartyPayloadIngestSummary
 } from '../../shared/app-types'
-import { parseFinderCounterpartyPayloadText } from '../../shared/finder-ingest-contract'
+import {
+  parseFinderCounterpartyPayloadTextPermissive
+} from '../../shared/finder-ingest-contract'
 import { getAppInfo } from './app-state'
 
 type IngressEvent =
@@ -604,11 +607,17 @@ export const addContextSource = async (
 }
 
 export const addCounterpartyContextPacks = async (
-  packs: CounterpartyContextPackDraft[]
+  packs: CounterpartyContextPackDraft[],
+  options: { requireAtLeastOne?: boolean } = {}
 ): Promise<ContextSourceManifestResult> => {
+  const { requireAtLeastOne = true } = options
   const list = Array.isArray(packs) ? packs : []
-  if (list.length === 0) {
+  if (list.length === 0 && requireAtLeastOne) {
     throw new Error('At least one counterparty pack is required.')
+  }
+
+  if (list.length === 0) {
+    return { manifest: await readManifest() }
   }
 
   const manifest = await readManifest()
@@ -675,8 +684,29 @@ export const addCounterpartyContextPacks = async (
 export const ingestCounterpartyFinderPayload = async (
   payloadText: string
 ): Promise<ContextSourceManifestResult> => {
-  const drafts = parseFinderCounterpartyPayloadText(payloadText)
-  return addCounterpartyContextPacks(drafts)
+  const parsed = parseFinderCounterpartyPayloadTextPermissive(payloadText)
+
+  const requestedCount = parsed.requestedCount
+  const beforeManifest = await readManifest()
+  const beforeCount = beforeManifest.counterpartyPacks?.length ?? 0
+
+  const result = await addCounterpartyContextPacks(parsed.drafts, {
+    requireAtLeastOne: false
+  })
+
+  const afterCount = result.manifest.counterpartyPacks?.length ?? 0
+  const ingestedCount = Math.max(afterCount - beforeCount, 0)
+  const summary: CounterpartyPayloadIngestSummary = {
+    requestedCount,
+    ingestedCount,
+    skippedCount: Math.max(requestedCount - ingestedCount, 0),
+    errors: parsed.errors
+  }
+
+  return {
+    manifest: result.manifest,
+    counterpartyPayloadIngestSummary: summary
+  }
 }
 
 export const setContextSourceSelected = async (

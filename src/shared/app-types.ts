@@ -217,8 +217,21 @@ export interface ContextSourceManifest {
   counterpartyPacks?: CounterpartyContextPack[]
 }
 
+export interface CounterpartyPayloadIngestError {
+  index?: number
+  reason: string
+}
+
+export interface CounterpartyPayloadIngestSummary {
+  requestedCount: number
+  ingestedCount: number
+  skippedCount: number
+  errors: CounterpartyPayloadIngestError[]
+}
+
 export interface ContextSourceManifestResult {
   manifest: ContextSourceManifest
+  counterpartyPayloadIngestSummary?: CounterpartyPayloadIngestSummary
 }
 
 

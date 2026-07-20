@@ -1285,15 +1285,21 @@ export const App = () => {
     setCounterpartyPackDraftError(null)
     setCounterpartyPackDraftNotice(null)
     try {
-      const beforeCount = counterpartyPacks.length
       const manifest = await window.coqpi.contextPacks.ingestFinderPayload(payloadText)
       applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
-      const afterCount = manifest.manifest.counterpartyPacks?.length ?? 0
-      const addedCount = Math.max(afterCount - beforeCount, 0)
+      const summary = manifest.counterpartyPayloadIngestSummary
+      const addedCount = summary?.ingestedCount ?? 0
+      const skippedCount = summary?.skippedCount ?? 0
+      const errors = summary?.errors ?? []
 
       if (addedCount === 0) {
+        const skipSuffix =
+          skippedCount > 0
+            ? ` Skipped ${skippedCount} invalid or duplicate entries.`
+            : ''
+
         setCounterpartyPackDraftNotice(
-          'No new counterparty packs imported. Payload may be duplicate or already imported.'
+          `No new counterparty packs imported.${skipSuffix}`
         )
       } else {
         setCounterpartyPackDraftNotice(
@@ -1302,6 +1308,18 @@ export const App = () => {
           } from Finder payload.`
         )
       }
+
+      if (errors.length > 0) {
+        const failed =
+          errors[0].index === undefined
+            ? errors[0].reason
+            : `item ${errors[0].index + 1}: ${errors[0].reason}`
+
+        setCounterpartyPackDraftNotice((current) =>
+          current ? `${current} Also failed: ${failed}` : `Failed: ${failed}`
+        )
+      }
+
       setCounterpartyPackFinderPayload('')
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
