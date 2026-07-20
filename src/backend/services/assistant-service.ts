@@ -22,7 +22,10 @@ import {
   PatterLikeProviderKind,
   type PatterLikeProviderProfile
 } from '../../shared/app-types'
-import { isRetryableProviderError } from './assistant-service-retry-policy'
+import {
+  isRetryableProviderError,
+  shouldContinueFallback
+} from './assistant-service-retry-policy'
 
 type AssistantTextResponse = {
   outputText: string
@@ -429,7 +432,7 @@ export const analyzeRecentTranscript = async (
   const providerProfiles = getOrderedEnabledProviderProfiles()
   let lastError: Error | null = null
 
-  for (const profile of providerProfiles) {
+  for (const [index, profile] of providerProfiles.entries()) {
     try {
       const result = await analyzeWithProviderFailureAware(request, profile, input)
       return parseStructuredResponse(result.outputText)
@@ -439,7 +442,7 @@ export const analyzeRecentTranscript = async (
         throw lastError
       }
 
-      if (providerProfiles[providerProfiles.length - 1] === profile) {
+      if (!shouldContinueFallback(providerProfiles, index)) {
         break
       }
     }

@@ -18,3 +18,8 @@ export const isRetryableProviderError = (error: Error): boolean => {
   )
 }
 
+export const shouldContinueFallback = (
+  providerProfiles: readonly unknown[],
+  currentIndex: number
+): boolean =>
+  providerProfiles.length > 1 && currentIndex < providerProfiles.length - 1

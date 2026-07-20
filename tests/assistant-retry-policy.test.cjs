@@ -2,7 +2,8 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
-  isRetryableProviderError
+  isRetryableProviderError,
+  shouldContinueFallback
 } = require('../dist-electron/backend/services/assistant-service-retry-policy.js')
 
 test('does not retry on schema/contract validation failures', () => {
@@ -19,6 +20,18 @@ test('does not retry on schema/contract validation failures', () => {
     ),
     false
   )
+})
+
+test('does not continue fallback when there is only one provider', () => {
+  assert.equal(shouldContinueFallback(['openai'], 0), false)
+})
+
+test('continues fallback only when more than one provider exists and index is not last', () => {
+  const profileOrder = ['openai', 'ollama', 'mock']
+
+  assert.equal(shouldContinueFallback(profileOrder, 0), true)
+  assert.equal(shouldContinueFallback(profileOrder, 1), true)
+  assert.equal(shouldContinueFallback(profileOrder, 2), false)
 })
 
 test('does retry on operational network/API and transport errors', () => {
@@ -41,4 +54,3 @@ test('does not retry governance blocks', () => {
 
   assert.equal(isRetryableProviderError(governanceBlocked), false)
 })
-
