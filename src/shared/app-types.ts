@@ -4,6 +4,26 @@ export type CallLanguage = 'Auto' | 'English' | 'French'
 
 export type AnswerLanguage = 'English' | 'French'
 
+export const enum PatterLikeProviderKind {
+  OpenAI = 'openai',
+  Ollama = 'ollama'
+}
+
+export interface PatterLikeProviderProfile {
+  provider: PatterLikeProviderKind
+  priority: number
+  model: string
+  baseUrl?: string
+  enabled: boolean
+  isTextOnly: boolean
+  failoverEnabled: boolean
+}
+
+export interface PatterLikeAssistantProfile {
+  profiles: PatterLikeProviderProfile[]
+  fallbackMode: 'none' | 'ordered'
+}
+
 export interface ControlState {
   listeningStatus: ListeningStatus
   callLanguage: CallLanguage

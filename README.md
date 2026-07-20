@@ -69,9 +69,15 @@ OPENAI_REALTIME_TRANSCRIPTION_DELAY=low
 OPENAI_SAFETY_IDENTIFIER=coqpi-local-user
 COQPI_GOVERNANCE_DIR=./data/governance
 COQPI_GOVERNANCE_MODE=shadow
+COQPI_ASSISTANT_PROVIDER_PROFILE=openai:0,ollama:50
+COQPI_ASSISTANT_FAILOVER_MODE=ordered
 COQPI_PERSONAL_KNOWLEDGE_CORE_DIR=./data/context-sources
 COQPI_CONTEXT_PACK_SIGNING_KEY=<shared-hmac-key>  # optional, for signed snapshot export
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_ASSISTANT_MODEL=llama3.1
 ```
+
+`COQPI_ASSISTANT_PROVIDER_PROFILE` currently defines a local, internal provider order (priority numbers) for future assistant fallback routing. In this version, text analysis still executes on OpenAI directly, but the profile contract is now explicit and ready for the next tiny failover step.
 
 - `OPENAI_ASSISTANT_MODEL` remains the fallback assistant model.
 - Cost mode overrides can be set with:

@@ -15,6 +15,9 @@ import {
   DEFAULT_OPENAI_ASSISTANT_MODEL,
   interviewAssistantSystemPrompt
 } from '../prompts/interview-assistant-prompt'
+import {
+  getPrimaryOpenAIProviderProfile,
+} from './assistant-provider-profile'
 
 const ANALYSIS_SCHEMA = {
   type: 'object',
@@ -57,10 +60,11 @@ const ANALYSIS_SCHEMA = {
   ]
 } as const
 
-const getAssistantModel = (costMode: AssistantCostMode) => {
+const getAssistantModel = (costMode: AssistantCostMode, providerModel?: string) => {
   if (costMode === 'economy') {
     return (
       process.env.OPENAI_ASSISTANT_MODEL_ECONOMY?.trim() ||
+      providerModel ||
       process.env.OPENAI_ASSISTANT_MODEL?.trim() ||
       DEFAULT_OPENAI_ASSISTANT_MODEL
     )
@@ -69,6 +73,7 @@ const getAssistantModel = (costMode: AssistantCostMode) => {
   if (costMode === 'quality') {
     return (
       process.env.OPENAI_ASSISTANT_MODEL_QUALITY?.trim() ||
+      providerModel ||
       process.env.OPENAI_ASSISTANT_MODEL?.trim() ||
       DEFAULT_OPENAI_ASSISTANT_MODEL
     )
@@ -76,8 +81,9 @@ const getAssistantModel = (costMode: AssistantCostMode) => {
 
   return (
     process.env.OPENAI_ASSISTANT_MODEL_BALANCED?.trim() ||
-    process.env.OPENAI_ASSISTANT_MODEL?.trim() ||
-    DEFAULT_OPENAI_ASSISTANT_MODEL
+      providerModel ||
+      process.env.OPENAI_ASSISTANT_MODEL?.trim() ||
+      DEFAULT_OPENAI_ASSISTANT_MODEL
   )
 }
 
@@ -271,13 +277,14 @@ export const analyzeRecentTranscript = async (
 
   const client = await getOpenAIClient()
   const input = await buildUserPrompt(request)
-  const model = getAssistantModel(request.costMode)
+  const providerProfile = getPrimaryOpenAIProviderProfile()
+  const model = getAssistantModel(request.costMode, providerProfile.model)
 
   try {
     const response = await runGovernedProviderAction(
       {
         kind: 'assistant_analysis',
-        provider: 'openai',
+        provider: providerProfile.provider,
         model,
         external: true
       },
