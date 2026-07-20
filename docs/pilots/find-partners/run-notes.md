@@ -26,3 +26,9 @@
 - 10+ candidate hypotheses per run with confidence tags
 - at least 1/2 candidates re-usable in next active cycle
 - no production routing during pilot
+
+## Mock-run reference
+
+- Use for quick start: `docs/pilots/find-partners/mock-run-protocol.md`.
+- Keep all evidence in local notes only.
+- Export one JSON artifact per run as `find-partners-run-<run_id>.json` (offline/local-only).
