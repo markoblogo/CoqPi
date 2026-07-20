@@ -17,6 +17,9 @@ import {
   type CallLanguage,
   type ConfigStatus,
   type ContextSource,
+  type CounterpartyContextPack,
+  type CounterpartyContextPackDraft,
+  type CounterpartyContextPackKind,
   type ContextSourceKind,
   type ControlState,
   type OpenAIKeyStatus,
@@ -107,6 +110,22 @@ const emptyContextSourceDraft: {
   kind: 'link',
   location: '',
   label: ''
+}
+
+type CounterpartyPackFormDraft = CounterpartyContextPackDraft & {
+  linksText: string
+  kind: CounterpartyContextPackKind
+}
+
+const emptyCounterpartyPackDraft: CounterpartyPackFormDraft = {
+  sourceId: '',
+  kind: 'job',
+  partnerName: '',
+  title: '',
+  summary: '',
+  context: '',
+  linksText: '',
+  selected: true
 }
 
 const coqPiLogoSrc = new URL(
@@ -427,6 +446,22 @@ export const App = () => {
     string | null
   >(null)
   const [isSavingSessionContext, setIsSavingSessionContext] = useState(false)
+  const [counterpartyPacks, setCounterpartyPacks] = useState<
+    CounterpartyContextPack[]
+  >([])
+  const [counterpartyPackDraft, setCounterpartyPackDraft] = useState(
+    emptyCounterpartyPackDraft
+  )
+  const [counterpartyPackDraftingId, setCounterpartyPackDraftingId] = useState<
+    string | null
+  >(null)
+  const [counterpartyPackDraftError, setCounterpartyPackDraftError] = useState<
+    string | null
+  >(null)
+  const [counterpartyPackDraftNotice, setCounterpartyPackDraftNotice] = useState<
+    string | null
+  >(null)
+  const [isSavingCounterpartyPacks, setIsSavingCounterpartyPacks] = useState(false)
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [contextSourceDraft, setContextSourceDraft] = useState(
     emptyContextSourceDraft
@@ -553,7 +588,10 @@ export const App = () => {
         setSessionContextDraft(session.context)
         setSessionContextError(null)
         setContextSources(contextSourcePayload.manifest.sources)
+        setCounterpartyPacks(contextSourcePayload.manifest.counterpartyPacks ?? [])
         setContextSourcesError(null)
+        setCounterpartyPackDraftError(null)
+        setCounterpartyPackDraftNotice(null)
         setKeyStatus(keyState)
         setSettingsForm(settingsPayload.settings)
         setSettingsMeta(settingsPayload.meta)
@@ -572,6 +610,9 @@ export const App = () => {
         setSessionContext(emptySessionContext)
         setSessionContextDraft(emptySessionContext)
         setContextSources([])
+        setCounterpartyPacks([])
+        setCounterpartyPackDraft(emptyCounterpartyPackDraft)
+        setCounterpartyPackDraftingId(null)
         setProfileError(
           error instanceof Error
             ? error.message
@@ -1109,6 +1150,11 @@ export const App = () => {
     setContextSourcesError(null)
   }
 
+  const applyCounterpartyPackManifest = (packs: CounterpartyContextPack[]) => {
+    setCounterpartyPacks(packs)
+    setCounterpartyPackDraftError(null)
+  }
+
   const getContextSourceErrorMessage = (error: unknown) => {
     const message =
       error instanceof Error ? error.message : 'Unable to update context sources.'
@@ -1117,6 +1163,155 @@ export const App = () => {
       /^Error invoking remote method '[^']+': Error: /,
       ''
     )
+  }
+
+  const getCounterpartyPackErrorMessage = (error: unknown) => {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'Unable to update counterparty packs.'
+
+    return message.replace(
+      /^Error invoking remote method '[^']+': Error: /,
+      ''
+    )
+  }
+
+  const normalizeCounterpartyPackDraft = (
+    draft: CounterpartyPackFormDraft
+  ): CounterpartyContextPackDraft => {
+    const links = draft.linksText
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+
+    const next: CounterpartyContextPackDraft = {
+      sourceId: draft.sourceId.trim(),
+      kind: draft.kind,
+      partnerName: draft.partnerName.trim(),
+      title: draft.title.trim(),
+      summary: draft.summary.trim(),
+      selected: draft.selected
+    }
+
+    if (draft.context?.trim()) {
+      next.context = draft.context.trim()
+    }
+
+    if (links.length > 0) {
+      next.links = links
+    }
+
+    return next
+  }
+
+  const resetCounterpartyPackDraft = () => {
+    setCounterpartyPackDraft(emptyCounterpartyPackDraft)
+    setCounterpartyPackDraftingId(null)
+  }
+
+  const editCounterpartyPack = (pack: CounterpartyContextPack) => {
+    setCounterpartyPackDraft({
+      sourceId: pack.sourceId,
+      kind: pack.kind,
+      partnerName: pack.partnerName,
+      title: pack.title,
+      summary: pack.summary,
+      context: pack.context,
+      linksText: pack.links.join('\n'),
+      selected: pack.selected
+    })
+    setCounterpartyPackDraftingId(pack.id)
+    setCounterpartyPackDraftNotice('Editing selected counterparty pack.')
+  }
+
+  const stageCounterpartyPack = async (
+    draft = counterpartyPackDraft,
+    resetDraft = true
+  ) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingCounterpartyPacks(true)
+    setCounterpartyPackDraftError(null)
+    setCounterpartyPackDraftNotice(null)
+
+    try {
+      const payload = await window.coqpi.contextPacks.add([
+        normalizeCounterpartyPackDraft(draft)
+      ])
+
+      if (counterpartyPackDraftingId) {
+        await window.coqpi.contextPacks.remove(counterpartyPackDraftingId)
+      }
+
+      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+
+      if (resetDraft) {
+        resetCounterpartyPackDraft()
+      }
+
+      setCounterpartyPackDraftNotice(
+        counterpartyPackDraftingId
+          ? 'Counterparty pack updated.'
+          : 'Counterparty pack recorded for EN/FR interview retrieval.'
+      )
+    } catch (error) {
+      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
+    }
+  }
+
+  const setCounterpartyPackSelection = async (
+    id: string,
+    selected: boolean
+  ) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingCounterpartyPacks(true)
+    setCounterpartyPackDraftError(null)
+
+    try {
+      const payload = await window.coqpi.contextPacks.setSelected(id, selected)
+      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+    } catch (error) {
+      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
+    }
+  }
+
+  const removeCounterpartyPack = async (id: string) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingCounterpartyPacks(true)
+    setCounterpartyPackDraftError(null)
+
+    try {
+      const payload = await window.coqpi.contextPacks.remove(id)
+      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+      setCounterpartyPackDraftNotice('Counterparty pack removed from manifest.')
+
+      if (counterpartyPackDraftingId === id) {
+        resetCounterpartyPackDraft()
+      }
+    } catch (error) {
+      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
+    }
   }
 
   const stageContextSource = async (
@@ -3306,6 +3501,224 @@ export const App = () => {
                         <button
                           disabled={isSavingContextSources}
                           onClick={() => void removeStagedContextSource(source.id)}
+                          type="button"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </article>
+
+            <article className="panel-card counterparty-packs-card">
+              <div className="panel-header">
+                <div>
+                  <h2>Context Packs</h2>
+                </div>
+                <span>{counterpartyPacks.length} active</span>
+              </div>
+              <p className="context-sources-description">
+                Compact partner/job/investor packets. Use these to scope which context is visible during a specific interview or negotiation.
+              </p>
+              {(counterpartyPackDraftError || counterpartyPackDraftNotice) && (
+                <div className="stack">
+                  {counterpartyPackDraftError ? (
+                    <div className="error-box">{counterpartyPackDraftError}</div>
+                  ) : null}
+                  {counterpartyPackDraftNotice ? (
+                    <div className="info-box">{counterpartyPackDraftNotice}</div>
+                  ) : null}
+                </div>
+              )}
+              <div className="compact-form-grid context-source-form">
+                <label className="settings-row">
+                  <span className="settings-row-label">Kind</span>
+                  <select
+                    onChange={(event) =>
+                      setCounterpartyPackDraft((current) => ({
+                        ...current,
+                        kind: event.target.value as CounterpartyContextPackKind
+                      }))
+                    }
+                    value={counterpartyPackDraft.kind}
+                  >
+                    <option value="job">Job</option>
+                    <option value="partner">Partner</option>
+                    <option value="investor">Investor</option>
+                    <option value="accelerator">Accelerator</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label className="settings-row">
+                  <span className="settings-row-label">Source ID</span>
+                  <input
+                    onChange={(event) =>
+                      setCounterpartyPackDraft((current) => ({
+                        ...current,
+                        sourceId: event.target.value
+                      }))
+                    }
+                    placeholder="finder:job:uuid or finder:investor:domain"
+                    value={counterpartyPackDraft.sourceId}
+                  />
+                </label>
+                <label className="settings-row">
+                  <span className="settings-row-label">Partner</span>
+                  <input
+                    onChange={(event) =>
+                      setCounterpartyPackDraft((current) => ({
+                        ...current,
+                        partnerName: event.target.value
+                      }))
+                    }
+                    placeholder="Acme Ventures / John Smith"
+                    value={counterpartyPackDraft.partnerName}
+                  />
+                </label>
+                <label className="settings-row">
+                  <span className="settings-row-label">Title</span>
+                  <input
+                    onChange={(event) =>
+                      setCounterpartyPackDraft((current) => ({
+                        ...current,
+                        title: event.target.value
+                      }))
+                    }
+                    placeholder="Role, opportunity, campaign, or project name"
+                    value={counterpartyPackDraft.title}
+                  />
+                </label>
+                <label className="settings-row settings-row-textarea">
+                  <span className="settings-row-label">Summary</span>
+                  <textarea
+                    className="prepare-textarea"
+                    onChange={(event) =>
+                      setCounterpartyPackDraft((current) => ({
+                        ...current,
+                        summary: event.target.value
+                      }))
+                    }
+                    placeholder="Shortly describe the specific context for this counterparty"
+                    value={counterpartyPackDraft.summary}
+                  />
+                </label>
+                <label className="settings-row settings-row-textarea">
+                  <span className="settings-row-label">Context</span>
+                  <textarea
+                    className="prepare-textarea"
+                    onChange={(event) =>
+                      setCounterpartyPackDraft((current) => ({
+                        ...current,
+                        context: event.target.value
+                      }))
+                    }
+                    placeholder="Notes, constraints, current status"
+                    value={counterpartyPackDraft.context}
+                  />
+                </label>
+                <label className="settings-row settings-row-textarea">
+                  <span className="settings-row-label">Links</span>
+                  <textarea
+                    className="prepare-textarea"
+                    onChange={(event) =>
+                      setCounterpartyPackDraft((current) => ({
+                        ...current,
+                        linksText: event.target.value
+                      }))
+                    }
+                    placeholder="One link per line"
+                    value={counterpartyPackDraft.linksText}
+                  />
+                </label>
+                <div className="settings-row settings-row-checkbox">
+                  <span className="settings-row-label">Selected</span>
+                  <label className="inline-toggle">
+                    <input
+                      checked={counterpartyPackDraft.selected !== false}
+                      onChange={(event) =>
+                        setCounterpartyPackDraft((current) => ({
+                          ...current,
+                          selected: event.target.checked
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    <span>Use this pack in retrieval</span>
+                  </label>
+                </div>
+                <div className="button-row settings-actions">
+                  <button
+                    disabled={
+                      isSavingCounterpartyPacks ||
+                      !counterpartyPackDraft.sourceId.trim() ||
+                      !counterpartyPackDraft.partnerName.trim() ||
+                      !counterpartyPackDraft.title.trim() ||
+                      !counterpartyPackDraft.summary.trim()
+                    }
+                    onClick={() => void stageCounterpartyPack()}
+                    type="button"
+                  >
+                    {counterpartyPackDraftingId ? 'Update pack' : 'Add pack'}
+                  </button>
+                  <button
+                    disabled={
+                      isSavingCounterpartyPacks ||
+                      counterpartyPackDraftingId === null
+                    }
+                    onClick={() => resetCounterpartyPackDraft()}
+                    type="button"
+                  >
+                    Cancel edit
+                  </button>
+                </div>
+              </div>
+
+              <div className="context-source-list" aria-live="polite">
+                {counterpartyPacks.length === 0 ? (
+                  <div className="context-source-empty">
+                    No compact packs recorded.
+                  </div>
+                ) : (
+                  counterpartyPacks.map((pack) => (
+                    <div className="context-source-item" key={pack.id}>
+                      <label className="context-source-select">
+                        <input
+                          checked={pack.selected}
+                          disabled={isSavingCounterpartyPacks}
+                          onChange={(event) =>
+                            void setCounterpartyPackSelection(
+                              pack.id,
+                              event.target.checked
+                            )
+                          }
+                          type="checkbox"
+                        />
+                        <span>{pack.selected ? 'Selected' : 'Not selected'}</span>
+                      </label>
+                      <div className="context-source-details">
+                        <strong>{pack.partnerName}</strong>
+                        <span>
+                          {pack.kind} · {pack.title}
+                        </span>
+                        <span>
+                          source: {pack.sourceId} · {pack.classification} · scope:{' '}
+                          {pack.retrievalScopes[0] ?? 'none'}
+                        </span>
+                        <code>{pack.summary}</code>
+                      </div>
+                      <div className="context-source-actions">
+                        <button
+                          disabled={isSavingCounterpartyPacks}
+                          onClick={() => editCounterpartyPack(pack)}
+                          type="button"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          disabled={isSavingCounterpartyPacks}
+                          onClick={() => void removeCounterpartyPack(pack.id)}
                           type="button"
                         >
                           Remove
