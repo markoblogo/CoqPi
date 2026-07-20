@@ -79,6 +79,12 @@ OLLAMA_ASSISTANT_MODEL=llama3.1
 
 `COQPI_ASSISTANT_PROVIDER_PROFILE` defines the local provider order (priority numbers) for assistant analysis. CoqPi now tries providers in this order for text analysis and falls back when a provider fails (OpenAI → Ollama by default).
 
+Retry behavior for provider fallback:
+
+- Retry happens only for operational/provider transport errors (network/API errors, temporary failures).
+- Non-retryable cases: JSON schema/contract errors and explicit config/authorization failures (for example `OPENAI_API_KEY` missing, invalid structured response).
+- Fallback is attempted only when more than one enabled provider is configured. If there is only one provider (for example `COQPI_ASSISTANT_FAILOVER_MODE=none`), there is no second attempt.
+
 - `OPENAI_ASSISTANT_MODEL` remains the fallback assistant model.
 - Cost mode overrides can be set with:
   - `OPENAI_ASSISTANT_MODEL_ECONOMY`
@@ -110,6 +116,10 @@ Mock mode is for UI testing only.
 - It follows the same transcript-to-analysis path as a live completed utterance. Analysis therefore calls the configured assistant provider when auto-analysis or a manual action is enabled.
 
 Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.
+
+### Test commands
+
+- `pnpm test:governance` — governance + context pack + failover policy tests (includes assistant retry-policy checks).
 
 ### Verified local flow
 
@@ -209,7 +219,7 @@ docs/
 ## Next planned steps
 
 1. Test the live loop with a microphone and real calls; tune turn segmentation and transcript quality.
-2. Add OpenAI-to-Ollama fallback for text assistant analysis only.
+2. ✅ Added OpenAI-to-Ollama runtime fallback for text assistant analysis with governance and retry-policy checks; next iteration will refine model-specific routing policies.
 3. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
 4. Add training mode using the same profile, session-context, and assistant-provider layers.
 

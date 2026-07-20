@@ -123,7 +123,7 @@ The intended longer-term pipeline remains:
 ### Provider direction
 
 1. Keep OpenAI Realtime as the v1 transcription path.
-2. Add an assistant-provider interface: OpenAI primary, Ollama fallback for text analysis only.
+2. ✅ Implemented: OpenAI primary text assistant analysis with configurable Ollama fallback. Failover is policy-gated by error class and provider count.
 3. Add local STT as a later, separate provider layer. Candidate engines are Apple Speech for a low-friction macOS fallback, then Whisper-family engines for offline EN/FR. Evaluate latency on the target Mac before choosing a default model.
 
 The governance layer deliberately remains local and file-based. ODS's full Docker stack, agent policy service, observability tools, RAG, and workflow runtime would add startup and maintenance cost without improving the live voice loop.
