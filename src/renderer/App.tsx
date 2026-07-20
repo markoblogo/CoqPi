@@ -1293,34 +1293,14 @@ export const App = () => {
     setFinderCandidatePacks([])
 
     try {
-      const payload = parseCounterpartyPackJsonPayload(payloadText)
-      const parsed = payload.map((pack) => ({
-        ...pack,
-        linksText: (pack.links ?? []).join('\n')
-      }))
-
-      if (parsed.length === 0) {
-        setCounterpartyPackDraftError('No counterparty pack found in pasted payload.')
-        return
-      }
-
-      if (parsed.length === 1) {
-        setCounterpartyPackDraft(parsed[0])
-        setCounterpartyPackDraftNotice(
-          'Single payload parsed. You can edit and save, or import directly.'
-        )
-        return
-      }
-
-      contextSourceMutationRef.current = true
-      const manifest = await window.coqpi.contextPacks.add(payload)
+      parseCounterpartyPackJsonPayload(payloadText)
+      const manifest = await window.coqpi.contextPacks.ingestFinderPayload(payloadText)
       applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
       setCounterpartyPackDraftNotice(
-        `Imported ${parsed.length} counterparty packs from Finder payload.`
+        'Imported Finder payload via ingest endpoint.'
       )
       setCounterpartyPackFinderPayload('')
       setFinderCandidatePacks([])
-      contextSourceMutationRef.current = false
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
     } finally {
@@ -1372,21 +1352,19 @@ export const App = () => {
       return
     }
 
-    const candidates: CounterpartyContextPackDraft[] = finderCandidatePacks.map(
-      (draft) => normalizeCounterpartyPackDraft(draft)
-    )
-
     setIsSavingCounterpartyPacks(true)
     setCounterpartyPackDraftError(null)
     setCounterpartyPackDraftNotice(null)
 
     try {
-      const payload = await window.coqpi.contextPacks.add(candidates)
-      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+      const manifest = await window.coqpi.contextPacks.ingestFinderPayload(
+        counterpartyPackFinderPayload
+      )
+      applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
       setCounterpartyPackFinderPayload('')
       setFinderCandidatePacks([])
       setCounterpartyPackDraftNotice(
-        `Imported ${candidates.length} counterparty packs from parsed candidates.`
+        'Imported parsed candidates via ingest endpoint.'
       )
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
