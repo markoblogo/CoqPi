@@ -88,6 +88,20 @@ test('auto analyze skips when same utterance is already scheduled before debounc
   assert.equal(scheduled.fingerprint, first.fingerprint)
 })
 
+test('auto analyze no-final utterance does not schedule analysis', () => {
+  const noDecision = decideAutoAnalysis({
+    latestFinalUtterance: undefined,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle'
+  })
+
+  assert.equal(noDecision.shouldRun, false)
+  assert.equal(noDecision.reason, 'no-final')
+  assert.equal(noDecision.fingerprint, null)
+})
+
 test('auto analyze maps timeout and budget statuses for UI chain', () => {
   const waiting = getAssistantStatusLabel(
     'idle',
@@ -114,6 +128,25 @@ test('auto analyze maps timeout and budget statuses for UI chain', () => {
   )
   assert.equal(budget.label, 'Budget exhausted')
   assert.equal(budget.classNameSuffix, 'budget-exhausted')
+})
+
+test('auto analyze maps stale/ready/error statuses for UI chain', () => {
+  const stale = getAssistantStatusLabel('done', 'old-id', 'new-id', null)
+  assert.equal(stale.label, 'Stale')
+  assert.equal(stale.classNameSuffix, 'stale')
+
+  const ready = getAssistantStatusLabel('done', 'same-id', 'same-id', null)
+  assert.equal(ready.label, 'Ready')
+  assert.equal(ready.classNameSuffix, 'ready')
+
+  const genericError = getAssistantStatusLabel(
+    'error',
+    'same-id',
+    'same-id',
+    'provider_error'
+  )
+  assert.equal(genericError.label, 'Error')
+  assert.equal(genericError.classNameSuffix, 'error')
 })
 
 test('auto-analysis debounce constant stays as expected', () => {
