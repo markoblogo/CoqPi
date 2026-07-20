@@ -86,6 +86,49 @@ export const resolveAssistantProviderProfile = (): PatterLikeAssistantProfile =>
   }
 }
 
+export const getOrderedEnabledProviderProfiles = (): PatterLikeProviderProfile[] => {
+  const profile = resolveAssistantProviderProfile()
+
+  const enabled = profile.profiles.filter(
+    (entry) => entry.failoverEnabled && entry.enabled
+  )
+
+  if (enabled.length > 0) {
+    return profile.fallbackMode === 'none' ? [enabled[0]] : enabled
+  }
+
+  return profile.fallbackMode === 'none'
+    ? [
+        {
+          provider: PatterLikeProviderKind.OpenAI,
+          priority: 0,
+          model: process.env.OPENAI_ASSISTANT_MODEL?.trim() || 'gpt-4o-mini',
+          enabled: true,
+          isTextOnly: true,
+          failoverEnabled: true
+        }
+      ]
+    : [
+        {
+          provider: PatterLikeProviderKind.OpenAI,
+          priority: 0,
+          model: process.env.OPENAI_ASSISTANT_MODEL?.trim() || 'gpt-4o-mini',
+          enabled: true,
+          isTextOnly: true,
+          failoverEnabled: true
+        },
+        {
+          provider: PatterLikeProviderKind.Ollama,
+          priority: 50,
+          model: process.env.OLLAMA_ASSISTANT_MODEL?.trim() || 'llama3.1',
+          baseUrl: process.env.OLLAMA_BASE_URL?.trim(),
+          enabled: !!(process.env.OLLAMA_BASE_URL && process.env.OLLAMA_BASE_URL.trim()),
+          isTextOnly: true,
+          failoverEnabled: true
+        }
+      ]
+}
+
 export const getPrimaryOpenAIProviderProfile = (): PatterLikeProviderProfile => {
   const profile = resolveAssistantProviderProfile()
   const openAIProfile = profile.profiles.find((entry) => entry.provider === PatterLikeProviderKind.OpenAI)

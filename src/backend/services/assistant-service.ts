@@ -16,8 +16,17 @@ import {
   interviewAssistantSystemPrompt
 } from '../prompts/interview-assistant-prompt'
 import {
-  getPrimaryOpenAIProviderProfile,
+  getOrderedEnabledProviderProfiles,
 } from './assistant-provider-profile'
+import {
+  PatterLikeProviderKind,
+  type PatterLikeProviderProfile
+} from '../../shared/app-types'
+
+type AssistantTextResponse = {
+  outputText: string
+  tokenCount?: number
+}
 
 const ANALYSIS_SCHEMA = {
   type: 'object',
@@ -97,6 +106,146 @@ const getOpenAIClient = async () => {
   }
 
   return new OpenAI({ apiKey })
+}
+
+const callOpenAI = async (
+  input: string,
+  model: string
+): Promise<AssistantTextResponse> => {
+  const client = await getOpenAIClient()
+  const response = await client.responses.create({
+    model,
+    instructions: interviewAssistantSystemPrompt,
+    input,
+    text: {
+      format: {
+        type: 'json_schema',
+        name: 'assistant_analysis',
+        description: 'Structured professional call assistant analysis result.',
+        strict: true,
+        schema: ANALYSIS_SCHEMA
+      }
+    }
+  })
+
+  const outputText = response.output_text?.trim()
+
+  if (!outputText) {
+    throw new Error('OpenAI returned an empty response.')
+  }
+
+  const usage = (response as { usage?: { total_tokens?: unknown } }).usage
+  const tokenCount =
+    typeof usage?.total_tokens === 'number' ? usage.total_tokens : undefined
+
+  return { outputText, tokenCount }
+}
+
+const callOllama = async (
+  input: string,
+  model: string,
+  baseUrl: string | undefined
+): Promise<AssistantTextResponse> => {
+  const endpoint = `${(baseUrl || 'http://127.0.0.1:11434').replace(/\/+$/, '')}/api/chat`
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: 'system',
+          content: interviewAssistantSystemPrompt
+        },
+        {
+          role: 'user',
+          content: input
+        }
+      ],
+      stream: false,
+      format: 'json'
+    })
+  })
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => '')
+    throw new Error(
+      `Ollama API request failed: ${response.status} ${response.statusText}${
+        details ? `: ${details.slice(0, 240)}` : ''
+      }`
+    )
+  }
+
+  const payload = (await response.json()) as {
+    error?: string
+    message?: {
+      content?: string
+    }
+    prompt_eval_count?: number
+    eval_count?: number
+  }
+
+  if (typeof payload.error === 'string') {
+    throw new Error(`Ollama API error: ${payload.error}`)
+  }
+
+  const outputText =
+    payload.message?.content && typeof payload.message.content === 'string'
+      ? payload.message.content.trim()
+      : ''
+
+  if (!outputText) {
+    throw new Error('Ollama returned an empty response.')
+  }
+
+  const promptTokens = payload?.prompt_eval_count
+  const completionTokens = payload?.eval_count
+  const usageFromPayload =
+    typeof promptTokens === 'number' && typeof completionTokens === 'number'
+      ? promptTokens + completionTokens
+      : undefined
+
+  return {
+    outputText,
+    tokenCount: usageFromPayload
+  }
+}
+
+const getProviderLabel = (profile: PatterLikeProviderProfile) =>
+  `${profile.provider}(${profile.model})`
+
+const analyzeWithProviderFailureAware = async (
+  request: AssistantAnalysisRequest,
+  profile: PatterLikeProviderProfile,
+  input: string
+): Promise<AssistantTextResponse> => {
+  const model =
+    profile.provider === PatterLikeProviderKind.Ollama
+      ? profile.model
+      : getAssistantModel(request.costMode, profile.model)
+
+  return runGovernedProviderAction(
+    {
+      kind: 'assistant_analysis',
+      provider: profile.provider,
+      model,
+      external: true
+    },
+    () => {
+      if (profile.provider === PatterLikeProviderKind.Ollama) {
+        return callOllama(input, model, profile.baseUrl)
+      }
+
+      return callOpenAI(input, model)
+    },
+    (result) => {
+      const tokenCount = result.tokenCount
+
+      return tokenCount === undefined ? undefined : { tokenCount }
+    }
+  )
 }
 
 const compactProfileContext = (
@@ -275,62 +424,25 @@ export const analyzeRecentTranscript = async (
     )
   }
 
-  const client = await getOpenAIClient()
   const input = await buildUserPrompt(request)
-  const providerProfile = getPrimaryOpenAIProviderProfile()
-  const model = getAssistantModel(request.costMode, providerProfile.model)
+  const providerProfiles = getOrderedEnabledProviderProfiles()
+  let lastError: Error | null = null
 
-  try {
-    const response = await runGovernedProviderAction(
-      {
-        kind: 'assistant_analysis',
-        provider: providerProfile.provider,
-        model,
-        external: true
-      },
-      () =>
-        client.responses.create({
-          model,
-          instructions: interviewAssistantSystemPrompt,
-          input,
-          text: {
-            format: {
-              type: 'json_schema',
-              name: 'assistant_analysis',
-              description:
-                'Structured professional call assistant analysis result.',
-              strict: true,
-              schema: ANALYSIS_SCHEMA
-            }
-          }
-        }),
-      (result) => {
-        const usage = (result as { usage?: { total_tokens?: unknown } }).usage
-        return typeof usage?.total_tokens === 'number'
-          ? { tokenCount: usage.total_tokens }
-          : undefined
+  for (const profile of providerProfiles) {
+    try {
+      const result = await analyzeWithProviderFailureAware(request, profile, input)
+      return parseStructuredResponse(result.outputText)
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error('Unknown provider error.')
+      if (providerProfiles[providerProfiles.length - 1] === profile) {
+        break
       }
-    )
-
-    const outputText = response.output_text?.trim()
-
-    if (!outputText) {
-      throw new Error('Model returned an empty response.')
     }
-
-    return parseStructuredResponse(outputText)
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Unknown OpenAI assistant error.'
-
-    if (
-      message.includes('OPENAI_API_KEY') ||
-      message.includes('Transcript is empty') ||
-      message.includes('Invalid model response')
-    ) {
-      throw error
-    }
-
-    throw new Error(`Assistant analysis failed: ${message}`)
   }
+
+  const providerRoute = providerProfiles.map(getProviderLabel).join(' -> ')
+  const message =
+    lastError?.message || 'No provider in COQPI_ASSISTANT_PROVIDER_PROFILE could complete the request.'
+
+  throw new Error(`Assistant analysis failed for ${providerRoute}: ${message}`)
 }

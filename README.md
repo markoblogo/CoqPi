@@ -77,7 +77,7 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_ASSISTANT_MODEL=llama3.1
 ```
 
-`COQPI_ASSISTANT_PROVIDER_PROFILE` currently defines a local, internal provider order (priority numbers) for future assistant fallback routing. In this version, text analysis still executes on OpenAI directly, but the profile contract is now explicit and ready for the next tiny failover step.
+`COQPI_ASSISTANT_PROVIDER_PROFILE` defines the local provider order (priority numbers) for assistant analysis. CoqPi now tries providers in this order for text analysis and falls back when a provider fails (OpenAI → Ollama by default).
 
 - `OPENAI_ASSISTANT_MODEL` remains the fallback assistant model.
 - Cost mode overrides can be set with:
