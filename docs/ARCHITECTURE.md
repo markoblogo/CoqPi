@@ -70,7 +70,8 @@ Shared cost constants live in:
 
 - **Profile context**: `data/profile/profile_context.md`
 - **Current session context**: `data/sessions/current-session.json`
-- **Shared-RAG ingress manifest**: `data/context-sources/manifest.json` (owner-created, CoqPi-only pending records; no source content)
+- **Shared-RAG ingress manifest**: `data/context-sources/manifest.json` (canonical),
+  plus `coqpi-context-pack.manifest.md` and `coqpi-context-pack.history.jsonl` in the same directory for review and change audit.
 - **User settings**: JSON under `app.getPath("userData")`
 - **Stored encrypted API key**: file under `app.getPath("userData")/secrets/`
 - **Governance receipts**: `data/governance/receipts.jsonl`

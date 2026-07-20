@@ -8,7 +8,13 @@ This version creates a local shared-RAG ingress manifest. It does not create a r
 
 ## Source manifest
 
-The manifest is stored locally at `data/context-sources/manifest.json` and is gitignored. Each entry is owned by the local owner and contains only:
+The ingest contract uses a local event log (`coqpi-ingress.events.jsonl`) plus a normalized manifest:
+
+- `manifest.json` (canonical contract state)
+- `coqpi-context-pack.manifest.md` (human-readable snapshot for easy review)
+- `coqpi-context-pack.history.jsonl` (append-only local change history with hash chaining)
+
+`manifest.json` is gitignored in normal operation but keeps a compact, explicit contract per source:
 
 - source ID and creation timestamp;
 - source kind: `link`, `file`, `folder`, or manually supplied `path`;
@@ -20,6 +26,8 @@ The manifest is stored locally at `data/context-sources/manifest.json` and is gi
 - `explicit_audit_required` promotion boundary.
 
 The manifest does not contain file contents, folder inventories, parsed metadata, transcript text, profile data, credentials, or hidden reasoning. `contentHash` is deliberately `null` while a record is pending classification: content has not been read, so a content hash cannot honestly exist.
+
+History lines are appended for each local state mutation and include action, timestamp, manifest hash, previous hash, and optional local git `HEAD` for audit correlation.
 
 ## Explicit admission boundary
 

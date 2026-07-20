@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type {
@@ -23,6 +24,19 @@ type IngressEvent =
       retrievalReady: boolean
     }
 
+type ManifestHistoryEvent = {
+  version: 1
+  timestamp: string
+  action: string
+  reason: string
+  sourceVersion: 1
+  manifestHash: string
+  eventHash: string
+  previousEventHash: string | null
+  sourceCount: number
+  repositoryHead: string
+}
+
 const sourceKinds: ContextSourceKind[] = ['link', 'file', 'folder', 'path']
 const RETENTION_DAYS = 30
 const MAX_CAPTURE_BYTES = 10 * 1024 * 1024
@@ -31,12 +45,14 @@ const readableExtensions = new Set(['.md', '.txt', '.csv', '.json'])
 
 const emptyManifest = (): ContextSourceManifest => ({ version: 1, sources: [] })
 
+const getCoreDirectory = () => getAppInfo().personalKnowledgeCoreDirectory
 const getLedgerPath = () =>
-  path.join(
-    getAppInfo().personalKnowledgeCoreDirectory,
-    'coqpi-ingress.events.jsonl'
-  )
-
+  path.join(getCoreDirectory(), 'coqpi-ingress.events.jsonl')
+const getManifestJsonPath = () => path.join(getCoreDirectory(), 'manifest.json')
+const getManifestMarkdownPath = () =>
+  path.join(getCoreDirectory(), 'coqpi-context-pack.manifest.md')
+const getManifestHistoryPath = () =>
+  path.join(getCoreDirectory(), 'coqpi-context-pack.history.jsonl')
 const getLegacyManifestPath = () =>
   path.join(process.cwd(), 'data', 'context-sources', 'manifest.json')
 
@@ -158,6 +174,126 @@ const deriveManifest = (events: IngressEvent[]): ContextSourceManifest => {
   return { version: 1, sources: [...sources.values()] }
 }
 
+const stableManifestJson = (manifest: ContextSourceManifest) =>
+  JSON.stringify(manifest, undefined, 2)
+
+const getRepositoryHead = () => {
+  try {
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], {
+      encoding: 'utf8',
+      cwd: process.cwd()
+    }).trim()
+
+    return head || 'unavailable'
+  } catch {
+    return 'unavailable'
+  }
+}
+
+const formatDateShort = (value: string) =>
+  new Date(value).toLocaleString('en-US', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  })
+
+const appendManifestHistory = async (
+  manifest: ContextSourceManifest,
+  reason: string
+) => {
+  const historyPath = getManifestHistoryPath()
+  const now = new Date().toISOString()
+  const manifestHash = createHash('sha256')
+    .update(stableManifestJson(manifest))
+    .digest('hex')
+
+  let previousEventHash: string | null = null
+  try {
+    const rawHistory = await fs.readFile(historyPath, 'utf8')
+    const lines = rawHistory.split('\n').filter(Boolean)
+    if (lines.length > 0) {
+      const last = JSON.parse(lines[lines.length - 1]!) as ManifestHistoryEvent
+      previousEventHash = last.eventHash
+    }
+  } catch {
+    previousEventHash = null
+  }
+
+  const eventHash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        timestamp: now,
+        reason,
+        manifestHash,
+        sourceCount: manifest.sources.length,
+        previousEventHash
+      })
+    )
+    .digest('hex')
+
+  const historyEvent: ManifestHistoryEvent = {
+    version: 1,
+    timestamp: now,
+    sourceVersion: 1,
+    action: reason,
+    reason,
+    sourceCount: manifest.sources.length,
+    manifestHash,
+    eventHash,
+    previousEventHash,
+    repositoryHead: getRepositoryHead()
+  }
+
+  await fs.appendFile(historyPath, `${JSON.stringify(historyEvent)}\n`, 'utf8')
+}
+
+const writeManifestArtifacts = async (
+  manifest: ContextSourceManifest,
+  reason: string
+) => {
+  const manifestPath = getManifestJsonPath()
+  const markdownPath = getManifestMarkdownPath()
+  const now = new Date().toISOString()
+
+  const activeScopes = Array.from(
+    new Set(manifest.sources.flatMap((source) => source.retrievalScopes))
+  ).sort()
+
+  const activeStatuses = Array.from(
+    new Set(manifest.sources.map((source) => source.status))
+  ).sort()
+
+  const markdown = [
+    '# CoqPi Context Pack',
+    `Generated: ${now}`,
+    `Reason: ${reason}`,
+    `Sources: ${manifest.sources.length}`,
+    `Statuses: ${activeStatuses.join(', ') || 'none'}`,
+    `Scopes: ${activeScopes.join(', ') || 'none'}`,
+    `Repository: ${getRepositoryHead()}`,
+    '',
+    '## Sources',
+    ...manifest.sources.flatMap((source) => [
+      `### ${source.label}`,
+      `- id: ${source.id}`,
+      `- kind: ${source.kind}`,
+      `- location: ${source.location}`,
+      `- selected: ${source.selected}`,
+      `- status: ${source.status}`,
+      `- owner: ${source.ownerId}`,
+      `- created: ${formatDateShort(source.createdAt)}`,
+      `- classification: ${source.classification}`,
+      `- content_hash: ${source.contentHash ?? 'pending'}`,
+      `- retention: ${source.retention.maxAgeDays}d (manual_deletion_required)`
+    ]),
+    ''
+  ].join('\n')
+
+  await fs.mkdir(path.dirname(manifestPath), { recursive: true })
+  await fs.writeFile(manifestPath, `${stableManifestJson(manifest)}\n`, 'utf8')
+  await fs.writeFile(markdownPath, `${markdown}\n`, 'utf8')
+  await appendManifestHistory(manifest, reason)
+}
+
 const migrateLegacyManifestIfNeeded = async () => {
   try {
     await fs.access(getLedgerPath())
@@ -177,6 +313,13 @@ const migrateLegacyManifestIfNeeded = async () => {
 
     for (const source of sources) {
       await appendEvent({ version: 1, type: 'ingress_added', source })
+    }
+
+    if (sources.length > 0) {
+      await writeManifestArtifacts(
+        { version: 1, sources },
+        'migrated legacy manifest into ledger'
+      )
     }
   } catch {
     // A missing or invalid legacy manifest is not an error for a new core.
@@ -220,6 +363,14 @@ const validateDraft = (draft: ContextSourceDraft) => {
   }
 }
 
+const persistAfterMutation = async (
+  manifest: ContextSourceManifest,
+  reason: string
+): Promise<ContextSourceManifestResult> => {
+  await writeManifestArtifacts(manifest, reason)
+  return { manifest }
+}
+
 export const getContextSourceManifest = async (): Promise<ContextSourceManifestResult> => ({
   manifest: await readManifest()
 })
@@ -240,6 +391,7 @@ export const addContextSource = async (
 
   const id = randomUUID()
   const createdAt = new Date().toISOString()
+
   await appendEvent({
     version: 1,
     type: 'ingress_added',
@@ -262,7 +414,8 @@ export const addContextSource = async (
     }
   })
 
-  return { manifest: await readManifest() }
+  const nextManifest = await readManifest()
+  return persistAfterMutation(nextManifest, 'add context source')
 }
 
 export const setContextSourceSelected = async (
@@ -275,7 +428,11 @@ export const setContextSourceSelected = async (
   }
 
   await appendEvent({ version: 1, type: 'selection_changed', id, selected })
-  return { manifest: await readManifest() }
+  const nextManifest = await readManifest()
+  return persistAfterMutation(
+    nextManifest,
+    `set context source selected=${selected}`
+  )
 }
 
 export const removeContextSource = async (
@@ -287,7 +444,8 @@ export const removeContextSource = async (
   }
 
   await appendEvent({ version: 1, type: 'source_removed', id })
-  return { manifest: await readManifest() }
+  const nextManifest = await readManifest()
+  return persistAfterMutation(nextManifest, `remove context source`)
 }
 
 const captureReadableText = (source: ContextSource, bytes: Buffer) => {
@@ -333,7 +491,8 @@ export const captureAndClassifyContextSource = async (
     retrievalReady: Boolean(capturedText)
   })
 
-  return { manifest: await readManifest() }
+  const nextManifest = await readManifest()
+  return persistAfterMutation(nextManifest, 'capture and classify context source')
 }
 
 export const getPersonalInterviewRetrieval = async (
@@ -375,6 +534,7 @@ export const getPersonalInterviewRetrieval = async (
         (total, term) => total + (text.toLowerCase().includes(term) ? 1 : 0),
         0
       )
+
       return { source, text, score }
     })
     .filter((match) => match.score > 0)

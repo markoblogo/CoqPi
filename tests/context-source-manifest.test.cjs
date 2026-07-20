@@ -11,6 +11,15 @@ test('stages and selects source pointers without reading their contents', async 
   const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
   process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = directory
   await fs.writeFile(path.join(directory, 'coqpi-ingress.events.jsonl'), '')
+  const manifestJsonPath = path.join(directory, 'manifest.json')
+  const manifestMarkdownPath = path.join(
+    directory,
+    'coqpi-context-pack.manifest.md'
+  )
+  const manifestHistoryPath = path.join(
+    directory,
+    'coqpi-context-pack.history.jsonl'
+  )
 
   try {
     const added = await service.addContextSource({
@@ -36,6 +45,29 @@ test('stages and selects source pointers without reading their contents', async 
 
     const removed = await service.removeContextSource(source.id)
     assert.deepEqual(removed.manifest.sources, [])
+
+    const historyLines = (await fs.readFile(manifestHistoryPath, 'utf8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+
+    assert.equal(historyLines.length, 3)
+    assert.equal(historyLines[0].reason.includes('add context source'), true)
+    assert.equal(historyLines[1].reason.includes('set context source selected=false'), true)
+    assert.equal(historyLines[2].reason.includes('remove context source'), true)
+    assert.equal(
+      historyLines[2].previousEventHash,
+      historyLines[1].eventHash
+    )
+
+    const manifestFromJson = JSON.parse(await fs.readFile(manifestJsonPath, 'utf8'))
+    assert.equal(manifestFromJson.version, 1)
+    assert.equal(Array.isArray(manifestFromJson.sources), true)
+
+    const manifestMarkdown = await fs.readFile(manifestMarkdownPath, 'utf8')
+    assert.match(manifestMarkdown, /# CoqPi Context Pack/)
+    assert.match(manifestMarkdown, /## Sources/)
 
     const events = (await fs.readFile(
       path.join(directory, 'coqpi-ingress.events.jsonl'),
@@ -80,6 +112,15 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
     'I lead AI product strategy and digital transformation projects.',
     'utf8'
   )
+  const coreDirectory = path.join(directory, 'core')
+  const manifestMarkdownPath = path.join(
+    coreDirectory,
+    'coqpi-context-pack.manifest.md'
+  )
+  const manifestHistoryPath = path.join(
+    coreDirectory,
+    'coqpi-context-pack.history.jsonl'
+  )
 
   try {
     const added = await service.addContextSource({ kind: 'file', location: filePath })
@@ -91,6 +132,23 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
     assert.equal(classified.classification, 'private')
     assert.match(classified.contentHash, /^[a-f0-9]{64}$/)
     assert.deepEqual(classified.retrievalScopes, ['coqpi_interview_en_fr'])
+
+    const historyLines = (await fs.readFile(manifestHistoryPath, 'utf8'))
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+
+    assert.equal(historyLines.length, 2)
+    assert.equal(historyLines[1].reason.includes('capture and classify context source'), true)
+    assert.equal(
+      historyLines[1].previousEventHash,
+      historyLines[0].eventHash
+    )
+
+    const manifestMarkdown = await fs.readFile(manifestMarkdownPath, 'utf8')
+    assert.match(manifestMarkdown, /private/)
+    assert.match(manifestMarkdown, /coqpi_interview_en_fr/)
 
     const retrieval = await service.getPersonalInterviewRetrieval(
       'Tell me about your AI product strategy experience.',

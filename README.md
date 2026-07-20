@@ -112,6 +112,12 @@ The profile context lives in:
 
 Edit that file manually in your editor, then use `Reload Profile` inside the app. The profile text can optionally be included in assistant requests, and the current setting is controlled from `Settings / Debug`.
 
+Context source governance is also available in the local Personal Knowledge Core folder:
+
+- `data/context-sources/manifest.json`
+- `data/context-sources/coqpi-context-pack.manifest.md`
+- `data/context-sources/coqpi-context-pack.history.jsonl`
+
 ## Realtime smoke test
 
 Manual realtime verification steps are documented in:
@@ -147,6 +153,8 @@ src/
 data/
   profile/    Local profile context markdown
   sessions/   Future local session artifacts
+  context-sources/
+             Ingress manifest + markdown + local change history
   governance/ Append-only safe provider receipts
 docs/
   ARCHITECTURE.md
