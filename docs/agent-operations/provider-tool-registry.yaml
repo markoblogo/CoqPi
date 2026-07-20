@@ -73,3 +73,38 @@ entries:
     rate_limit_observation: { observed_at: null, source: null, value: unknown }
     authority: read
     side_effects: []
+
+# Optional fallback-provider pool (local operational reference only)
+fallback_provider_pool:
+  source: https://github.com/cheahjs/free-llm-api-resources
+  governance:
+    use_mode: potential-only
+    requires_confirmation: true
+    update_owner: local-ops
+  categories:
+    - id: free-providers
+      items:
+        - openrouter
+        - google-ai-studio
+        - huggingface-inference-providers
+        - mistral
+        - nvidia-nim
+        - cohere
+        - groq
+        - vercel-ai-gateway
+        - github-models
+        - cloudflare-workers-ai
+    - id: trial-providers
+      items:
+        - fireworks
+        - nebius
+        - upstage
+        - baseten
+        - ai21
+        - modal
+  validation_checklist:
+    - region_and_signup_requirements
+    - quota_and_rate_limits
+    - privacy_or_training_policy
+    - retention_and_egress
+    - last_verified_at
