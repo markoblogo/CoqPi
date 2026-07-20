@@ -90,25 +90,35 @@ export const normalizeFinderCounterpartyDraft = (
   return result
 }
 
+const asObject = (candidate: unknown): Record<string, unknown> => {
+  if (!candidate || typeof candidate !== 'object') {
+    throw new Error('Finder payload item must be a JSON object for counterparty packs.')
+  }
+
+  return candidate as Record<string, unknown>
+}
+
+const parseFinderCounterpartyPayloadItem = (raw: unknown, index?: number) => {
+  try {
+    return normalizeFinderCounterpartyDraft(asObject(raw))
+  } catch (error) {
+    const suffix = index === undefined ? '' : ` at index ${index}`
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Invalid finder counterparty payload item${suffix}: ${message}`)
+  }
+}
+
 export const parseFinderCounterpartyPayloadText = (
   text: string
 ): FinderCounterpartyDraftSource[] => {
   const payload = JSON.parse(text) as unknown
 
   if (Array.isArray(payload)) {
-    return payload.map((item) =>
-      normalizeFinderCounterpartyDraft(
-        typeof item === 'object' && item !== null
-          ? (item as Record<string, unknown>)
-          : {}
-      )
-    )
+    return payload.map((item, index) => parseFinderCounterpartyPayloadItem(item, index))
   }
 
   if (payload && typeof payload === 'object') {
-    return [
-      normalizeFinderCounterpartyDraft(payload as Record<string, unknown>)
-    ]
+    return [parseFinderCounterpartyPayloadItem(payload)]
   }
 
   throw new Error(

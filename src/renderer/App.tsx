@@ -1285,11 +1285,23 @@ export const App = () => {
     setCounterpartyPackDraftError(null)
     setCounterpartyPackDraftNotice(null)
     try {
+      const beforeCount = counterpartyPacks.length
       const manifest = await window.coqpi.contextPacks.ingestFinderPayload(payloadText)
       applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
-      setCounterpartyPackDraftNotice(
-        'Imported Finder payload via ingest endpoint.'
-      )
+      const afterCount = manifest.manifest.counterpartyPacks?.length ?? 0
+      const addedCount = Math.max(afterCount - beforeCount, 0)
+
+      if (addedCount === 0) {
+        setCounterpartyPackDraftNotice(
+          'No new counterparty packs imported. Payload may be duplicate or already imported.'
+        )
+      } else {
+        setCounterpartyPackDraftNotice(
+          `Imported ${addedCount} counterparty pack${
+            addedCount === 1 ? '' : 's'
+          } from Finder payload.`
+        )
+      }
       setCounterpartyPackFinderPayload('')
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))

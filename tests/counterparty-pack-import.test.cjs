@@ -40,6 +40,28 @@ test('rejects malformed counterparty pack payload missing required fields', () =
       ),
     /A counterparty pack requires kind, sourceId, partnerName, title and summary./
   )
+
+  assert.throws(
+    () =>
+      parseCounterpartyPackJsonPayload(
+        JSON.stringify([
+          {
+            kind: 'job',
+            sourceId: 'finder:job:ok',
+            partnerName: 'Acme',
+            title: 'Role',
+            summary: 'Summary'
+          },
+          {
+            kind: 'job',
+            partnerName: 'Missing sourceId',
+            title: 'Role',
+            summary: 'Summary'
+          }
+        ])
+      ),
+    /Invalid finder counterparty payload item at index 1: A counterparty pack requires kind, sourceId, partnerName, title and summary\./
+  )
 })
 
 test('parses a single-object payload into one draft', () => {
