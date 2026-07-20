@@ -415,6 +415,27 @@ const parseStructuredResponse = (payload: string) => {
   }
 }
 
+const isRetryableProviderError = (error: Error) => {
+  const message = error.message
+
+  const nonRetryable = [
+    'Invalid model response',
+    'Model response JSON does not match the expected shape.',
+    'OPENAI_API_KEY',
+    'OPENAI returned an empty response.',
+    'Governance blocked action'
+  ]
+
+  if (
+    nonRetryable.some((value) => message.includes(value)) ||
+    error.name === 'GovernanceBlockedError'
+  ) {
+    return false
+  }
+
+  return true
+}
+
 export const analyzeRecentTranscript = async (
   request: AssistantAnalysisRequest
 ): Promise<AssistantAnalysisResult> => {
@@ -434,6 +455,10 @@ export const analyzeRecentTranscript = async (
       return parseStructuredResponse(result.outputText)
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Unknown provider error.')
+      if (!isRetryableProviderError(lastError)) {
+        throw lastError
+      }
+
       if (providerProfiles[providerProfiles.length - 1] === profile) {
         break
       }
