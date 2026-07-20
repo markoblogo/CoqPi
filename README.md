@@ -1,5 +1,7 @@
 # CoqPi
 
+![CoqPi logo](assets/coqpi-logo-dark-bg-transparent.png)
+
 CoqPi is a private local desktop application for stressful interview and professional call situations in English and French. It runs as an Electron + React + TypeScript app, keeps API access in the Electron backend, and is designed to stay readable under pressure.
 
 ## Current scope
@@ -131,6 +133,12 @@ Context source governance is also available in the local Personal Knowledge Core
   (runs validate + writes `handoff.validation.json`, then writes `handoff.snapshot.json`; aborts snapshot on validation fail)
 - `pnpm dump-manifest -- --handoff --validate-output ./handoff.validation.json --snapshot-output ./handoff.snapshot.json`  
   (explicit output paths)
+
+Shortcuts:
+
+- `pnpm handoff`
+- `pnpm handoff:signed`
+- `pnpm handoff:with-dates`
 
 Snapshot output includes:
 

@@ -93,6 +93,20 @@ button:disabled {
   white-space: nowrap;
 }
 
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.app-logo {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
 .app-title {
   font-size: var(--font-lg);
   font-weight: 700;

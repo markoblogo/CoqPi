@@ -11,6 +11,12 @@ const {
   run
 } = require('../scripts/dump-manifest.cjs')
 
+const {
+  buildHandoffFolder,
+  formatTimestampDir,
+  run: runHandoffWithDates
+} = require('../scripts/handoff-with-dates.cjs')
+
 const stableJson = (value) => JSON.stringify(value, undefined, 2)
 
 test('dumps manifest snapshot with stable hash and optional signature', async () => {
@@ -290,6 +296,130 @@ test('runs handoff mode and writes validation + snapshot artifacts', async () =>
     } else {
       process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
     }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('builds date-scoped handoff output directory', () => {
+  const ts = new Date('2026-07-20T12:34:56.789Z')
+  const outputDir = buildHandoffFolder(ts)
+
+  assert.equal(path.basename(outputDir), formatTimestampDir(ts))
+})
+
+test('runs handoff with dates and writes both artifacts on success', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-manifest-handoff-dated-success-'))
+  const manifestPath = path.join(directory, 'manifest.json')
+  const historyPath = path.join(directory, 'coqpi-context-pack.history.jsonl')
+  const outputDir = path.join(directory, 'handoff', formatTimestampDir(new Date('2026-07-20T12:00:00.000Z')))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  const previousArgv = process.argv
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = directory
+
+  const manifest = {
+    version: 1,
+    sources: []
+  }
+
+  const validHistory = {
+    version: 1,
+    timestamp: '2026-07-20T00:00:00.000Z',
+    sourceVersion: 1,
+    action: 'add context source',
+    reason: 'unit test',
+    manifestHash:
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    eventHash:
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    previousEventHash: null,
+    sourceCount: 0,
+    repositoryHead: 'unavailable'
+  }
+
+  try {
+    await fs.mkdir(directory, { recursive: true })
+    await fs.writeFile(manifestPath, `${stableJson(manifest)}\n`, 'utf8')
+    await fs.writeFile(historyPath, `${JSON.stringify(validHistory)}\n`, 'utf8')
+
+    process.argv = ['node', 'scripts/handoff-with-dates.cjs']
+
+    const result = await runHandoffWithDates({
+      manifestDir: directory,
+      outputDir,
+      now: new Date('2026-07-20T12:00:00.000Z')
+    })
+
+    assert.equal(result.success, true)
+    const validation = JSON.parse(await fs.readFile(result.validationOutput, 'utf8'))
+    const snapshot = JSON.parse(await fs.readFile(result.snapshotOutput, 'utf8'))
+
+    assert.equal(validation.valid, true)
+    assert.equal(snapshot.format, 'coqpi-context-pack-snapshot')
+    assert.equal(result.outputDir, outputDir)
+  } finally {
+    process.argv = previousArgv
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('runs handoff with dates and never writes snapshot on validation fail', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-manifest-handoff-dated-'))
+  const manifestPath = path.join(directory, 'manifest.json')
+  const historyPath = path.join(directory, 'coqpi-context-pack.history.jsonl')
+  const outputDir = path.join(directory, 'handoff', formatTimestampDir(new Date('2026-07-20T12:01:00.000Z')))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  const previousArgv = process.argv
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = directory
+
+  const manifest = {
+    version: 1,
+    sources: []
+  }
+
+  const invalidHistory = {
+    version: 1,
+    timestamp: '2026-07-20T00:00:00.000Z',
+    sourceVersion: 1,
+    action: 'add context source',
+    reason: 'unit test',
+    manifestHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    eventHash: 'zz',
+    previousEventHash: 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+    sourceCount: 1,
+    repositoryHead: 'unavailable'
+  }
+
+  try {
+    await fs.mkdir(directory, { recursive: true })
+    await fs.writeFile(manifestPath, `${stableJson(manifest)}\n`, 'utf8')
+    await fs.writeFile(historyPath, `${JSON.stringify(invalidHistory)}\n`, 'utf8')
+
+    process.argv = ['node', 'scripts/handoff-with-dates.cjs']
+
+    const result = await runHandoffWithDates({
+      manifestDir: directory,
+      outputDir,
+      now: new Date('2026-07-20T12:01:00.000Z')
+    })
+
+    assert.equal(result.success, false)
+    const validation = JSON.parse(await fs.readFile(result.validationOutput, 'utf8'))
+    assert.equal(validation.valid, false)
+    await assert.rejects(() => fs.stat(result.snapshotOutput))
+  } finally {
+    process.argv = previousArgv
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+
     await fs.rm(directory, { recursive: true, force: true })
   }
 })

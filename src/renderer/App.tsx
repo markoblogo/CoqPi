@@ -102,6 +102,11 @@ const emptyContextSourceDraft: {
   label: ''
 }
 
+const coqPiLogoSrc = new URL(
+  '../../assets/coqpi-logo-white-on-dark.png',
+  import.meta.url
+).href
+
 const permissionLabels: Record<AudioInputPermissionStatus, string> = {
   unknown: 'Unknown',
   granted: 'Granted',
@@ -2614,7 +2619,14 @@ export const App = () => {
     <div className="app-shell">
       <header className="app-bar">
         <div className="app-bar-left">
-          <strong className="app-title">CoqPi</strong>
+          <span className="app-brand">
+            <img
+              alt="CoqPi logo"
+              className="app-logo"
+              src={coqPiLogoSrc}
+            />
+            <strong className="app-title">CoqPi</strong>
+          </span>
           <div
             className={`health-pill health-${getHealthTone(realtimeHealthLabel)}`}
           >

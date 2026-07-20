@@ -20,7 +20,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.electron.json",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "dump-manifest": "node scripts/dump-manifest.cjs"
+    "dump-manifest": "node scripts/dump-manifest.cjs",
+    "handoff": "pnpm dump-manifest -- --handoff",
+    "handoff:signed": "pnpm dump-manifest -- --handoff --sign",
+    "handoff:with-dates": "node scripts/handoff-with-dates.cjs"
   },
   "build": {
     "appId": "local.coqpi.app",
