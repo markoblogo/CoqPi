@@ -17,10 +17,16 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Automatic assistant analysis after each completed utterance, with manual override
 - Mock Transcript Mode for local UI testing
 - Local profile and per-call session context
+- Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
 - Audio input selection and local level meter
 - Secure local API key storage via Electron `safeStorage` when available
 - Cost guardrails and session counters
 - Local append-only receipts for external provider decisions and latency
+
+Additional session-aware behavior:
+
+- EN/FR assistant retrieval can be restricted to selected counterparty pack kinds (`job`, `partner`, `investor`, `accelerator`, `other`) based on session context.
+- Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
 
 No phone system integration, voice output, system audio routing, vector DB, or new AI capabilities are implemented in this step.
 
@@ -226,8 +232,9 @@ docs/
 
 1. Test the live loop with a microphone and real calls; tune turn segmentation and transcript quality.
 2. ✅ Added OpenAI-to-Ollama runtime fallback for text assistant analysis with governance and retry-policy checks; next iteration will refine model-specific routing policies.
-3. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
-4. Add training mode using the same profile, session-context, and assistant-provider layers.
+3. ✅ Added batch-friendly finder/context integration: single and batch counterparty pack ingest, preview/import UX, and retrieval-kind gating for interview/founder modes.
+4. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
+5. Add training mode using the same profile, session-context, and assistant-provider layers.
 
 The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).
 
