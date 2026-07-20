@@ -604,10 +604,40 @@ button:disabled {
   background: #241d14;
 }
 
+.assist-status-waiting {
+  color: #aeb9c3 !important;
+  border-color: #394756;
+  background: #1b212a;
+}
+
 .assist-status-analyzing {
   color: #cce4fb !important;
   border-color: #385470;
   background: #15212c;
+}
+
+.assist-status-timeout {
+  color: #ffdca8 !important;
+  border-color: #6b5035;
+  background: #271f18;
+}
+
+.assist-status-budget-exhausted {
+  color: #ffd5a4 !important;
+  border-color: #8c4e37;
+  background: #251b15;
+}
+
+.assist-status-auth-missing {
+  color: #f2b5b5 !important;
+  border-color: #7a3f40;
+  background: #2a1718;
+}
+
+.assist-status-error {
+  color: #f0a7a7 !important;
+  border-color: #854444;
+  background: #2a1919;
 }
 
 .assist-row strong,

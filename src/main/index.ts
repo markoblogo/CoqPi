@@ -212,7 +212,11 @@ const registerIpcHandlers = () => {
         const lowerMessage = message.toLowerCase()
         let code: AssistantAnalysisError['code'] = 'assistant_error'
 
-        if (lowerMessage.includes('openai_api_key')) {
+        if (lowerMessage.includes('timed out')) {
+          code = 'provider_timeout'
+        } else if (lowerMessage.includes('budget exhausted')) {
+          code = 'analysis_budget_exhausted'
+        } else if (lowerMessage.includes('openai_api_key')) {
           code = 'missing_api_key'
         } else if (lowerMessage.includes('transcript is empty')) {
           code = 'empty_transcript'
@@ -221,7 +225,7 @@ const registerIpcHandlers = () => {
         } else if (lowerMessage.includes('invalid model response')) {
           code = 'invalid_model_response'
         } else if (lowerMessage.includes('failed')) {
-          code = 'api_failure'
+          code = 'provider_error'
         }
 
         return {

@@ -18,6 +18,7 @@ import {
   type ConfigStatus,
   type ContextSource,
   type ContextSourceKind,
+  type AssistantAnalysisError,
   type ControlState,
   type OpenAIKeyStatus,
   type RealtimeConnectionStatus,
@@ -145,6 +146,74 @@ const rendererMediaApiError =
 
 const ANALYSIS_COOLDOWN_MS = 5000
 const AUTO_ANALYSIS_DEBOUNCE_MS = 900
+
+type AssistantStatusCode = AssistantAnalysisError['code'] | null
+
+type AssistantStatusLabelInfo = {
+  label: string
+  classNameSuffix: string
+}
+
+const getAssistantStatusLabel = (
+  assistantState: 'idle' | 'analyzing' | 'error' | 'done',
+  lastAnalyzedUtteranceId: string | null,
+  lastUtteranceId: string | undefined,
+  errorCode: AssistantStatusCode
+): AssistantStatusLabelInfo => {
+  if (assistantState === 'analyzing') {
+    return {
+      label: 'Analyzing',
+      classNameSuffix: 'analyzing'
+    }
+  }
+
+  if (assistantState === 'error' && errorCode) {
+    if (errorCode === 'provider_timeout') {
+      return {
+        label: 'Timeout',
+        classNameSuffix: 'timeout'
+      }
+    }
+
+    if (errorCode === 'analysis_budget_exhausted') {
+      return {
+        label: 'Budget exhausted',
+        classNameSuffix: 'budget-exhausted'
+      }
+    }
+
+    if (errorCode === 'missing_api_key') {
+      return {
+        label: 'Auth missing',
+        classNameSuffix: 'auth-missing'
+      }
+    }
+
+    return {
+      label: 'Error',
+      classNameSuffix: 'error'
+    }
+  }
+
+  if (lastUtteranceId && lastAnalyzedUtteranceId !== lastUtteranceId) {
+    return {
+      label: 'Stale',
+      classNameSuffix: 'stale'
+    }
+  }
+
+  if (assistantState === 'done') {
+    return {
+      label: 'Ready',
+      classNameSuffix: 'ready'
+    }
+  }
+
+  return {
+    label: 'Waiting',
+    classNameSuffix: 'waiting'
+  }
+}
 
 type SessionStats = {
   assistantRequests: number
@@ -381,13 +450,20 @@ const getSessionContextLabel = (context: SessionContext) => {
   return company || role || 'No session'
 }
 
+const makeAutoAnalysisFingerprint = (
+  latestFinalUtterance: TranscriptUtterance,
+  transcriptText: string
+) =>
+  `${latestFinalUtterance.id}::${latestFinalUtterance.speaker}::${transcriptText.slice(-500).trim()}`
+
 export const App = () => {
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
   const noEventTimeoutRef = useRef<number | null>(null)
   const autoAnalysisTimeoutRef = useRef<number | null>(null)
-  const lastAutoAnalyzedUtteranceIdRef = useRef<string | null>(null)
+  const lastAutoAnalyzedFingerprintRef = useRef<string | null>(null)
+  const scheduledAutoAnalysisFingerprintRef = useRef<string | null>(null)
   const runAssistantAnalysisRef = useRef<
-    ((options: RunAssistantAnalysisOptions) => Promise<void>) | null
+    ((options: RunAssistantAnalysisOptions) => Promise<boolean>) | null
   >(null)
   const hasReceivedFirstRealtimeEventRef = useRef(false)
   const contextSourceMutationRef = useRef(false)
@@ -460,6 +536,8 @@ export const App = () => {
     'idle' | 'analyzing' | 'error' | 'done'
   >('idle')
   const [assistantError, setAssistantError] = useState<string | null>(null)
+  const [assistantErrorCode, setAssistantErrorCode] =
+    useState<AssistantStatusCode>(null)
   const [assistantResult, setAssistantResult] =
     useState<AssistantAnalysisResult>(emptyAnalysis)
   const [assistantResultUpdatedAt, setAssistantResultUpdatedAt] = useState<
@@ -1452,7 +1530,9 @@ export const App = () => {
       autoAnalysisTimeoutRef.current = null
     }
 
-    lastAutoAnalyzedUtteranceIdRef.current = null
+    lastAutoAnalyzedFingerprintRef.current = null
+    scheduledAutoAnalysisFingerprintRef.current = null
+    setAssistantErrorCode(null)
     setTranscriptUtterances(clearTranscript())
     setMockError(null)
     setAssistantState('idle')
@@ -1661,16 +1741,25 @@ export const App = () => {
     mode,
     trigger = 'manual',
     targetUtteranceId = null
-  }: RunAssistantAnalysisOptions) => {
+  }: RunAssistantAnalysisOptions): Promise<boolean> => {
+    const setErrorState = (
+      message: string,
+      code: AssistantStatusCode = 'assistant_error'
+    ) => {
+      setAssistantState('error')
+      setAssistantError(message)
+      setAssistantErrorCode(code)
+    }
+
     if (assistantState === 'analyzing') {
-      return
+      return false
     }
 
     if (Date.now() < analysisCooldownUntil) {
       if (trigger === 'manual') {
         setCostNotice('Assistant analysis is on cooldown for a few seconds.')
       }
-      return
+      return false
     }
 
     const recentTranscript = getRecentTranscriptText(
@@ -1680,21 +1769,20 @@ export const App = () => {
 
     if (!recentTranscript.trim()) {
       if (trigger === 'manual') {
-        setAssistantState('error')
-        setAssistantError('No transcript is available for analysis yet.')
+        setErrorState('No transcript is available for analysis yet.', 'empty_transcript')
       }
-      return
+      return false
     }
 
     if (!configStatus.effectiveKeyAvailable) {
-      setAssistantState('error')
-      setAssistantError(
-        'Missing OpenAI API key. Save a secure local key in Settings or set OPENAI_API_KEY in .env.'
+      setErrorState(
+        'Missing OpenAI API key. Save a secure local key in Settings or set OPENAI_API_KEY in .env.',
+        'missing_api_key'
       )
       if (trigger === 'manual') {
         setActiveTab('settings')
       }
-      return
+      return false
     }
 
     let effectiveMode = mode
@@ -1741,7 +1829,7 @@ export const App = () => {
       )
 
       if (!confirmed) {
-        return
+        return false
       }
 
       transcriptToSend = clampTrailingText(
@@ -1766,6 +1854,7 @@ export const App = () => {
 
     setAssistantState('analyzing')
     setAssistantError(null)
+    setAssistantErrorCode(null)
     setAnalysisCooldownUntil(Date.now() + ANALYSIS_COOLDOWN_MS)
 
     try {
@@ -1773,7 +1862,8 @@ export const App = () => {
         await window.coqpi.assistant.analyzeRecentTranscript(request)
 
       if (!response.ok) {
-        throw new Error(response.error.message)
+        setErrorState(response.error.message, response.error.code)
+        return false
       }
 
       setAssistantResult(response.data)
@@ -1794,14 +1884,17 @@ export const App = () => {
         sessionContextCharsSent:
           current.sessionContextCharsSent + estimatedSessionContextChars
       }))
+
+      return true
     } catch (error) {
-      setAssistantState('error')
-      setAssistantError(
+      setErrorState(
         error instanceof Error
           ? error.message
           : 'Unable to analyze the transcript.'
       )
     }
+
+    return false
   }
 
   runAssistantAnalysisRef.current = runAssistantAnalysis
@@ -1820,7 +1913,17 @@ export const App = () => {
       return
     }
 
-    if (lastAutoAnalyzedUtteranceIdRef.current === latestFinalUtterance.id) {
+    const analysisText = getRecentTranscriptText(transcriptUtterances, 30)
+    const fingerprint = makeAutoAnalysisFingerprint(
+      latestFinalUtterance,
+      analysisText
+    )
+
+    if (fingerprint === lastAutoAnalyzedFingerprintRef.current) {
+      return
+    }
+
+    if (fingerprint === scheduledAutoAnalysisFingerprintRef.current) {
       return
     }
 
@@ -1838,13 +1941,26 @@ export const App = () => {
     )
 
     autoAnalysisTimeoutRef.current = window.setTimeout(() => {
-      lastAutoAnalyzedUtteranceIdRef.current = latestFinalUtterance.id
-      void runAssistantAnalysisRef.current?.({
+      if (!runAssistantAnalysisRef.current) {
+        return
+      }
+
+      scheduledAutoAnalysisFingerprintRef.current = fingerprint
+
+      void runAssistantAnalysisRef.current({
         recentWindowLabel: '30s',
         seconds: 30,
         mode: 'full',
         trigger: 'auto',
         targetUtteranceId: latestFinalUtterance.id
+      }).then((didRun) => {
+        if (didRun) {
+          lastAutoAnalyzedFingerprintRef.current = fingerprint
+        }
+
+        if (scheduledAutoAnalysisFingerprintRef.current === fingerprint) {
+          scheduledAutoAnalysisFingerprintRef.current = null
+        }
       })
     }, AUTO_ANALYSIS_DEBOUNCE_MS + cooldownDelay)
 
@@ -1873,14 +1989,13 @@ export const App = () => {
     Boolean(lastUtterance?.isFinal) &&
     assistantState === 'done' &&
     lastAnalyzedUtteranceId !== lastUtterance?.id
-  const assistantFreshnessLabel =
-    assistantState === 'analyzing'
-      ? 'Analyzing'
-      : isAssistantResultStale
-        ? 'Stale'
-        : assistantState === 'done'
-          ? 'Ready'
-          : 'Waiting'
+  const assistantStatus = getAssistantStatusLabel(
+    assistantState,
+    lastAnalyzedUtteranceId,
+    lastUtterance?.id,
+    assistantErrorCode
+  )
+  const assistantFreshnessLabel = assistantStatus.label
   const canStartListening =
     realtimeStatus !== 'connecting' &&
     realtimeStatus !== 'connected' &&
@@ -2025,7 +2140,7 @@ export const App = () => {
           <h2>Assist</h2>
         </div>
         <span
-          className={`assist-status assist-status-${assistantFreshnessLabel.toLowerCase()}`}
+          className={`assist-status assist-status-${assistantStatus.classNameSuffix}`}
         >
           {assistantFreshnessLabel}
         </span>

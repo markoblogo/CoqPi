@@ -250,7 +250,15 @@ export interface AssistantAnalysisResult {
 }
 
 export interface AssistantAnalysisError {
-  code: string
+  code:
+    | 'assistant_error'
+    | 'missing_api_key'
+    | 'empty_transcript'
+    | 'profile_context_error'
+    | 'invalid_model_response'
+    | 'provider_timeout'
+    | 'analysis_budget_exhausted'
+    | 'provider_error'
   message: string
 }
 
