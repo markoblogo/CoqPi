@@ -1310,13 +1310,30 @@ export const App = () => {
       }
 
       if (errors.length > 0) {
-        const failed =
-          errors[0].index === undefined
-            ? errors[0].reason
-            : `item ${errors[0].index + 1}: ${errors[0].reason}`
+        const failures = errors.slice(0, 5).map((failure, index) => {
+          const prefix =
+            failure.index === undefined
+              ? `Issue #${index + 1}`
+              : `Item ${failure.index + 1}`
+
+          return `${prefix}: ${failure.reason}`
+        })
+
+        if (typeof process !== 'undefined') {
+          console.warn(
+            '[finder-import] skipped entries:',
+            JSON.stringify({
+              totalErrors: errors.length,
+              sample: failures,
+              requestedCount: summary?.requestedCount
+            })
+          )
+        }
 
         setCounterpartyPackDraftNotice((current) =>
-          current ? `${current} Also failed: ${failed}` : `Failed: ${failed}`
+          current
+            ? `${current} Also failed (${failures.length}/${errors.length}): ${failures.join('; ')}`
+            : `Failed (${failures.length}/${errors.length}): ${failures.join('; ')}`
         )
       }
 
