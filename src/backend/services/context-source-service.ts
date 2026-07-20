@@ -11,6 +11,7 @@ import type {
   CounterpartyContextPack,
   CounterpartyContextPackDraft
 } from '../../shared/app-types'
+import { parseFinderCounterpartyPayloadText } from '../../shared/finder-ingest-contract'
 import { getAppInfo } from './app-state'
 
 type IngressEvent =
@@ -669,6 +670,13 @@ export const addCounterpartyContextPacks = async (
     nextManifest,
     'ingest counterparty context packs'
   )
+}
+
+export const ingestCounterpartyFinderPayload = async (
+  payloadText: string
+): Promise<ContextSourceManifestResult> => {
+  const drafts = parseFinderCounterpartyPayloadText(payloadText)
+  return addCounterpartyContextPacks(drafts)
 }
 
 export const setContextSourceSelected = async (

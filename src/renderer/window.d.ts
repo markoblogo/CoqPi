@@ -46,6 +46,7 @@ declare global {
       contextPacks: {
         get: () => Promise<ContextSourceManifestResult>
         add: (packs: CounterpartyContextPackDraft[]) => Promise<ContextSourceManifestResult>
+        ingestFinderPayload: (payloadText: string) => Promise<ContextSourceManifestResult>
         setSelected: (id: string, selected: boolean) => Promise<ContextSourceManifestResult>
         remove: (id: string) => Promise<ContextSourceManifestResult>
       }

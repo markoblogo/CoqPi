@@ -39,6 +39,7 @@ import {
 import {
   addContextSource,
   addCounterpartyContextPacks,
+  ingestCounterpartyFinderPayload,
   captureAndClassifyContextSource,
   getContextSourceManifest,
   getCounterpartyContextPacks,
@@ -146,6 +147,13 @@ const registerIpcHandlers = () => {
       packs: CounterpartyContextPackDraft[]
     ): Promise<ContextSourceManifestResult> =>
       addCounterpartyContextPacks(packs)
+  )
+
+  ipcMain.handle(
+    'coqpi:context-packs:ingest-finder',
+    async (_event, payloadText: string): Promise<ContextSourceManifestResult> => {
+      return ingestCounterpartyFinderPayload(payloadText)
+    }
   )
 
   ipcMain.handle(

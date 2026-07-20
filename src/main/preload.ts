@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld('coqpi', {
     get: () => ipcRenderer.invoke('coqpi:context-packs:get'),
     add: (packs: CounterpartyContextPackDraft[]) =>
       ipcRenderer.invoke('coqpi:context-packs:add', packs),
+    ingestFinderPayload: (payloadText: string) =>
+      ipcRenderer.invoke('coqpi:context-packs:ingest-finder', payloadText),
     setSelected: (id: string, selected: boolean) =>
       ipcRenderer.invoke('coqpi:context-packs:set-selected', id, selected),
     remove: (id: string) => ipcRenderer.invoke('coqpi:context-packs:remove', id)
