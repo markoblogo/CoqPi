@@ -21,6 +21,7 @@ const parseArgs = (argv) => {
       key === '--sign' ||
       key === '--dump-manifest' ||
       key === '--validate' ||
+      key === '--handoff' ||
       key === '--help'
     ) {
       args[key] = true
@@ -94,6 +95,9 @@ const isManifestSource = (source) => {
 
   return true
 }
+
+const resolveOutputPath = (candidatePath, fallbackFileName) =>
+  path.resolve(process.cwd(), typeof candidatePath === 'string' ? candidatePath : fallbackFileName)
 
 const validateManifest = async (options) => {
   const manifestDir = resolveCoreDirectory(options)
@@ -171,12 +175,16 @@ const resolveCoreDirectory = (args) => {
 const usage = () => `Usage:
   node scripts/dump-manifest.cjs --dump-manifest [--manifest-dir DIR] [--output FILE] [--sign [KEY]]
   node scripts/dump-manifest.cjs --validate [--manifest-dir DIR]
+  node scripts/dump-manifest.cjs --handoff [--manifest-dir DIR] [--sign] [--validate-output FILE] [--snapshot-output FILE]
 
 Options:
   --dump-manifest          Emit a compact handoff snapshot.
+  --handoff                Validate then emit snapshot for Cortex handoff.
   --validate               Validate manifest + history consistency for handoff safety.
   --manifest-dir <path>    Personal knowledge-core directory (default: COQPI_PERSONAL_KNOWLEDGE_CORE_DIR or ./data/context-sources)
   --output <file>          Save snapshot JSON to a file instead of stdout.
+  --validate-output <file>  Save validation report to file in handoff mode (default: handoff.validation.json).
+  --snapshot-output <file>  Save snapshot JSON to file in handoff mode (default: handoff.snapshot.json).
   --sign                   Sign snapshot payload with HMAC-SHA256.
   --key <key>              Signing key for --sign (or COQPI_CONTEXT_PACK_SIGNING_KEY env var).
   --help                   Show this help.`
@@ -223,17 +231,59 @@ const run = async () => {
 
   if (
     args['--help'] ||
-    (!args['--dump-manifest'] && !args['--validate'])
+    (!args['--dump-manifest'] && !args['--validate'] && !args['--handoff'])
   ) {
     console.log(usage())
     process.exit(args['--help'] ? 0 : 1)
   }
 
   try {
+    if (args['--handoff']) {
+      const validationOutput = resolveOutputPath(
+        args['--validate-output'],
+        'handoff.validation.json'
+      )
+      const snapshotOutput = resolveOutputPath(
+        args['--snapshot-output'],
+        'handoff.snapshot.json'
+      )
+
+      const validation = await validateManifest(args)
+      await fs.writeFile(
+        validationOutput,
+        `${stableJson(validation)}\n`,
+        'utf8'
+      )
+
+      if (!validation.valid) {
+        console.error('handoff aborted: validation failed')
+        for (const error of validation.errors) {
+          console.error(` - ${error}`)
+        }
+
+        process.exitCode = 1
+        return
+      }
+
+      const snapshot = await dumpManifestSnapshot({
+        manifestDir: args['--manifest-dir'],
+        signEnabled: Boolean(args['--sign']),
+        signingKey:
+          args['--key'] ||
+          process.env.COQPI_CONTEXT_PACK_SIGNING_KEY,
+        keyId: args['--key-id']
+      })
+
+      await fs.writeFile(snapshotOutput, `${stableJson(snapshot)}\n`, 'utf8')
+      console.log(validationOutput)
+      console.log(snapshotOutput)
+      return
+    }
+
     if (args['--validate']) {
       const result = await validateManifest(args)
       if (args['--output']) {
-        const outputPath = path.resolve(process.cwd(), args['--output'])
+        const outputPath = resolveOutputPath(args['--output'], 'handoff.snapshot.json')
         await fs.writeFile(outputPath, `${stableJson(result)}\n`, 'utf8')
         console.log(outputPath)
       } else {
@@ -270,7 +320,7 @@ const run = async () => {
 
     const output = stableJson(snapshot)
     if (args['--output']) {
-      const outPath = path.resolve(process.cwd(), args['--output'])
+      const outPath = resolveOutputPath(args['--output'], 'coqpi-context-pack.snapshot.json')
       await fs.writeFile(outPath, `${output}\n`, 'utf8')
       console.log(outPath)
       return

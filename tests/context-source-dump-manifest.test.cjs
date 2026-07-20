@@ -7,7 +7,8 @@ const test = require('node:test')
 
 const {
   dumpManifestSnapshot,
-  validateManifest
+  validateManifest,
+  run
 } = require('../scripts/dump-manifest.cjs')
 
 const stableJson = (value) => JSON.stringify(value, undefined, 2)
@@ -220,6 +221,70 @@ test('validates manifest and history consistency and detects broken chain', asyn
       /previousEventHash must match prior eventHash/
     )
   } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('runs handoff mode and writes validation + snapshot artifacts', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-manifest-handoff-'))
+  const manifestPath = path.join(directory, 'manifest.json')
+  const historyPath = path.join(directory, 'coqpi-context-pack.history.jsonl')
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  const previousCwd = process.cwd()
+  const previousArgv = process.argv
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = directory
+
+  const manifest = {
+    version: 1,
+    sources: []
+  }
+
+  const historyLine = {
+    version: 1,
+    timestamp: '2026-07-20T00:00:00.000Z',
+    sourceVersion: 1,
+    action: 'add context source',
+    reason: 'unit test',
+    manifestHash:
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    eventHash:
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    previousEventHash: null,
+    sourceCount: 0,
+    repositoryHead: 'unavailable'
+  }
+
+  try {
+    process.chdir(directory)
+    await fs.mkdir(directory, { recursive: true })
+    await fs.writeFile(manifestPath, `${stableJson(manifest)}\n`, 'utf8')
+    await fs.writeFile(historyPath, `${JSON.stringify(historyLine)}\n`, 'utf8')
+
+    process.argv = [
+      'node',
+      'scripts/dump-manifest.cjs',
+      '--handoff'
+    ]
+    process.exitCode = 0
+    await run()
+
+    const handoffValidation = JSON.parse(
+      await fs.readFile(path.join(directory, 'handoff.validation.json'), 'utf8')
+    )
+    const handoffSnapshot = JSON.parse(
+      await fs.readFile(path.join(directory, 'handoff.snapshot.json'), 'utf8')
+    )
+
+    assert.equal(handoffValidation.valid, true)
+    assert.equal(handoffSnapshot.format, 'coqpi-context-pack-snapshot')
+  } finally {
+    process.argv = previousArgv
+    process.chdir(previousCwd)
     if (previousDirectory === undefined) {
       delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
     } else {

@@ -127,6 +127,10 @@ Context source governance is also available in the local Personal Knowledge Core
 - `COQPI_CONTEXT_PACK_SIGNING_KEY=... pnpm dump-manifest -- --dump-manifest --sign`
 - `pnpm dump-manifest -- --validate --manifest-dir ./data/context-sources`  
   (fails on invalid `manifest.json` / chain mismatch)
+- `pnpm dump-manifest -- --handoff`  
+  (runs validate + writes `handoff.validation.json`, then writes `handoff.snapshot.json`; aborts snapshot on validation fail)
+- `pnpm dump-manifest -- --handoff --validate-output ./handoff.validation.json --snapshot-output ./handoff.snapshot.json`  
+  (explicit output paths)
 
 Snapshot output includes:
 

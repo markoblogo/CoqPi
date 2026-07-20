@@ -35,6 +35,7 @@ History lines are appended for each local state mutation and include action, tim
 For local synchronous handoff, CoqPi exposes a dedicated export snapshot (no UI flow needed):
 
 - `pnpm dump-manifest -- --dump-manifest`
+- `pnpm dump-manifest -- --handoff` (runs validate and snapshot in one flow)
 
 The snapshot includes:
 
