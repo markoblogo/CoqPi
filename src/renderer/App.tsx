@@ -51,7 +51,6 @@ import {
   getRecentTranscriptText
 } from '@shared/transcript-state'
 import {
-  parseCounterpartyPackJsonPayload,
   normalizeLinksText
 } from '@shared/counterparty-pack-import'
 import {
@@ -459,9 +458,6 @@ export const App = () => {
   const [counterpartyPackFinderPayload, setCounterpartyPackFinderPayload] = useState(
     ''
   )
-  const [finderCandidatePacks, setFinderCandidatePacks] = useState<
-    CounterpartyPackFormDraft[]
-  >([])
   const [counterpartyPackDraftingId, setCounterpartyPackDraftingId] = useState<
     string | null
   >(null)
@@ -602,7 +598,6 @@ export const App = () => {
         setContextSourcesError(null)
         setCounterpartyPackDraftError(null)
         setCounterpartyPackDraftNotice(null)
-        setFinderCandidatePacks([])
         setCounterpartyPackFinderPayload('')
         setKeyStatus(keyState)
         setSettingsForm(settingsPayload.settings)
@@ -626,7 +621,6 @@ export const App = () => {
         setCounterpartyPackDraft(emptyCounterpartyPackDraft)
         setCounterpartyPackDraftingId(null)
         setCounterpartyPackFinderPayload('')
-        setFinderCandidatePacks([])
         setProfileError(
           error instanceof Error
             ? error.message
@@ -1230,7 +1224,6 @@ export const App = () => {
   const resetCounterpartyPackDraft = () => {
     setCounterpartyPackDraft(emptyCounterpartyPackDraft)
     setCounterpartyPackDraftingId(null)
-    setFinderCandidatePacks([])
   }
 
   const editCounterpartyPack = (pack: CounterpartyContextPack) => {
@@ -1287,20 +1280,17 @@ export const App = () => {
       return
     }
 
+    contextSourceMutationRef.current = true
     setIsSavingCounterpartyPacks(true)
     setCounterpartyPackDraftError(null)
     setCounterpartyPackDraftNotice(null)
-    setFinderCandidatePacks([])
-
     try {
-      parseCounterpartyPackJsonPayload(payloadText)
       const manifest = await window.coqpi.contextPacks.ingestFinderPayload(payloadText)
       applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
       setCounterpartyPackDraftNotice(
         'Imported Finder payload via ingest endpoint.'
       )
       setCounterpartyPackFinderPayload('')
-      setFinderCandidatePacks([])
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
     } finally {
@@ -1309,68 +1299,8 @@ export const App = () => {
     }
   }
 
-  const parseFinderCandidates = () => {
-    if (!counterpartyPackFinderPayload.trim()) {
-      setFinderCandidatePacks([])
-      setCounterpartyPackDraftNotice(null)
-      return
-    }
-
-    try {
-      const payload = parseCounterpartyPackJsonPayload(counterpartyPackFinderPayload)
-      const parsed = payload.map((pack) => ({
-        ...pack,
-        linksText: (pack.links ?? []).join('\n')
-      }))
-
-      setCounterpartyPackDraftError(null)
-      if (parsed.length === 0) {
-        setCounterpartyPackDraftError('No counterparty pack found in pasted payload.')
-        setFinderCandidatePacks([])
-        return
-      }
-
-      setFinderCandidatePacks(parsed)
-      if (parsed.length === 1) {
-        setCounterpartyPackDraft(parsed[0])
-        setCounterpartyPackDraftingId(null)
-        setCounterpartyPackDraftNotice('Single payload parsed and loaded for quick edit.')
-      } else {
-        setCounterpartyPackDraftNotice(
-          `Parsed ${parsed.length} candidates from payload. Load one or import all.`
-        )
-      }
-    } catch (error) {
-      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
-      setFinderCandidatePacks([])
-    }
-  }
-
   const importFinderCandidates = async () => {
-    if (finderCandidatePacks.length === 0) {
-      await importCounterpartyPayload()
-      return
-    }
-
-    setIsSavingCounterpartyPacks(true)
-    setCounterpartyPackDraftError(null)
-    setCounterpartyPackDraftNotice(null)
-
-    try {
-      const manifest = await window.coqpi.contextPacks.ingestFinderPayload(
-        counterpartyPackFinderPayload
-      )
-      applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
-      setCounterpartyPackFinderPayload('')
-      setFinderCandidatePacks([])
-      setCounterpartyPackDraftNotice(
-        'Imported parsed candidates via ingest endpoint.'
-      )
-    } catch (error) {
-      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
-    } finally {
-      setIsSavingCounterpartyPacks(false)
-    }
+    await importCounterpartyPayload()
   }
 
   const setCounterpartyPackSelection = async (
@@ -3646,7 +3576,6 @@ export const App = () => {
                     className="prepare-textarea"
                     onChange={(event) => {
                       setCounterpartyPackFinderPayload(event.target.value)
-                      setFinderCandidatePacks([])
                       setCounterpartyPackDraftError(null)
                       setCounterpartyPackDraftNotice(null)
                     }}
@@ -3658,26 +3587,14 @@ export const App = () => {
                 <div className="button-row settings-actions">
                   <button
                     disabled={isSavingCounterpartyPacks || !counterpartyPackFinderPayload.trim()}
-                    onClick={() => parseFinderCandidates()}
-                    type="button"
-                  >
-                    Parse Finder JSON
-                  </button>
-                  <button
-                    disabled={
-                      isSavingCounterpartyPacks ||
-                      (!counterpartyPackFinderPayload.trim() &&
-                        finderCandidatePacks.length === 0)
-                    }
                     onClick={() => void importFinderCandidates()}
                     type="button"
                   >
-                    Import parsed candidates
+                    Import Finder JSON
                   </button>
                   <button
                     onClick={() => {
                       setCounterpartyPackFinderPayload('')
-                      setFinderCandidatePacks([])
                       setCounterpartyPackDraftError(null)
                       setCounterpartyPackDraftNotice(null)
                     }}
@@ -3687,43 +3604,6 @@ export const App = () => {
                   </button>
                 </div>
               </div>
-              {finderCandidatePacks.length > 0 ? (
-                <div className="context-source-list" aria-live="polite">
-                  {finderCandidatePacks.length === 1 ? (
-                    <div className="context-source-empty">
-                      One candidate parsed. Edit or save it in the form above.
-                    </div>
-                  ) : (
-                    finderCandidatePacks.map((candidate, index) => (
-                      <div className="context-source-item" key={`${candidate.sourceId}-${index}`}>
-                        <div className="context-source-details">
-                          <strong>{candidate.partnerName}</strong>
-                          <span>
-                            {candidate.kind} · {candidate.title}
-                          </span>
-                          <code>{candidate.sourceId}</code>
-                        </div>
-                        <div className="context-source-actions">
-                          <button
-                            disabled={isSavingCounterpartyPacks}
-                            onClick={() => {
-                              setCounterpartyPackDraft(candidate)
-                              setCounterpartyPackDraftingId(null)
-                              setCounterpartyPackDraftNotice(
-                                'Candidate loaded for quick edit.'
-                              )
-                            }}
-                            type="button"
-                          >
-                            Load
-                          </button>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              ) : null}
-
               <div className="compact-form-grid context-source-form">
                 <label className="settings-row">
                   <span className="settings-row-label">Kind</span>
