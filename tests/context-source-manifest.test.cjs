@@ -90,6 +90,105 @@ test('stages and selects source pointers without reading their contents', async 
   }
 })
 
+test('ingests selected counterparty packs and uses them in EN/FR retrieval', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-counterparty-'))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+
+  try {
+    const added = await service.addCounterpartyContextPacks([
+      {
+        sourceId: 'finder:job:backend-001',
+        kind: 'job',
+        partnerName: 'Acme Ventures',
+        title: 'Senior Product Lead Role',
+        summary: 'The role asks for AI product strategy and team leadership.',
+        context: 'Focus on French market expansion and enterprise SaaS.',
+        links: ['https://acme.example.com/job'],
+      },
+      {
+        sourceId: 'finder:partner:investor-002',
+        kind: 'investor',
+        partnerName: 'Seed House',
+        title: 'Strategic Investor',
+        summary: 'Investor seeking agri-commodity analytics platform',
+        context: 'Talk first about pilot project in Mediterranean grain logistics.',
+      },
+    ])
+
+    const packs = added.manifest.counterpartyPacks
+    assert.equal(packs.length, 2)
+    assert.equal(packs[0].status, 'retrieval_ready')
+    assert.equal(packs[0].selected, true)
+    assert.equal(packs[0].promotion, 'explicit_audit_required')
+    assert.equal(packs[0].classification, 'private')
+    assert.deepEqual(packs[0].retrievalScopes, ['coqpi_interview_en_fr'])
+
+    const retrieval = await service.getPersonalInterviewRetrieval(
+      'Can we discuss AI product strategy and team leadership for this position?',
+      'en'
+    )
+    assert.match(retrieval, /AI product strategy and team leadership/i)
+
+    const unselected = await service.setCounterpartyContextPackSelected(packs[1].id, false)
+    assert.equal(unselected.manifest.counterpartyPacks.find((pack) => pack.id === packs[1].id)?.selected, false)
+
+    const removed = await service.removeCounterpartyContextPack(packs[1].id)
+    assert.equal(removed.manifest.counterpartyPacks.length, 1)
+
+    const retrievalAfterDeselect = await service.getPersonalInterviewRetrieval(
+      'I want to talk about AI product strategy and team leadership.',
+      'en'
+    )
+    assert.doesNotMatch(retrievalAfterDeselect, /Seed House/)
+    assert.match(retrievalAfterDeselect, /Senior Product Lead Role/)
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('rejects malformed counterparty packs', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-counterparty-invalid-'))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+
+  try {
+    await assert.rejects(
+      service.addCounterpartyContextPacks([
+        {
+          sourceId: '',
+          kind: 'job',
+          partnerName: 'Acme',
+          title: 'Role',
+          summary: 'summary',
+        },
+      ]),
+      /A counterparty pack requires kind, sourceId, partnerName, title and summary./
+    )
+
+    await assert.rejects(
+      service.addCounterpartyContextPacks([]),
+      /At least one counterparty pack is required./
+    )
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('rejects non-web links before they can enter the manifest', async () => {
   await assert.rejects(
     service.addContextSource({

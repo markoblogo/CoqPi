@@ -85,6 +85,14 @@ When classification or promotion exists, Cortex must create an append-only, allo
 
 The current capture action is deliberately narrow. The owner must select `Capture & classify` for one `file` record. CoqPi then reads that file locally, calculates its SHA-256, and records a private append-only capture event. Only `.md`, `.txt`, `.csv`, and `.json` files up to 10 MB may produce a local text excerpt for retrieval in this phase.
 
+### Counterparty/context packs (finder-ready compact packets)
+
+Finder and other local adapters may emit compact context packs for a specific opportunity/person. These packets are ingested directly to `manifest.counterpartyPacks` via the CoqPi context API and remain in the same local manifest and history.
+
+Each packet is explicit, scoped, and selected-at-ingest by default. Ingestion stores only compact text fields (partner, role/title, summary/context), content hash, sourceId, provenance digest, scope (`coqpi_interview_en_fr`) and retention metadata. No raw transcripts or binary file contents are stored.
+
+Selected counterparty packs participate in retrieval for EN/FR interview/self-presentation analysis. If no suitable packet is found, the assistant is instructed to ask a concise clarification question instead of inventing counterparty-specific facts.
+
 Folders, manual paths, links, binary files, PDFs, office documents, external URL fetching, and recursive scans remain pending. They cannot enter retrieval merely because they were recorded as ingress.
 
 Assistant retrieval is limited to sources explicitly captured into `coqpi_interview_en_fr`. It is a compact local keyword retrieval for English/French interview and self-presentation guidance. If it finds no eligible evidence, the assistant prompt requires a concise clarification or neutral answer instead of an invented personal fact. The core excerpt is read only after assistant analysis begins; it is never used by the realtime audio hot path.

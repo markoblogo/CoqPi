@@ -8,6 +8,7 @@ import type {
   AssistantAnalysisResponse,
   ContextSourceDraft,
   ContextSourceManifestResult,
+  CounterpartyContextPackDraft,
   DeleteOpenAIKeyResult,
   OpenAIKeyStatus,
   RealtimeTranscriptionError,
@@ -37,9 +38,13 @@ import {
 } from '../backend/services/session-context-service'
 import {
   addContextSource,
+  addCounterpartyContextPacks,
   captureAndClassifyContextSource,
   getContextSourceManifest,
+  getCounterpartyContextPacks,
+  removeCounterpartyContextPack,
   removeContextSource,
+  setCounterpartyContextPackSelected,
   setContextSourceSelected
 } from '../backend/services/context-source-service'
 
@@ -106,6 +111,11 @@ const registerIpcHandlers = () => {
   )
 
   ipcMain.handle(
+    'coqpi:context-packs:get',
+    async (): Promise<ContextSourceManifestResult> => getCounterpartyContextPacks()
+  )
+
+  ipcMain.handle(
     'coqpi:context-sources:add',
     async (
       _event,
@@ -127,6 +137,31 @@ const registerIpcHandlers = () => {
     'coqpi:context-sources:remove',
     async (_event, id: string): Promise<ContextSourceManifestResult> =>
       removeContextSource(id)
+  )
+
+  ipcMain.handle(
+    'coqpi:context-packs:add',
+    async (
+      _event,
+      packs: CounterpartyContextPackDraft[]
+    ): Promise<ContextSourceManifestResult> =>
+      addCounterpartyContextPacks(packs)
+  )
+
+  ipcMain.handle(
+    'coqpi:context-packs:set-selected',
+    async (
+      _event,
+      id: string,
+      selected: boolean
+    ): Promise<ContextSourceManifestResult> =>
+      setCounterpartyContextPackSelected(id, selected)
+  )
+
+  ipcMain.handle(
+    'coqpi:context-packs:remove',
+    async (_event, id: string): Promise<ContextSourceManifestResult> =>
+      removeCounterpartyContextPack(id)
   )
 
   ipcMain.handle('coqpi:context-sources:pick-files', async () => {

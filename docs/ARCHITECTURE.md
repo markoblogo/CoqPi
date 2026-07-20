@@ -72,6 +72,7 @@ Shared cost constants live in:
 - **Current session context**: `data/sessions/current-session.json`
 - **Shared-RAG ingress manifest**: `data/context-sources/manifest.json` (canonical),
   plus `coqpi-context-pack.manifest.md` and `coqpi-context-pack.history.jsonl` in the same directory for review and change audit.
+- **Counterparty/context packs**: compact partner and role-specific records from Finder or manually curated intake are stored in the same local manifest under `manifest.counterpartyPacks` with explicit provenance, selection flag, retention, and a compact hash.
 - **User settings**: JSON under `app.getPath("userData")`
 - **Stored encrypted API key**: file under `app.getPath("userData")/secrets/`
 - **Governance receipts**: `data/governance/receipts.jsonl`

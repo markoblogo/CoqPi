@@ -3,6 +3,7 @@ import type {
   AssistantAnalysisRequest,
   AssistantAnalysisResponse,
   ContextSourceDraft,
+  CounterpartyContextPackDraft,
   ContextSourceManifestResult,
   ConfigStatus,
   DeleteOpenAIKeyResult,
@@ -41,6 +42,12 @@ declare global {
         remove: (id: string) => Promise<ContextSourceManifestResult>
         pickFiles: () => Promise<string[]>
         pickFolder: () => Promise<string | null>
+      }
+      contextPacks: {
+        get: () => Promise<ContextSourceManifestResult>
+        add: (packs: CounterpartyContextPackDraft[]) => Promise<ContextSourceManifestResult>
+        setSelected: (id: string, selected: boolean) => Promise<ContextSourceManifestResult>
+        remove: (id: string) => Promise<ContextSourceManifestResult>
       }
       secrets: {
         getOpenAIKeyStatus: () => Promise<OpenAIKeyStatus>

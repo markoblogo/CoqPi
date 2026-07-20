@@ -7,7 +7,9 @@ import type {
   ContextSourceDraft,
   ContextSourceKind,
   ContextSourceManifest,
-  ContextSourceManifestResult
+  ContextSourceManifestResult,
+  CounterpartyContextPack,
+  CounterpartyContextPackDraft
 } from '../../shared/app-types'
 import { getAppInfo } from './app-state'
 
@@ -23,6 +25,18 @@ type IngressEvent =
       capturedText: string | null
       retrievalReady: boolean
     }
+  | {
+      version: 1
+      type: 'counterparty_pack_imported'
+      pack: CounterpartyContextPack
+    }
+  | {
+      version: 1
+      type: 'counterparty_pack_selection_changed'
+      id: string
+      selected: boolean
+    }
+  | { version: 1; type: 'counterparty_pack_removed'; id: string }
 
 type ManifestHistoryEvent = {
   version: 1
@@ -34,16 +48,50 @@ type ManifestHistoryEvent = {
   eventHash: string
   previousEventHash: string | null
   sourceCount: number
+  counterpartyPackCount?: number
   repositoryHead: string
 }
 
 const sourceKinds: ContextSourceKind[] = ['link', 'file', 'folder', 'path']
+const finderRetrievalScopes = ['coqpi_interview_en_fr']
+const allowedPackKinds = ['job', 'partner', 'investor', 'accelerator', 'other'] as const
 const RETENTION_DAYS = 30
 const MAX_CAPTURE_BYTES = 10 * 1024 * 1024
 const MAX_CAPTURE_TEXT_CHARS = 12000
 const readableExtensions = new Set(['.md', '.txt', '.csv', '.json'])
 
-const emptyManifest = (): ContextSourceManifest => ({ version: 1, sources: [] })
+type CounterpartyContextPackEventedManifest = ContextSourceManifest & {
+  counterpartyPacks: CounterpartyContextPack[]
+}
+
+const emptyManifest = (): CounterpartyContextPackEventedManifest => ({
+  version: 1,
+  sources: [],
+  counterpartyPacks: []
+})
+
+const isPackKind = (value: unknown): value is (typeof allowedPackKinds)[number] =>
+  typeof value === 'string' &&
+  (allowedPackKinds as readonly string[]).includes(value)
+
+const locateSourceHash = (sourceId: string) =>
+  createHash('sha256').update(sourceId).digest('hex')
+
+const canonicalPackText = (pack: CounterpartyContextPackDraft) =>
+  JSON.stringify(
+    {
+      partnerName: sanitizeText(pack.partnerName),
+      kind: pack.kind,
+      title: sanitizeText(pack.title),
+      summary: sanitizeText(pack.summary),
+      context: sanitizeText(pack.context),
+      links: Array.isArray(pack.links)
+        ? [...pack.links.map(sanitizeText).filter(Boolean)].sort()
+        : []
+    },
+    undefined,
+    2
+  )
 
 const getCoreDirectory = () => getAppInfo().personalKnowledgeCoreDirectory
 const getLedgerPath = () =>
@@ -120,6 +168,49 @@ const sanitizeSource = (value: unknown): ContextSource | null => {
   }
 }
 
+const sanitizeCounterpartyPack = (
+  value: unknown
+): Omit<CounterpartyContextPack, 'id' | 'createdAt'> | null => {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const candidate = value as Partial<CounterpartyContextPack>
+  const kind = candidate.kind as CounterpartyContextPack['kind'] | undefined
+  const sourceId = sanitizeText(candidate.sourceId)
+  const partnerName = sanitizeText(candidate.partnerName)
+  const title = sanitizeText(candidate.title)
+  const summary = sanitizeText(candidate.summary)
+
+  if (!isPackKind(kind) || !sourceId || !partnerName || !title || !summary) {
+    return null
+  }
+
+  return {
+    sourceId,
+    kind,
+    partnerName,
+    title,
+    summary,
+    context: sanitizeText(candidate.context),
+    links: Array.isArray(candidate.links)
+      ? candidate.links.map(sanitizeText).filter(Boolean)
+      : [],
+    selected: candidate.selected === true,
+    status: 'retrieval_ready',
+    ownerId: 'owner',
+    provenance: {
+      sourceId: `coqpi:finder:${sourceId}`,
+      locatorSha256: locateSourceHash(sourceId)
+    },
+    contentHash: createHash('sha256').update(canonicalPackText(candidate as CounterpartyContextPackDraft)).digest('hex'),
+    classification: 'private',
+    retention: retentionFor(new Date().toISOString()),
+    retrievalScopes: finderRetrievalScopes,
+    promotion: 'explicit_audit_required'
+  }
+}
+
 const appendEvent = async (event: IngressEvent) => {
   const ledgerPath = getLedgerPath()
   await fs.mkdir(path.dirname(ledgerPath), { recursive: true })
@@ -139,8 +230,11 @@ const parseEvents = (raw: string): IngressEvent[] =>
       }
     })
 
-const deriveManifest = (events: IngressEvent[]): ContextSourceManifest => {
+const deriveManifest = (
+  events: IngressEvent[]
+): CounterpartyContextPackEventedManifest => {
   const sources = new Map<string, ContextSource>()
+  const counterpartyPacks = new Map<string, CounterpartyContextPack>()
 
   for (const event of events) {
     if (event.type === 'ingress_added') {
@@ -168,13 +262,45 @@ const deriveManifest = (events: IngressEvent[]): ContextSourceManifest => {
             : []
         })
       }
+    } else if (event.type === 'counterparty_pack_imported') {
+      const normalized = sanitizeCounterpartyPack(event.pack)
+      if (normalized) {
+        const createdAt = sanitizeText(event.pack.createdAt) || new Date().toISOString()
+        const id = sanitizeText(event.pack.id) || randomUUID()
+        const retrievalScopes =
+          event.pack.retrievalScopes?.filter((scope) =>
+            finderRetrievalScopes.includes(scope)
+          ) || []
+
+        counterpartyPacks.set(event.pack.id || id, {
+          ...normalized,
+          id,
+          createdAt,
+          selected: event.pack.selected !== false,
+          status: event.pack.status || 'retrieval_ready',
+          retrievalScopes:
+            retrievalScopes.length > 0 ? retrievalScopes : finderRetrievalScopes,
+          context: sanitizeText(event.pack.context)
+        })
+      }
+    } else if (event.type === 'counterparty_pack_selection_changed') {
+      const pack = counterpartyPacks.get(event.id)
+      if (pack) {
+        counterpartyPacks.set(event.id, { ...pack, selected: event.selected })
+      }
+    } else if (event.type === 'counterparty_pack_removed') {
+      counterpartyPacks.delete(event.id)
     }
   }
 
-  return { version: 1, sources: [...sources.values()] }
+  return {
+    version: 1,
+    sources: [...sources.values()],
+    counterpartyPacks: [...counterpartyPacks.values()]
+  }
 }
 
-const stableManifestJson = (manifest: ContextSourceManifest) =>
+const stableManifestJson = (manifest: CounterpartyContextPackEventedManifest) =>
   JSON.stringify(manifest, undefined, 2)
 
 const getRepositoryHead = () => {
@@ -197,7 +323,7 @@ const formatDateShort = (value: string) =>
   })
 
 const appendManifestHistory = async (
-  manifest: ContextSourceManifest,
+  manifest: CounterpartyContextPackEventedManifest,
   reason: string
 ) => {
   const historyPath = getManifestHistoryPath()
@@ -225,6 +351,7 @@ const appendManifestHistory = async (
         reason,
         manifestHash,
         sourceCount: manifest.sources.length,
+        counterpartyPackCount: manifest.counterpartyPacks.length,
         previousEventHash
       })
     )
@@ -237,6 +364,7 @@ const appendManifestHistory = async (
     action: reason,
     reason,
     sourceCount: manifest.sources.length,
+    counterpartyPackCount: manifest.counterpartyPacks.length,
     manifestHash,
     eventHash,
     previousEventHash,
@@ -247,7 +375,7 @@ const appendManifestHistory = async (
 }
 
 const writeManifestArtifacts = async (
-  manifest: ContextSourceManifest,
+  manifest: CounterpartyContextPackEventedManifest,
   reason: string
 ) => {
   const manifestPath = getManifestJsonPath()
@@ -255,18 +383,40 @@ const writeManifestArtifacts = async (
   const now = new Date().toISOString()
 
   const activeScopes = Array.from(
-    new Set(manifest.sources.flatMap((source) => source.retrievalScopes))
+    new Set([
+      ...manifest.sources.flatMap((source) => source.retrievalScopes),
+      ...manifest.counterpartyPacks.flatMap((pack) => pack.retrievalScopes)
+    ])
   ).sort()
 
   const activeStatuses = Array.from(
     new Set(manifest.sources.map((source) => source.status))
   ).sort()
+  const packKinds = new Set(manifest.counterpartyPacks.map((pack) => pack.kind))
+
+  const packStatusLines = manifest.counterpartyPacks.flatMap((pack) => [
+    `### ${pack.title}`,
+    `- id: ${pack.id}`,
+    `- partner: ${pack.partnerName}`,
+    `- type: ${pack.kind}`,
+    `- source_id: ${pack.sourceId}`,
+    `- selected: ${pack.selected}`,
+    `- status: ${pack.status}`,
+    `- scopes: ${pack.retrievalScopes.join(', ') || 'none'}`,
+    `- owner: ${pack.ownerId}`,
+    `- created: ${formatDateShort(pack.createdAt)}`,
+    `- classification: ${pack.classification}`,
+    `- content_hash: ${pack.contentHash}`,
+    `- retention: ${pack.retention.maxAgeDays}d (manual_deletion_required)`
+  ])
 
   const markdown = [
     '# CoqPi Context Pack',
     `Generated: ${now}`,
     `Reason: ${reason}`,
     `Sources: ${manifest.sources.length}`,
+    `Counterparty packs: ${manifest.counterpartyPacks.length}`,
+    `Pack kinds: ${Array.from(packKinds).sort().join(', ') || 'none'}`,
     `Statuses: ${activeStatuses.join(', ') || 'none'}`,
     `Scopes: ${activeScopes.join(', ') || 'none'}`,
     `Repository: ${getRepositoryHead()}`,
@@ -285,6 +435,9 @@ const writeManifestArtifacts = async (
       `- content_hash: ${source.contentHash ?? 'pending'}`,
       `- retention: ${source.retention.maxAgeDays}d (manual_deletion_required)`
     ]),
+    '',
+    '## Counterparty context packs',
+    ...packStatusLines,
     ''
   ].join('\n')
 
@@ -317,7 +470,7 @@ const migrateLegacyManifestIfNeeded = async () => {
 
     if (sources.length > 0) {
       await writeManifestArtifacts(
-        { version: 1, sources },
+        { version: 1, sources, counterpartyPacks: [] },
         'migrated legacy manifest into ledger'
       )
     }
@@ -363,8 +516,35 @@ const validateDraft = (draft: ContextSourceDraft) => {
   }
 }
 
+const validateCounterpartyDraft = (draft: CounterpartyContextPackDraft) => {
+  const kind = draft?.kind
+  const sourceId = sanitizeText(draft.sourceId)
+  const partnerName = sanitizeText(draft.partnerName)
+  const title = sanitizeText(draft.title)
+  const summary = sanitizeText(draft.summary)
+
+  if (!isPackKind(kind) || !sourceId || !partnerName || !title || !summary) {
+    throw new Error(
+      'A counterparty pack requires kind, sourceId, partnerName, title and summary.'
+    )
+  }
+
+  return {
+    sourceId,
+    kind,
+    partnerName,
+    title,
+    summary,
+    context: sanitizeText(draft.context),
+    links: Array.isArray(draft.links)
+      ? draft.links.map(sanitizeText).filter(Boolean)
+      : [],
+    selected: draft.selected !== false
+  }
+}
+
 const persistAfterMutation = async (
-  manifest: ContextSourceManifest,
+  manifest: CounterpartyContextPackEventedManifest,
   reason: string
 ): Promise<ContextSourceManifestResult> => {
   await writeManifestArtifacts(manifest, reason)
@@ -372,6 +552,10 @@ const persistAfterMutation = async (
 }
 
 export const getContextSourceManifest = async (): Promise<ContextSourceManifestResult> => ({
+  manifest: await readManifest()
+})
+
+export const getCounterpartyContextPacks = async (): Promise<ContextSourceManifestResult> => ({
   manifest: await readManifest()
 })
 
@@ -418,6 +602,75 @@ export const addContextSource = async (
   return persistAfterMutation(nextManifest, 'add context source')
 }
 
+export const addCounterpartyContextPacks = async (
+  packs: CounterpartyContextPackDraft[]
+): Promise<ContextSourceManifestResult> => {
+  const list = Array.isArray(packs) ? packs : []
+  if (list.length === 0) {
+    throw new Error('At least one counterparty pack is required.')
+  }
+
+  const manifest = await readManifest()
+  const nextPacks: CounterpartyContextPack[] = [...
+    (manifest.counterpartyPacks || [])
+  ]
+  const seenKeys = new Set(
+    nextPacks.map((pack) => `${pack.sourceId}::${pack.kind}`)
+  )
+
+  for (const rawPack of list) {
+    const sanitized = validateCounterpartyDraft(rawPack)
+    const compositeKey = `${sanitized.sourceId}::${sanitized.kind}`
+
+    if (seenKeys.has(compositeKey)) {
+      continue
+    }
+
+    const id = randomUUID()
+    const createdAt = new Date().toISOString()
+    const pack: CounterpartyContextPack = {
+      id,
+      sourceId: sanitized.sourceId,
+      kind: sanitized.kind,
+      partnerName: sanitized.partnerName,
+      title: sanitized.title,
+      summary: sanitized.summary,
+      context: sanitized.context,
+      links: sanitized.links,
+      selected: sanitized.selected,
+      status: 'retrieval_ready',
+      createdAt,
+      ownerId: 'owner',
+      provenance: {
+        sourceId: `coqpi:finder:${id}`,
+        locatorSha256: locateSourceHash(`finder:${sanitized.sourceId}:${createdAt}`)
+      },
+      contentHash: createHash('sha256')
+        .update(canonicalPackText(sanitized))
+        .digest('hex'),
+      classification: 'private',
+      retention: retentionFor(createdAt),
+      retrievalScopes: finderRetrievalScopes,
+      promotion: 'explicit_audit_required'
+    }
+
+    await appendEvent({
+      version: 1,
+      type: 'counterparty_pack_imported',
+      pack
+    })
+
+    nextPacks.push(pack)
+    seenKeys.add(compositeKey)
+  }
+
+  const nextManifest = await readManifest()
+  return persistAfterMutation(
+    nextManifest,
+    'ingest counterparty context packs'
+  )
+}
+
 export const setContextSourceSelected = async (
   id: string,
   selected: boolean
@@ -446,6 +699,46 @@ export const removeContextSource = async (
   await appendEvent({ version: 1, type: 'source_removed', id })
   const nextManifest = await readManifest()
   return persistAfterMutation(nextManifest, `remove context source`)
+}
+
+export const setCounterpartyContextPackSelected = async (
+  id: string,
+  selected: boolean
+): Promise<ContextSourceManifestResult> => {
+  const manifest = await readManifest()
+  if (!manifest.counterpartyPacks.some((pack) => pack.id === id)) {
+    throw new Error('The counterparty pack no longer exists.')
+  }
+
+  await appendEvent({
+    version: 1,
+    type: 'counterparty_pack_selection_changed',
+    id,
+    selected
+  })
+  const nextManifest = await readManifest()
+  return persistAfterMutation(
+    nextManifest,
+    `set counterparty pack selected=${selected}`
+  )
+}
+
+export const removeCounterpartyContextPack = async (
+  id: string
+): Promise<ContextSourceManifestResult> => {
+  const manifest = await readManifest()
+  if (!manifest.counterpartyPacks.some((pack) => pack.id === id)) {
+    throw new Error('The counterparty pack no longer exists.')
+  }
+
+  await appendEvent({
+    version: 1,
+    type: 'counterparty_pack_removed',
+    id
+  })
+
+  const nextManifest = await readManifest()
+  return persistAfterMutation(nextManifest, 'remove counterparty context pack')
 }
 
 const captureReadableText = (source: ContextSource, bytes: Buffer) => {
@@ -512,6 +805,7 @@ export const getPersonalInterviewRetrieval = async (
   }
 
   const manifest = deriveManifest(events)
+  const terms = query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []
   const capturedTextById = new Map<string, string>()
   for (const event of events) {
     if (event.type === 'content_captured' && event.retrievalReady && event.capturedText) {
@@ -519,8 +813,28 @@ export const getPersonalInterviewRetrieval = async (
     }
   }
 
-  const terms = query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []
-  const matches = manifest.sources
+  const counterpartyMatches = manifest.counterpartyPacks
+    .filter(
+      (pack) =>
+        pack.selected &&
+        pack.status === 'retrieval_ready' &&
+        pack.retrievalScopes.includes('coqpi_interview_en_fr')
+    )
+    .map((pack) => {
+      const packText = `${pack.partnerName}: ${pack.title}. ${pack.summary}. ${pack.context}`
+      const score = terms.reduce(
+        (total, term) => total + (packText.toLowerCase().includes(term) ? 1 : 0),
+        0
+      )
+
+      return {
+        source: pack,
+        text: packText,
+        score
+      }
+    })
+
+  const sourceMatches = manifest.sources
     .filter(
       (source) =>
         source.selected &&
@@ -537,6 +851,9 @@ export const getPersonalInterviewRetrieval = async (
 
       return { source, text, score }
     })
+    .filter((match) => match.score > 0)
+
+  const matches = [...sourceMatches, ...counterpartyMatches]
     .filter((match) => match.score > 0)
     .sort((left, right) => right.score - left.score)
     .slice(0, 3)

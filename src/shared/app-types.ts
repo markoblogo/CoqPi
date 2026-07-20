@@ -152,9 +152,69 @@ export interface ContextSource {
   promotion: 'explicit_audit_required'
 }
 
+export type CounterpartyContextPackKind =
+  | 'job'
+  | 'partner'
+  | 'investor'
+  | 'accelerator'
+  | 'other'
+
+export interface CounterpartyContextPackDraft {
+  sourceId: string
+  kind: CounterpartyContextPackKind
+  partnerName: string
+  title: string
+  summary: string
+  context?: string
+  links?: string[]
+  selected?: boolean
+}
+
+export interface CounterpartyContextPack {
+  id: string
+  sourceId: string
+  kind: CounterpartyContextPackKind
+  partnerName: string
+  title: string
+  summary: string
+  context: string
+  links: string[]
+  selected: boolean
+  status: 'pending_classification' | 'retrieval_ready'
+  createdAt: string
+  ownerId: 'owner'
+  provenance: {
+    sourceId: string
+    locatorSha256: string
+  }
+  contentHash: string
+  classification: 'private'
+  retention: {
+    mode: 'manual_deletion_required'
+    maxAgeDays: number
+    expiresAt: string
+  }
+  retrievalScopes: string[]
+  promotion: 'explicit_audit_required'
+}
+
+export interface CounterpartyContextPackManifest {
+  version: 1
+  packs: CounterpartyContextPack[]
+}
+
+export interface CounterpartyContextPackManifestResult {
+  manifest: {
+    version: 1
+    sources: ContextSource[]
+    counterpartyPacks: CounterpartyContextPack[]
+  }
+}
+
 export interface ContextSourceManifest {
   version: 1
   sources: ContextSource[]
+  counterpartyPacks?: CounterpartyContextPack[]
 }
 
 export interface ContextSourceManifestResult {

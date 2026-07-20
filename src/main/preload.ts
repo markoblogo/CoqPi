@@ -3,6 +3,7 @@ import type {
   AppUserSettings,
   AssistantAnalysisRequest,
   ContextSourceDraft,
+  CounterpartyContextPackDraft,
   RealtimeTranscriptionStartRequest,
   SessionContext
 } from '../shared/app-types'
@@ -31,6 +32,14 @@ contextBridge.exposeInMainWorld('coqpi', {
     remove: (id: string) => ipcRenderer.invoke('coqpi:context-sources:remove', id),
     pickFiles: () => ipcRenderer.invoke('coqpi:context-sources:pick-files'),
     pickFolder: () => ipcRenderer.invoke('coqpi:context-sources:pick-folder')
+  },
+  contextPacks: {
+    get: () => ipcRenderer.invoke('coqpi:context-packs:get'),
+    add: (packs: CounterpartyContextPackDraft[]) =>
+      ipcRenderer.invoke('coqpi:context-packs:add', packs),
+    setSelected: (id: string, selected: boolean) =>
+      ipcRenderer.invoke('coqpi:context-packs:set-selected', id, selected),
+    remove: (id: string) => ipcRenderer.invoke('coqpi:context-packs:remove', id)
   },
   secrets: {
     getOpenAIKeyStatus: () =>
