@@ -47,7 +47,7 @@ const withElectronMock = async (run) => {
   }
 }
 
-const makeRequest = () => ({
+const makeRequest = (overrides = {}) => ({
   transcriptText:
     'I am interested in this role and would like to discuss the next steps.',
   callLanguage: 'en',
@@ -55,7 +55,8 @@ const makeRequest = () => ({
   mode: 'full',
   includeProfileContext: false,
   recentWindowLabel: '30s',
-  costMode: 'balanced'
+  costMode: 'balanced',
+  ...overrides
 })
 
 const withPatchedModules = async (patches, run) => {
@@ -85,7 +86,12 @@ const makeOllamaResponse = (payload) => ({
   json: async () => payload
 })
 
-const withStubbedProviderRoute = ({ profileCount, fetchHandler }) =>
+const withStubbedProviderRoute = ({
+  profileCount,
+  fetchHandler,
+  requestOverrides,
+  onRetrievalCall
+}) =>
   withElectronMock(async (services) => {
     process.env.COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS = '120'
     process.env.COQPI_ASSISTANT_REQUEST_BUDGET_MS = '150'
@@ -108,7 +114,14 @@ const withStubbedProviderRoute = ({ profileCount, fetchHandler }) =>
           () => profiles
         ],
         [services.profileService, 'getProfileContext', async () => ({ content: '' })],
-        [services.contextSourceService, 'getPersonalInterviewRetrieval', async () => ''],
+        [
+          services.contextSourceService,
+          'getPersonalInterviewRetrieval',
+          async (_transcriptText, _answerLanguage, retrievalKinds) => {
+            onRetrievalCall?.(retrievalKinds)
+            return ''
+          }
+        ],
         [
           services.secretStorageService,
           'resolveOpenAIApiKey',
@@ -122,10 +135,42 @@ const withStubbedProviderRoute = ({ profileCount, fetchHandler }) =>
       ],
       () => {
         global.fetch = fetchHandler
-        return services.assistantService.analyzeRecentTranscript(makeRequest())
+        return services.assistantService.analyzeRecentTranscript(
+          makeRequest(requestOverrides)
+        )
       }
     )
   })
+
+test('analyzeRecentTranscript passes retrieval kinds to context source service', async () => {
+  const observed = { retrievalKinds: undefined }
+
+  await withStubbedProviderRoute({
+    profileCount: 1,
+    requestOverrides: {
+      retrievalKinds: ['job', 'partner']
+    },
+    onRetrievalCall: (retrievalKinds) => {
+      observed.retrievalKinds = retrievalKinds
+    },
+    fetchHandler: async () =>
+      makeOllamaResponse({
+        message: {
+          content: JSON.stringify({
+            meaningRu: 'кратко',
+            detectedQuestion: 'What experience do you have?',
+            intent: 'understand fit',
+            risk: 'low',
+            suggestedAnswers: [],
+            keywordsToRemember: ['fit', 'role'],
+            openingPhrase: 'Great.'
+          })
+        }
+      })
+  })
+
+  assert.deepEqual(observed.retrievalKinds?.sort(), ['job', 'partner'])
+})
 
 test('analyzeRecentTranscript returns structured result on valid Ollama JSON', async () => {
   const response = {

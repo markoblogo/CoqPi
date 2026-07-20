@@ -322,6 +322,7 @@ export interface AssistantAnalysisRequest {
   mode: AssistantAnalysisMode
   includeProfileContext: boolean
   sessionContext?: SessionContext
+  retrievalKinds?: CounterpartyContextPackKind[]
   recentWindowLabel: AssistantRecentWindowLabel
   costMode: AssistantCostMode
 }

@@ -132,6 +132,30 @@ test('ingests selected counterparty packs and uses them in EN/FR retrieval', asy
     )
     assert.match(retrieval, /AI product strategy and team leadership/i)
 
+    const jobOnly = await service.getPersonalInterviewRetrieval(
+      'Can we discuss AI product strategy and team leadership for this position?',
+      'en',
+      ['job']
+    )
+    assert.match(jobOnly, /Senior Product Lead Role/)
+    assert.doesNotMatch(jobOnly, /Seed House/i)
+
+    const investorOnly = await service.getPersonalInterviewRetrieval(
+      'Can we discuss investor funding models and early support?',
+      'en',
+      ['investor']
+    )
+    assert.match(investorOnly, /Seed House/)
+    assert.doesNotMatch(investorOnly, /Senior Product Lead Role/)
+
+    const bothKinds = await service.getPersonalInterviewRetrieval(
+      'Can we discuss AI product strategy and investor funding plans?',
+      'en',
+      ['job', 'investor']
+    )
+    assert.match(bothKinds, /Senior Product Lead Role/)
+    assert.match(bothKinds, /Seed House/)
+
     const unselected = await service.setCounterpartyContextPackSelected(packs[1].id, false)
     assert.equal(unselected.manifest.counterpartyPacks.find((pack) => pack.id === packs[1].id)?.selected, false)
 

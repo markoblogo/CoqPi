@@ -44,9 +44,12 @@ declare global {
         pickFiles: () => Promise<string[]>
         pickFolder: () => Promise<string | null>
       }
-  contextPacks: {
+      contextPacks: {
         get: () => Promise<ContextSourceManifestResult>
         add: (packs: CounterpartyContextPackDraft[]) => Promise<ContextSourceManifestResult>
+        ingestFinderPayloadBatch: (
+          candidatePacks: unknown[]
+        ) => Promise<ContextSourceManifestResult>
         ingestFinderPayload: (payloadText: string) => Promise<ContextSourceManifestResult>
         parseFinderPayload: (payloadText: string) => Promise<CounterpartyFinderPayloadPreviewResult>
         setSelected: (id: string, selected: boolean) => Promise<ContextSourceManifestResult>

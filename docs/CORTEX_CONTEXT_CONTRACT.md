@@ -91,6 +91,22 @@ Finder and other local adapters may emit compact context packs for a specific op
 
 Each packet is explicit, scoped, and selected-at-ingest by default. Ingestion stores only compact text fields (partner, role/title, summary/context), content hash, sourceId, provenance digest, scope (`coqpi_interview_en_fr`) and retention metadata. No raw transcripts or binary file contents are stored.
 
+Finder/search adapters may pass compact packets in batch using the same field contract as finder JSON objects:
+
+- `kind`: `job | partner | investor | accelerator | other`
+- `sourceId`: stable external ID or key
+- `partnerName`, `title`, `summary`: required
+- `context`: optional compact notes
+- `links` or `linksText`: optional array or newline-separated links
+- `selected`: optional boolean (default true)
+
+Batch ingest is exposed as:
+
+- `context-packs:ingest-finder-batch` (IPC) with payload: `unknown[]`
+- `ingestCounterpartyFinderPayloadDrafts` on service layer
+
+On ingest, malformed packets are reported in `counterpartyPayloadIngestSummary.errors` and do not fail the whole batch.
+
 Selected counterparty packs participate in retrieval for EN/FR interview/self-presentation analysis. If no suitable packet is found, the assistant is instructed to ask a concise clarification question instead of inventing counterparty-specific facts.
 
 Folders, manual paths, links, binary files, PDFs, office documents, external URL fetching, and recursive scans remain pending. They cannot enter retrieval merely because they were recorded as ingress.

@@ -415,6 +415,88 @@ const getSessionContextLabel = (context: SessionContext) => {
   return company || role || 'No session'
 }
 
+const getSessionContextRetrievalKinds = (
+  context: SessionContext
+): CounterpartyContextPackKind[] | undefined => {
+  const sessionText = [
+    context.company,
+    context.role,
+    context.context,
+    context.goal,
+    context.notes
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  const isJobContext = [
+    'interview',
+    'job',
+    'vacancy',
+    'hiring',
+    'senior',
+    'pm',
+    'product manager',
+    'head hunter',
+    'recruit'
+  ].some((token) => sessionText.includes(token))
+
+  const isPartnerContext = [
+    'partner',
+    'collaboration',
+    'cooperation',
+    'client',
+    'vendor',
+    'provider',
+    'supplier',
+    'b2b',
+    'pilot'
+  ].some((token) => sessionText.includes(token))
+
+  const isInvestorContext = [
+    'investor',
+    'seed',
+    'angel',
+    'venture',
+    'capital',
+    'fund',
+    'accelerator',
+    'grant',
+    'funding'
+  ].some((token) => sessionText.includes(token))
+
+  const isAcceleratorContext = [
+    'accelerator',
+    'incubator',
+    'venture studio',
+    'incubation',
+    'program'
+  ].some((token) => sessionText.includes(token))
+
+  const kinds: CounterpartyContextPackKind[] = []
+
+  if (isPartnerContext) {
+    kinds.push('partner')
+  }
+
+  if (isInvestorContext) {
+    kinds.push('investor')
+  }
+
+  if (isAcceleratorContext) {
+    kinds.push('accelerator')
+  }
+
+  if (isJobContext) {
+    kinds.push('job')
+  }
+
+  if (kinds.length === 0) {
+    return undefined
+  }
+
+  return Array.from(new Set(kinds))
+}
+
 export const App = () => {
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
   const noEventTimeoutRef = useRef<number | null>(null)
@@ -481,6 +563,16 @@ export const App = () => {
     string[]
   >([])
   const [isSavingCounterpartyPacks, setIsSavingCounterpartyPacks] = useState(false)
+  const finderPayloadCandidatesCount = counterpartyFinderPayloadItems.length
+  const finderPayloadCandidateCountNonDuplicate = counterpartyFinderPayloadItems.filter(
+    (candidate) => !candidate.duplicate
+  ).length
+  const selectedFinderCandidatesCount = counterpartyFinderPayloadItems.filter(
+    (candidate) => candidate.selected && !candidate.duplicate
+  ).length
+  const areAllFinderCandidatesSelected =
+    finderPayloadCandidateCountNonDuplicate > 0 &&
+    selectedFinderCandidatesCount === finderPayloadCandidateCountNonDuplicate
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [contextSourceDraft, setContextSourceDraft] = useState(
     emptyContextSourceDraft
@@ -1324,11 +1416,23 @@ export const App = () => {
       setCounterpartyFinderPayloadItems(nextItems)
 
       const notices = [] as string[]
+      const nonDuplicateCount = nextItems.filter((item) => !item.duplicate).length
+      const hasItems = nextItems.length > 0
+      const hasValid = preview.validCount > 0
+      const hasOnlyDuplicates =
+        hasItems && preview.validCount > 0 && nonDuplicateCount === 0
 
       if (preview.requestedCount > 0) {
         notices.push(
           `${preview.requestedCount} total entries parsed. ${preview.validCount} valid.`
         )
+      }
+
+      if (preview.errors.length > 0) {
+        const failures = mapFinderErrorsToMessages(preview.errors)
+        setCounterpartyPackImportErrors(failures)
+      } else {
+        setCounterpartyPackImportErrors([])
       }
 
       if (preview.duplicateCount > 0) {
@@ -1340,9 +1444,23 @@ export const App = () => {
       }
 
       if (preview.errors.length > 0) {
-        const failures = mapFinderErrorsToMessages(preview.errors)
-        setCounterpartyPackImportErrors(failures)
         notices.push(`Invalid entries: ${preview.errors.length}`)
+      }
+
+      if (hasOnlyDuplicates) {
+        notices.push(
+          'No new non-duplicate candidates found; everything is already imported.'
+        )
+      }
+
+      if (hasItems && !hasValid) {
+        notices.push(
+          'No valid candidates in this payload. Check JSON shape and required fields.'
+        )
+      }
+
+      if (preview.errors.length === 0 && preview.duplicateCount === 0) {
+        notices.push('No issues found in preview.')
       }
 
       setCounterpartyPackDraftNotice(
@@ -1373,6 +1491,36 @@ export const App = () => {
       )
     )
   }
+
+  const toggleSelectAllFinderCandidates = () => {
+    if (isSavingCounterpartyPacks) {
+      return
+    }
+
+    if (finderPayloadCandidateCountNonDuplicate === 0) {
+      return
+    }
+
+    setCounterpartyFinderPayloadItems((current) =>
+      current.map((item) =>
+        item.duplicate
+          ? { ...item, selected: false }
+          : { ...item, selected: !areAllFinderCandidatesSelected }
+      )
+    )
+  }
+
+  const clearFinderPayloadInput = () => {
+    setCounterpartyPackFinderPayload('')
+    setCounterpartyFinderPayloadItems([])
+    setCounterpartyFinderPayloadPreview(null)
+    setCounterpartyPackDraftError(null)
+    setCounterpartyPackDraftNotice(null)
+    setCounterpartyPackImportErrors([])
+  }
+
+  const canImportFinderCandidates =
+    !isSavingCounterpartyPacks && selectedFinderCandidatesCount > 0
 
   const importSelectedFinderCandidates = async () => {
     const selected = counterpartyFinderPayloadItems.filter(
@@ -2146,6 +2294,7 @@ export const App = () => {
       mode: effectiveMode,
       includeProfileContext,
       sessionContext,
+      retrievalKinds: getSessionContextRetrievalKinds(sessionContext),
       recentWindowLabel,
       costMode
     }
@@ -3757,6 +3906,38 @@ export const App = () => {
                 </div>
               ) : null}
               <div className="compact-form-grid context-source-form">
+                {counterpartyFinderPayloadItems.length > 0 ? (
+                  <div className="settings-row settings-row-inline">
+                    <div className="settings-row-label">
+                      Preview status:
+                      {' '}
+                      {finderPayloadCandidateCountNonDuplicate} of
+                      {' '}
+                      {finderPayloadCandidatesCount}
+                      {' '}
+                      candidates are currently selectable. selected:
+                      {' '}
+                      {selectedFinderCandidatesCount}
+                    </div>
+                    <div className="button-row settings-actions">
+                      <button
+                        className="button-small"
+                        disabled={
+                          isSavingCounterpartyPacks ||
+                          finderPayloadCandidateCountNonDuplicate === 0
+                        }
+                        onClick={() => {
+                          toggleSelectAllFinderCandidates()
+                        }}
+                        type="button"
+                      >
+                        {areAllFinderCandidatesSelected
+                          ? 'Deselect all'
+                          : 'Select all'}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <label className="settings-row settings-row-textarea">
                   <span className="settings-row-label">Finder payload (paste JSON)</span>
                   <textarea
@@ -3783,11 +3964,7 @@ export const App = () => {
                     Preview Finder JSON
                   </button>
                   <button
-                    disabled={
-                      isSavingCounterpartyPacks ||
-                      counterpartyFinderPayloadItems.filter((candidate) => candidate.selected)
-                        .length === 0
-                    }
+                    disabled={!canImportFinderCandidates}
                     onClick={() => void importSelectedFinderCandidates()}
                     type="button"
                   >
@@ -3795,12 +3972,7 @@ export const App = () => {
                   </button>
                   <button
                     onClick={() => {
-                      setCounterpartyPackFinderPayload('')
-                      setCounterpartyFinderPayloadItems([])
-                      setCounterpartyFinderPayloadPreview(null)
-                      setCounterpartyPackDraftError(null)
-                      setCounterpartyPackDraftNotice(null)
-                      setCounterpartyPackImportErrors([])
+                      clearFinderPayloadInput()
                     }}
                     type="button"
                   >

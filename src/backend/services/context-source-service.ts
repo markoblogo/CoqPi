@@ -15,6 +15,7 @@ import type {
   CounterpartyPayloadIngestSummary
 } from '../../shared/app-types'
 import {
+  normalizeFinderCounterpartyDraft,
   parseFinderCounterpartyPayloadTextPermissive
 } from '../../shared/finder-ingest-contract'
 import { getAppInfo } from './app-state'
@@ -523,29 +524,88 @@ const validateDraft = (draft: ContextSourceDraft) => {
 }
 
 const validateCounterpartyDraft = (draft: CounterpartyContextPackDraft) => {
-  const kind = draft?.kind
-  const sourceId = sanitizeText(draft.sourceId)
-  const partnerName = sanitizeText(draft.partnerName)
-  const title = sanitizeText(draft.title)
-  const summary = sanitizeText(draft.summary)
+  const normalized = normalizeFinderCounterpartyDraft(draft as unknown as Record<string, unknown>)
 
-  if (!isPackKind(kind) || !sourceId || !partnerName || !title || !summary) {
+  if (!isPackKind(normalized.kind)) {
     throw new Error(
       'A counterparty pack requires kind, sourceId, partnerName, title and summary.'
     )
   }
 
   return {
-    sourceId,
-    kind,
-    partnerName,
-    title,
-    summary,
-    context: sanitizeText(draft.context),
-    links: Array.isArray(draft.links)
-      ? draft.links.map(sanitizeText).filter(Boolean)
-      : [],
-    selected: draft.selected !== false
+    sourceId: normalized.sourceId,
+    kind: normalized.kind,
+    partnerName: normalized.partnerName,
+    title: normalized.title,
+    summary: normalized.summary,
+    context: normalized.context,
+    links: normalized.links ?? [],
+    selected: normalized.selected !== false
+  }
+}
+
+const parseFinderCounterpartyPayloadDrafts = (drafts: unknown[]) => {
+  if (!Array.isArray(drafts)) {
+    throw new Error('Finder payload must be an array for batch counterparty ingest.')
+  }
+
+  let requestedCount = 0
+  const safeDrafts: CounterpartyContextPackDraft[] = []
+  const errors: CounterpartyPayloadIngestSummary['errors'] = []
+
+  const asArray = drafts
+
+  requestedCount = asArray.length
+
+  for (let index = 0; index < asArray.length; index += 1) {
+    try {
+      safeDrafts.push(
+        validateCounterpartyDraft(
+          asArray[index] as CounterpartyContextPackDraft
+        )
+      )
+    } catch (error) {
+      const reason =
+        error instanceof Error
+          ? error.message
+          : 'Malformed finder candidate payload.'
+
+      errors.push({
+        index,
+        reason: `Invalid finder counterparty payload item at index ${index}: ${reason}`
+      })
+    }
+  }
+
+  return {
+    requestedCount,
+    drafts: safeDrafts,
+    errors
+  }
+}
+
+const ingestCounterpartyFinderDraftsWithSummary = async (
+  payload: { requestedCount: number; drafts: CounterpartyContextPackDraft[]; errors: CounterpartyPayloadIngestSummary['errors'] }
+) => {
+  const beforeManifest = await readManifest()
+  const beforeCount = beforeManifest.counterpartyPacks?.length ?? 0
+  const manifestScoped = await addCounterpartyContextPacks(
+    payload.drafts,
+    { requireAtLeastOne: false }
+  )
+  const afterCount = manifestScoped.manifest.counterpartyPacks?.length ?? 0
+  const ingestedCount = Math.max(afterCount - beforeCount, 0)
+
+  const summary: CounterpartyPayloadIngestSummary = {
+    requestedCount: payload.requestedCount,
+    ingestedCount,
+    skippedCount: Math.max(payload.requestedCount - ingestedCount, 0),
+    errors: payload.errors
+  }
+
+  return {
+    manifest: manifestScoped.manifest,
+    counterpartyPayloadIngestSummary: summary
   }
 }
 
@@ -647,7 +707,7 @@ export const addCounterpartyContextPacks = async (
       partnerName: sanitized.partnerName,
       title: sanitized.title,
       summary: sanitized.summary,
-      context: sanitized.context,
+      context: sanitized.context ?? '',
       links: sanitized.links,
       selected: sanitized.selected,
       status: 'retrieval_ready',
@@ -687,28 +747,15 @@ export const ingestCounterpartyFinderPayload = async (
   payloadText: string
 ): Promise<ContextSourceManifestResult> => {
   const parsed = parseFinderCounterpartyPayloadTextPermissive(payloadText)
+  return ingestCounterpartyFinderDraftsWithSummary(parsed)
+}
 
-  const requestedCount = parsed.requestedCount
-  const beforeManifest = await readManifest()
-  const beforeCount = beforeManifest.counterpartyPacks?.length ?? 0
+export const ingestCounterpartyFinderPayloadDrafts = async (
+  payloadDrafts: unknown[]
+): Promise<ContextSourceManifestResult> => {
+  const parsed = parseFinderCounterpartyPayloadDrafts(payloadDrafts)
 
-  const result = await addCounterpartyContextPacks(parsed.drafts, {
-    requireAtLeastOne: false
-  })
-
-  const afterCount = result.manifest.counterpartyPacks?.length ?? 0
-  const ingestedCount = Math.max(afterCount - beforeCount, 0)
-  const summary: CounterpartyPayloadIngestSummary = {
-    requestedCount,
-    ingestedCount,
-    skippedCount: Math.max(requestedCount - ingestedCount, 0),
-    errors: parsed.errors
-  }
-
-  return {
-    manifest: result.manifest,
-    counterpartyPayloadIngestSummary: summary
-  }
+  return ingestCounterpartyFinderDraftsWithSummary(parsed)
 }
 
 export const previewCounterpartyFinderPayload = async (
@@ -881,7 +928,8 @@ export const captureAndClassifyContextSource = async (
 
 export const getPersonalInterviewRetrieval = async (
   query: string,
-  answerLanguage: 'en' | 'fr'
+  answerLanguage: 'en' | 'fr',
+  retrievalKinds?: CounterpartyContextPack['kind'][]
 ) => {
   if (!['en', 'fr'].includes(answerLanguage) || !query.trim()) {
     return ''
@@ -909,7 +957,10 @@ export const getPersonalInterviewRetrieval = async (
       (pack) =>
         pack.selected &&
         pack.status === 'retrieval_ready' &&
-        pack.retrievalScopes.includes('coqpi_interview_en_fr')
+        pack.retrievalScopes.includes('coqpi_interview_en_fr') &&
+        (!Array.isArray(retrievalKinds) || retrievalKinds.length === 0
+          ? true
+          : retrievalKinds.includes(pack.kind))
     )
     .map((pack) => {
       const packText = `${pack.partnerName}: ${pack.title}. ${pack.summary}. ${pack.context}`
