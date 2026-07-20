@@ -51,6 +51,10 @@ import {
   getRecentTranscriptText
 } from '@shared/transcript-state'
 import {
+  parseCounterpartyPackJsonPayload,
+  normalizeLinksText
+} from '@shared/counterparty-pack-import'
+import {
   AudioLevelMonitor,
   defaultAudioLevelReading,
   getStoredSelectedAudioInputId,
@@ -452,6 +456,12 @@ export const App = () => {
   const [counterpartyPackDraft, setCounterpartyPackDraft] = useState(
     emptyCounterpartyPackDraft
   )
+  const [counterpartyPackFinderPayload, setCounterpartyPackFinderPayload] = useState(
+    ''
+  )
+  const [finderCandidatePacks, setFinderCandidatePacks] = useState<
+    CounterpartyPackFormDraft[]
+  >([])
   const [counterpartyPackDraftingId, setCounterpartyPackDraftingId] = useState<
     string | null
   >(null)
@@ -592,6 +602,8 @@ export const App = () => {
         setContextSourcesError(null)
         setCounterpartyPackDraftError(null)
         setCounterpartyPackDraftNotice(null)
+        setFinderCandidatePacks([])
+        setCounterpartyPackFinderPayload('')
         setKeyStatus(keyState)
         setSettingsForm(settingsPayload.settings)
         setSettingsMeta(settingsPayload.meta)
@@ -613,6 +625,8 @@ export const App = () => {
         setCounterpartyPacks([])
         setCounterpartyPackDraft(emptyCounterpartyPackDraft)
         setCounterpartyPackDraftingId(null)
+        setCounterpartyPackFinderPayload('')
+        setFinderCandidatePacks([])
         setProfileError(
           error instanceof Error
             ? error.message
@@ -1180,11 +1194,6 @@ export const App = () => {
   const normalizeCounterpartyPackDraft = (
     draft: CounterpartyPackFormDraft
   ): CounterpartyContextPackDraft => {
-    const links = draft.linksText
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-
     const next: CounterpartyContextPackDraft = {
       sourceId: draft.sourceId.trim(),
       kind: draft.kind,
@@ -1198,6 +1207,8 @@ export const App = () => {
       next.context = draft.context.trim()
     }
 
+    const links = normalizeLinksText(draft.linksText)
+
     if (links.length > 0) {
       next.links = links
     }
@@ -1205,22 +1216,25 @@ export const App = () => {
     return next
   }
 
+  const convertPackDraftForForm = (pack: CounterpartyContextPack): CounterpartyPackFormDraft => ({
+    sourceId: pack.sourceId,
+    kind: pack.kind,
+    partnerName: pack.partnerName,
+    title: pack.title,
+    summary: pack.summary,
+    context: pack.context,
+    linksText: pack.links.join('\n'),
+    selected: pack.selected
+  })
+
   const resetCounterpartyPackDraft = () => {
     setCounterpartyPackDraft(emptyCounterpartyPackDraft)
     setCounterpartyPackDraftingId(null)
+    setFinderCandidatePacks([])
   }
 
   const editCounterpartyPack = (pack: CounterpartyContextPack) => {
-    setCounterpartyPackDraft({
-      sourceId: pack.sourceId,
-      kind: pack.kind,
-      partnerName: pack.partnerName,
-      title: pack.title,
-      summary: pack.summary,
-      context: pack.context,
-      linksText: pack.links.join('\n'),
-      selected: pack.selected
-    })
+    setCounterpartyPackDraft(convertPackDraftForForm(pack))
     setCounterpartyPackDraftingId(pack.id)
     setCounterpartyPackDraftNotice('Editing selected counterparty pack.')
   }
@@ -1262,6 +1276,121 @@ export const App = () => {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
     } finally {
       contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
+    }
+  }
+
+  const importCounterpartyPayload = async (
+    payloadText = counterpartyPackFinderPayload
+  ) => {
+    if (!payloadText.trim() || contextSourceMutationRef.current) {
+      return
+    }
+
+    setIsSavingCounterpartyPacks(true)
+    setCounterpartyPackDraftError(null)
+    setCounterpartyPackDraftNotice(null)
+    setFinderCandidatePacks([])
+
+    try {
+      const payload = parseCounterpartyPackJsonPayload(payloadText)
+      const parsed = payload.map((pack) => ({
+        ...pack,
+        linksText: (pack.links ?? []).join('\n')
+      }))
+
+      if (parsed.length === 0) {
+        setCounterpartyPackDraftError('No counterparty pack found in pasted payload.')
+        return
+      }
+
+      if (parsed.length === 1) {
+        setCounterpartyPackDraft(parsed[0])
+        setCounterpartyPackDraftNotice(
+          'Single payload parsed. You can edit and save, or import directly.'
+        )
+        return
+      }
+
+      contextSourceMutationRef.current = true
+      const manifest = await window.coqpi.contextPacks.add(payload)
+      applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
+      setCounterpartyPackDraftNotice(
+        `Imported ${parsed.length} counterparty packs from Finder payload.`
+      )
+      setCounterpartyPackFinderPayload('')
+      setFinderCandidatePacks([])
+      contextSourceMutationRef.current = false
+    } catch (error) {
+      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
+    }
+  }
+
+  const parseFinderCandidates = () => {
+    if (!counterpartyPackFinderPayload.trim()) {
+      setFinderCandidatePacks([])
+      setCounterpartyPackDraftNotice(null)
+      return
+    }
+
+    try {
+      const payload = parseCounterpartyPackJsonPayload(counterpartyPackFinderPayload)
+      const parsed = payload.map((pack) => ({
+        ...pack,
+        linksText: (pack.links ?? []).join('\n')
+      }))
+
+      setCounterpartyPackDraftError(null)
+      if (parsed.length === 0) {
+        setCounterpartyPackDraftError('No counterparty pack found in pasted payload.')
+        setFinderCandidatePacks([])
+        return
+      }
+
+      setFinderCandidatePacks(parsed)
+      if (parsed.length === 1) {
+        setCounterpartyPackDraft(parsed[0])
+        setCounterpartyPackDraftingId(null)
+        setCounterpartyPackDraftNotice('Single payload parsed and loaded for quick edit.')
+      } else {
+        setCounterpartyPackDraftNotice(
+          `Parsed ${parsed.length} candidates from payload. Load one or import all.`
+        )
+      }
+    } catch (error) {
+      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+      setFinderCandidatePacks([])
+    }
+  }
+
+  const importFinderCandidates = async () => {
+    if (finderCandidatePacks.length === 0) {
+      await importCounterpartyPayload()
+      return
+    }
+
+    const candidates: CounterpartyContextPackDraft[] = finderCandidatePacks.map(
+      (draft) => normalizeCounterpartyPackDraft(draft)
+    )
+
+    setIsSavingCounterpartyPacks(true)
+    setCounterpartyPackDraftError(null)
+    setCounterpartyPackDraftNotice(null)
+
+    try {
+      const payload = await window.coqpi.contextPacks.add(candidates)
+      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+      setCounterpartyPackFinderPayload('')
+      setFinderCandidatePacks([])
+      setCounterpartyPackDraftNotice(
+        `Imported ${candidates.length} counterparty packs from parsed candidates.`
+      )
+    } catch (error) {
+      setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+    } finally {
       setIsSavingCounterpartyPacks(false)
     }
   }
@@ -3532,6 +3661,91 @@ export const App = () => {
                   ) : null}
                 </div>
               )}
+              <div className="compact-form-grid context-source-form">
+                <label className="settings-row settings-row-textarea">
+                  <span className="settings-row-label">Finder payload (paste JSON)</span>
+                  <textarea
+                    className="prepare-textarea"
+                    onChange={(event) => {
+                      setCounterpartyPackFinderPayload(event.target.value)
+                      setFinderCandidatePacks([])
+                      setCounterpartyPackDraftError(null)
+                      setCounterpartyPackDraftNotice(null)
+                    }}
+                    placeholder='{"kind":"job","sourceId":"finder:job:uuid","partnerName":"Acme","title":"Senior PM","summary":"...","linksText":"https://...\\nhttps://..."}'
+                    rows={3}
+                    value={counterpartyPackFinderPayload}
+                  />
+                </label>
+                <div className="button-row settings-actions">
+                  <button
+                    disabled={isSavingCounterpartyPacks || !counterpartyPackFinderPayload.trim()}
+                    onClick={() => parseFinderCandidates()}
+                    type="button"
+                  >
+                    Parse Finder JSON
+                  </button>
+                  <button
+                    disabled={
+                      isSavingCounterpartyPacks ||
+                      (!counterpartyPackFinderPayload.trim() &&
+                        finderCandidatePacks.length === 0)
+                    }
+                    onClick={() => void importFinderCandidates()}
+                    type="button"
+                  >
+                    Import parsed candidates
+                  </button>
+                  <button
+                    onClick={() => {
+                      setCounterpartyPackFinderPayload('')
+                      setFinderCandidatePacks([])
+                      setCounterpartyPackDraftError(null)
+                      setCounterpartyPackDraftNotice(null)
+                    }}
+                    type="button"
+                  >
+                    Clear finder input
+                  </button>
+                </div>
+              </div>
+              {finderCandidatePacks.length > 0 ? (
+                <div className="context-source-list" aria-live="polite">
+                  {finderCandidatePacks.length === 1 ? (
+                    <div className="context-source-empty">
+                      One candidate parsed. Edit or save it in the form above.
+                    </div>
+                  ) : (
+                    finderCandidatePacks.map((candidate, index) => (
+                      <div className="context-source-item" key={`${candidate.sourceId}-${index}`}>
+                        <div className="context-source-details">
+                          <strong>{candidate.partnerName}</strong>
+                          <span>
+                            {candidate.kind} · {candidate.title}
+                          </span>
+                          <code>{candidate.sourceId}</code>
+                        </div>
+                        <div className="context-source-actions">
+                          <button
+                            disabled={isSavingCounterpartyPacks}
+                            onClick={() => {
+                              setCounterpartyPackDraft(candidate)
+                              setCounterpartyPackDraftingId(null)
+                              setCounterpartyPackDraftNotice(
+                                'Candidate loaded for quick edit.'
+                              )
+                            }}
+                            type="button"
+                          >
+                            Load
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : null}
+
               <div className="compact-form-grid context-source-form">
                 <label className="settings-row">
                   <span className="settings-row-label">Kind</span>
