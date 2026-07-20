@@ -6,7 +6,8 @@ const path = require('node:path')
 const test = require('node:test')
 
 const {
-  dumpManifestSnapshot
+  dumpManifestSnapshot,
+  validateManifest
 } = require('../scripts/dump-manifest.cjs')
 
 const stableJson = (value) => JSON.stringify(value, undefined, 2)
@@ -113,6 +114,117 @@ test('dumps manifest snapshot with stable hash and optional signature', async ()
       process.env.COQPI_CONTEXT_PACK_SIGNING_KEY = previousKey
     }
 
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('validates manifest and history consistency and detects broken chain', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-manifest-validate-'))
+  const manifestPath = path.join(directory, 'manifest.json')
+  const historyPath = path.join(directory, 'coqpi-context-pack.history.jsonl')
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = directory
+
+  const manifest = {
+    version: 1,
+    sources: [
+      {
+        id: 'id2',
+        kind: 'file',
+        location: '/tmp/notes.md',
+        label: 'notes',
+        selected: false,
+        status: 'retrieval_ready',
+        createdAt: '2026-07-20T00:00:00.000Z',
+        ownerId: 'owner',
+        provenance: {
+          sourceId: 'coqpi:ingress:id2',
+          locatorSha256:
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        },
+        contentHash: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        classification: 'private',
+        retention: {
+          mode: 'manual_deletion_required',
+          maxAgeDays: 30,
+          expiresAt: '2026-08-19T00:00:00.000Z'
+        },
+        retrievalScopes: ['coqpi_interview_en_fr'],
+        promotion: 'explicit_audit_required'
+      }
+    ]
+  }
+
+  const historyA = {
+    version: 1,
+    timestamp: '2026-07-20T00:00:00.000Z',
+    sourceVersion: 1,
+    action: 'add context source',
+    reason: 'unit test',
+    manifestHash: 'aaaa',
+    eventHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    previousEventHash: null,
+    sourceCount: 1,
+    repositoryHead: 'unavailable'
+  }
+  const historyB = {
+    version: 1,
+    timestamp: '2026-07-20T00:01:00.000Z',
+    sourceVersion: 1,
+    action: 'capture',
+    reason: 'unit test',
+    manifestHash: 'bbbb',
+    eventHash: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    previousEventHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    sourceCount: 1,
+    repositoryHead: 'unavailable'
+  }
+
+  try {
+    await fs.mkdir(directory, { recursive: true })
+    await fs.writeFile(manifestPath, `${stableJson(manifest)}\n`, 'utf8')
+    await fs.writeFile(
+      historyPath,
+      `${JSON.stringify(historyA)}\n${JSON.stringify(historyB)}\n`,
+      'utf8'
+    )
+
+    const valid = await validateManifest({ 'manifest-dir': directory })
+    assert.equal(valid.valid, true)
+    assert.equal(valid.errors.length, 0)
+    assert.equal(valid.warnings.length, 0)
+
+    const broken = {
+      version: 1,
+      timestamp: '2026-07-20T00:02:00.000Z',
+      sourceVersion: 1,
+      action: 'capture',
+      reason: 'unit test broken',
+      manifestHash: 'cccc',
+      eventHash: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+      previousEventHash: 'zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz',
+      sourceCount: 1,
+      repositoryHead: 'unavailable'
+    }
+    await fs.writeFile(
+      historyPath,
+      `${JSON.stringify(historyA)}\n${JSON.stringify(broken)}\n`,
+      'utf8'
+    )
+
+    const invalid = await validateManifest({ 'manifest-dir': directory })
+    assert.equal(invalid.valid, false)
+    assert.equal(invalid.errors.length, 1)
+    assert.match(
+      invalid.errors[0],
+      /previousEventHash must match prior eventHash/
+    )
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
     await fs.rm(directory, { recursive: true, force: true })
   }
 })

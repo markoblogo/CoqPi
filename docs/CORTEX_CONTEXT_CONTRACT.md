@@ -13,6 +13,7 @@ The ingest contract uses a local event log (`coqpi-ingress.events.jsonl`) plus a
 - `manifest.json` (canonical contract state)
 - `coqpi-context-pack.manifest.md` (human-readable snapshot for easy review)
 - `coqpi-context-pack.history.jsonl` (append-only local change history with hash chaining)
+- `--validate` preflight before handoff can be executed with `pnpm dump-manifest -- --validate`.
 
 `manifest.json` is gitignored in normal operation but keeps a compact, explicit contract per source:
 
@@ -45,6 +46,7 @@ The snapshot includes:
 Signing key resolution:
 
 - `--key <value>` CLI parameter or `COQPI_CONTEXT_PACK_SIGNING_KEY` env var.
+- Before handoff, Cortex sync should prefer running `--validate` on the same directory first.
 
 ## Explicit admission boundary
 
