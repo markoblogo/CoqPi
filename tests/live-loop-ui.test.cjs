@@ -62,6 +62,32 @@ test('auto analyze ignores busy assistant and avoids duplicate scheduling', () =
   assert.equal(typeof busy.fingerprint, 'string')
 })
 
+test('auto analyze skips when same utterance is already scheduled before debounce', () => {
+  const latestFinal = makeUtterance({ id: 'u-3' })
+  const first = decideAutoAnalysis({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle'
+  })
+
+  assert.equal(first.shouldRun, true)
+  assert.equal(first.reason, 'schedule')
+
+  const scheduled = decideAutoAnalysis({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: first.fingerprint,
+    assistantState: 'idle'
+  })
+
+  assert.equal(scheduled.shouldRun, false)
+  assert.equal(scheduled.reason, 'already-scheduled')
+  assert.equal(scheduled.fingerprint, first.fingerprint)
+})
+
 test('auto analyze maps timeout and budget statuses for UI chain', () => {
   const waiting = getAssistantStatusLabel(
     'idle',
