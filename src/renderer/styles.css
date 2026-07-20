@@ -982,6 +982,17 @@ button:disabled {
   color: #c7d2dd;
 }
 
+.error-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #ffd0d0;
+}
+
+.error-list li {
+  margin: 0;
+  padding: 1px 0;
+}
+
 .privacy-note {
   color: #b9c6d3;
   line-height: 1.35;

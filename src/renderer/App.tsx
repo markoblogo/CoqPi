@@ -467,6 +467,9 @@ export const App = () => {
   const [counterpartyPackDraftNotice, setCounterpartyPackDraftNotice] = useState<
     string | null
   >(null)
+  const [counterpartyPackImportErrors, setCounterpartyPackImportErrors] = useState<
+    string[]
+  >([])
   const [isSavingCounterpartyPacks, setIsSavingCounterpartyPacks] = useState(false)
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [contextSourceDraft, setContextSourceDraft] = useState(
@@ -1244,6 +1247,7 @@ export const App = () => {
     setIsSavingCounterpartyPacks(true)
     setCounterpartyPackDraftError(null)
     setCounterpartyPackDraftNotice(null)
+    setCounterpartyPackImportErrors([])
 
     try {
       const payload = await window.coqpi.contextPacks.add([
@@ -1267,6 +1271,7 @@ export const App = () => {
       )
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+      setCounterpartyPackImportErrors([])
     } finally {
       contextSourceMutationRef.current = false
       setIsSavingCounterpartyPacks(false)
@@ -1284,6 +1289,7 @@ export const App = () => {
     setIsSavingCounterpartyPacks(true)
     setCounterpartyPackDraftError(null)
     setCounterpartyPackDraftNotice(null)
+    setCounterpartyPackImportErrors([])
     try {
       const manifest = await window.coqpi.contextPacks.ingestFinderPayload(payloadText)
       applyCounterpartyPackManifest(manifest.manifest.counterpartyPacks ?? [])
@@ -1319,6 +1325,8 @@ export const App = () => {
           return `${prefix}: ${failure.reason}`
         })
 
+        setCounterpartyPackImportErrors(failures)
+
         if (typeof process !== 'undefined') {
           console.warn(
             '[finder-import] skipped entries:',
@@ -1330,16 +1338,23 @@ export const App = () => {
           )
         }
 
+        const errorSummary = skippedCount > 0
+          ? ` ${failures.length} invalid or duplicate ${
+              failures.length === 1 ? 'entry' : 'entries'
+            } skipped.`
+          : ` ${failures.length} invalid entries.`
+
         setCounterpartyPackDraftNotice((current) =>
           current
-            ? `${current} Also failed (${failures.length}/${errors.length}): ${failures.join('; ')}`
-            : `Failed (${failures.length}/${errors.length}): ${failures.join('; ')}`
+            ? `${current}${errorSummary}`
+            : `Finder import completed with ${failures.length}/${errors.length} issues.${errorSummary}`
         )
       }
 
       setCounterpartyPackFinderPayload('')
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+      setCounterpartyPackImportErrors([])
     } finally {
       contextSourceMutationRef.current = false
       setIsSavingCounterpartyPacks(false)
@@ -3606,13 +3621,26 @@ export const App = () => {
               <p className="context-sources-description">
                 Compact partner/job/investor packets. Use these to scope which context is visible during a specific interview or negotiation.
               </p>
-              {(counterpartyPackDraftError || counterpartyPackDraftNotice) && (
+              {(counterpartyPackDraftError || counterpartyPackDraftNotice ||
+                counterpartyPackImportErrors.length > 0) && (
                 <div className="stack">
                   {counterpartyPackDraftError ? (
                     <div className="error-box">{counterpartyPackDraftError}</div>
                   ) : null}
                   {counterpartyPackDraftNotice ? (
                     <div className="info-box">{counterpartyPackDraftNotice}</div>
+                  ) : null}
+                  {counterpartyPackImportErrors.length > 0 ? (
+                    <div className="error-box">
+                      <div style={{ marginBottom: '6px' }}>
+                        Import issues (showing first 5):
+                      </div>
+                      <ul className="error-list">
+                        {counterpartyPackImportErrors.map((errorMessage, errorIndex) => (
+                          <li key={`${errorIndex}-${errorMessage}`}>{errorMessage}</li>
+                        ))}
+                      </ul>
+                    </div>
                   ) : null}
                 </div>
               )}
@@ -3625,6 +3653,7 @@ export const App = () => {
                       setCounterpartyPackFinderPayload(event.target.value)
                       setCounterpartyPackDraftError(null)
                       setCounterpartyPackDraftNotice(null)
+                      setCounterpartyPackImportErrors([])
                     }}
                     placeholder='{"kind":"job","sourceId":"finder:job:uuid","partnerName":"Acme","title":"Senior PM","summary":"...","linksText":"https://...\\nhttps://..."}'
                     rows={3}
@@ -3644,6 +3673,7 @@ export const App = () => {
                       setCounterpartyPackFinderPayload('')
                       setCounterpartyPackDraftError(null)
                       setCounterpartyPackDraftNotice(null)
+                      setCounterpartyPackImportErrors([])
                     }}
                     type="button"
                   >
