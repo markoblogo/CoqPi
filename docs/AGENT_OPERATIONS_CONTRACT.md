@@ -35,3 +35,17 @@ The initial registry is `docs/agent-operations/provider-tool-registry.yaml`.
 ## Human boundary
 
 Any future external action, system control, outbound communication, persistent recording, or cross-application automation requires explicit user approval and a separate authority review. Provider choice, schedule, or successful authentication never grants that authority.
+
+## Research pilot: find-partners (no production routing)
+
+- This pilot is **research-only** and local.
+- Scope: partner/investor/employer discovery for initial market outreach prep.
+- Required constraints:
+  - no auto-send,
+  - no outbound messages,
+  - no external workflow side effects,
+  - no credential use without explicit owner approval.
+- Output format is local evidence-first notes/JSON, then manual review.
+- Execution record should link to `docs/pilots/find-partners/README.md`.
+
+If the pilot remains stable, convert it to an explicit module with a separate authority contract.
