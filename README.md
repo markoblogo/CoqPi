@@ -1,6 +1,13 @@
 # CoqPi
 
-<img src="assets/coqpi-logo-dark-bg-transparent.png" alt="CoqPi logo" width="260" />
+<div align="center">
+  <img
+    src="assets/coqpi-logo-dark-bg-transparent.png"
+    alt="CoqPi logo"
+    width="260"
+    style="display:block; margin-left:auto; margin-right:auto;"
+  />
+</div>
 
 CoqPi is a private local desktop application for stressful interview and professional call situations in English and French. It runs as an Electron + React + TypeScript app, keeps API access in the Electron backend, and is designed to stay readable under pressure.
 
