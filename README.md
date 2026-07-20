@@ -75,6 +75,8 @@ COQPI_PERSONAL_KNOWLEDGE_CORE_DIR=./data/context-sources
 COQPI_CONTEXT_PACK_SIGNING_KEY=<shared-hmac-key>  # optional, for signed snapshot export
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_ASSISTANT_MODEL=llama3.1
+COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS=10000
+COQPI_ASSISTANT_REQUEST_BUDGET_MS=25000
 ```
 
 `COQPI_ASSISTANT_PROVIDER_PROFILE` defines the local provider order (priority numbers) for assistant analysis. CoqPi now tries providers in this order for text analysis and falls back when a provider fails (OpenAI → Ollama by default).
@@ -83,6 +85,10 @@ Retry behavior for provider fallback:
 
 - Retry happens only for operational/provider transport errors (network/API errors, temporary failures).
 - Non-retryable cases: JSON schema/contract errors and explicit config/authorization failures (for example `OPENAI_API_KEY` missing, invalid structured response).
+- Timeout and budget behavior:
+  - `COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS` caps a single provider attempt.
+  - `COQPI_ASSISTANT_REQUEST_BUDGET_MS` caps total analysis routing time across all attempts.
+- When route metadata is available, receipts include `routeIndex`, `routeCount`, `routeLabel`, and attempt budget/timeout values.
 - Fallback is attempted only when more than one enabled provider is configured. If there is only one provider (for example `COQPI_ASSISTANT_FAILOVER_MODE=none`), there is no second attempt.
 
 - `OPENAI_ASSISTANT_MODEL` remains the fallback assistant model.

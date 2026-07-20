@@ -124,6 +124,44 @@ test('receipt storage strips transcript, PII, secrets, and hidden reasoning', as
   assert.doesNotMatch(stored, /confidential|sk-test-secret|never store this/)
 })
 
+test('receipt allowlist includes provider routing metadata', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-governance-route-'))
+  const filePath = path.join(directory, 'receipts.jsonl')
+
+  await appendReceipt(
+    {
+      version: 1,
+      timestamp: '2026-07-16T00:01:00.000Z',
+      stage: 'completed',
+      correlationId: 'route-correlation',
+      mode: 'shadow',
+      actionKind: 'assistant_analysis',
+      actionFingerprint: 'routefingerprint01',
+      decision: 'allow',
+      enforced: false,
+      outcome: 'allowed',
+      reason: 'known external provider route',
+      latencyMs: 7,
+      provider: 'ollama',
+      routeIndex: 1,
+      routeCount: 2,
+      routeLabel: 'openai(gpt-4o-mini) -> ollama(llama3.1)',
+      providerTimeoutMs: 8000,
+      providerBudgetMs: 8000
+    },
+    filePath
+  )
+
+  const stored = await fs.readFile(filePath, 'utf8')
+  const parsed = JSON.parse(stored)
+
+  assert.equal(parsed.routeIndex, 1)
+  assert.equal(parsed.routeCount, 2)
+  assert.equal(parsed.routeLabel, 'openai(gpt-4o-mini) -> ollama(llama3.1)')
+  assert.equal(parsed.providerTimeoutMs, 8000)
+  assert.equal(parsed.providerBudgetMs, 8000)
+})
+
 test('local STT remains off the governance receipt path', async () => {
   const evaluation = evaluateGovernanceAction(fixtures.localStt, 'enforce')
 

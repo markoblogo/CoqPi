@@ -48,6 +48,18 @@ test('does retry on operational network/API and transport errors', () => {
   )
 })
 
+test('does not retry on temporary client-side HTTP errors', () => {
+  assert.equal(
+    isRetryableProviderError(new Error('Ollama API request failed: 400 Bad Request')),
+    false
+  )
+
+  assert.equal(
+    isRetryableProviderError(new Error('OpenAI request failed with status 413')),
+    false
+  )
+})
+
 test('does not retry governance blocks', () => {
   const governanceBlocked = new Error('Governance blocked action: risk high')
   governanceBlocked.name = 'GovernanceBlockedError'

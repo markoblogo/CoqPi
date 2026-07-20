@@ -27,6 +27,46 @@ import {
   shouldContinueFallback
 } from './assistant-service-retry-policy'
 
+const DEFAULT_ANALYSIS_REQUEST_TIMEOUT_MS = 10000
+const DEFAULT_ANALYSIS_BUDGET_MS = 25000
+
+const parsePositiveInt = (raw: string | undefined): number | undefined => {
+  const parsed = raw ? Number.parseInt(raw.trim(), 10) : NaN
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
+}
+
+const getAnalysisRequestTimeoutMs = () =>
+  parsePositiveInt(process.env.COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS) ??
+  DEFAULT_ANALYSIS_REQUEST_TIMEOUT_MS
+
+const getAnalysisBudgetMs = () =>
+  parsePositiveInt(process.env.COQPI_ASSISTANT_REQUEST_BUDGET_MS) ??
+  DEFAULT_ANALYSIS_BUDGET_MS
+
+const withTimeout = async <T>(
+  operation: () => Promise<T>,
+  timeoutMs: number,
+  context: string
+): Promise<T> => {
+  const timeoutMsSafe = Math.max(100, timeoutMs)
+
+  let timeoutHandle: NodeJS.Timeout | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(`${context} timed out after ${timeoutMsSafe}ms`))
+    }, timeoutMsSafe)
+  })
+
+  try {
+    return await Promise.race([operation(), timeoutPromise])
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle)
+    }
+  }
+}
+
 type AssistantTextResponse = {
   outputText: string
   tokenCount?: number
@@ -217,33 +257,48 @@ const callOllama = async (
   }
 }
 
-const getProviderLabel = (profile: PatterLikeProviderProfile) =>
-  `${profile.provider}(${profile.model})`
+const getProviderRouteLabel = (profiles: PatterLikeProviderProfile[]) => {
+  return profiles.map((profile) => `${profile.provider}(${profile.model})`).join(' -> ')
+}
 
 const analyzeWithProviderFailureAware = async (
   request: AssistantAnalysisRequest,
   profile: PatterLikeProviderProfile,
-  input: string
+  input: string,
+  route: {
+    index: number
+    count: number
+    routeLabel: string
+    budgetMs: number
+    timeoutMs: number
+  }
 ): Promise<AssistantTextResponse> => {
   const model =
     profile.provider === PatterLikeProviderKind.Ollama
       ? profile.model
       : getAssistantModel(request.costMode, profile.model)
 
+  const executeCall = () =>
+    profile.provider === PatterLikeProviderKind.Ollama
+      ? callOllama(input, model, profile.baseUrl)
+      : callOpenAI(input, model)
+
+  const wrappedExecute = () =>
+    withTimeout(executeCall, route.timeoutMs, `assistant analysis ${route.routeLabel}`)
+
   return runGovernedProviderAction(
     {
       kind: 'assistant_analysis',
       provider: profile.provider,
       model,
-      external: true
+      external: true,
+      routeIndex: route.index,
+      routeCount: route.count,
+      routeLabel: route.routeLabel,
+      providerTimeoutMs: route.timeoutMs,
+      providerBudgetMs: route.budgetMs
     },
-    () => {
-      if (profile.provider === PatterLikeProviderKind.Ollama) {
-        return callOllama(input, model, profile.baseUrl)
-      }
-
-      return callOpenAI(input, model)
-    },
+    wrappedExecute,
     (result) => {
       const tokenCount = result.tokenCount
 
@@ -430,13 +485,38 @@ export const analyzeRecentTranscript = async (
 
   const input = await buildUserPrompt(request)
   const providerProfiles = getOrderedEnabledProviderProfiles()
+  const providerRoute = getProviderRouteLabel(providerProfiles)
+  const routeBudgetMs = getAnalysisBudgetMs()
+  const perProviderTimeoutMs = getAnalysisRequestTimeoutMs()
+  let remainingBudgetMs = routeBudgetMs
   let lastError: Error | null = null
 
   for (const [index, profile] of providerProfiles.entries()) {
+    if (remainingBudgetMs <= 0) {
+      throw new Error(
+        `Assistant analysis budget exhausted while routing: ${providerRoute}`
+      )
+    }
+
+    const attemptTimeoutMs = Math.min(remainingBudgetMs, perProviderTimeoutMs)
+    const attemptStartMs = performance.now()
+
     try {
-      const result = await analyzeWithProviderFailureAware(request, profile, input)
+      const result = await analyzeWithProviderFailureAware(
+        request,
+        profile,
+        input,
+        {
+          index,
+          count: providerProfiles.length,
+          routeLabel: providerRoute,
+          timeoutMs: attemptTimeoutMs,
+          budgetMs: remainingBudgetMs
+        }
+      )
       return parseStructuredResponse(result.outputText)
     } catch (error) {
+      remainingBudgetMs -= Math.round(performance.now() - attemptStartMs)
       lastError = error instanceof Error ? error : new Error('Unknown provider error.')
       if (!isRetryableProviderError(lastError)) {
         throw lastError
@@ -448,7 +528,6 @@ export const analyzeRecentTranscript = async (
     }
   }
 
-  const providerRoute = providerProfiles.map(getProviderLabel).join(' -> ')
   const message =
     lastError?.message || 'No provider in COQPI_ASSISTANT_PROVIDER_PROFILE could complete the request.'
 

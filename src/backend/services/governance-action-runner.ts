@@ -68,7 +68,20 @@ export const executeGovernedProviderAction = async <T>(
     enforced: mode === 'enforce',
     reason: evaluation.reason,
     provider: action.provider,
-    ...(action.model ? { model: action.model } : {})
+    ...(action.model ? { model: action.model } : {}),
+    ...(action.routeIndex !== undefined
+      ? { routeIndex: action.routeIndex }
+      : {}),
+    ...(action.routeCount !== undefined
+      ? { routeCount: action.routeCount }
+      : {}),
+    ...(action.routeLabel ? { routeLabel: action.routeLabel } : {}),
+    ...(action.providerTimeoutMs !== undefined
+      ? { providerTimeoutMs: action.providerTimeoutMs }
+      : {}),
+    ...(action.providerBudgetMs !== undefined
+      ? { providerBudgetMs: action.providerBudgetMs }
+      : {})
   }
 
   await appendBestEffort(appendGovernanceReceipt, {

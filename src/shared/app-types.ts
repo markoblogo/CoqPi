@@ -70,6 +70,11 @@ export interface GovernanceAction {
   model?: string
   external: boolean
   toolRisk?: GovernanceToolRisk
+  routeIndex?: number
+  routeCount?: number
+  routeLabel?: string
+  providerTimeoutMs?: number
+  providerBudgetMs?: number
 }
 
 export interface GovernanceEvaluation {
@@ -96,6 +101,11 @@ export interface GovernanceReceipt {
   model?: string
   tokenCount?: number
   costUsd?: number
+  routeIndex?: number
+  routeCount?: number
+  routeLabel?: string
+  providerTimeoutMs?: number
+  providerBudgetMs?: number
 }
 
 export interface SessionContext {

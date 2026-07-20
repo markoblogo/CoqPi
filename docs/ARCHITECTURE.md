@@ -98,6 +98,7 @@ CoqPi uses a narrow, ODS-inspired policy-and-receipt contract around external pr
 - Receipt writes are best-effort: a local filesystem failure never blocks a known provider route or the live voice loop.
 - Default mode is `shadow`: policy outcomes are recorded but do not change known provider routing. `COQPI_GOVERNANCE_MODE=enforce` blocks only future tool-route actions that are `deny` or `require_approval`.
 - Receipts contain correlation ID, action kind/fingerprint, decision, short operational reason, provider/model, latency, and token count when the provider exposes it.
+- `assistant_analysis` receives explicit routing metadata in receipts: `routeIndex`, `routeCount`, `routeLabel`, `providerTimeoutMs`, and `providerBudgetMs`.
 - Receipt serialization is allowlisted. It excludes transcript text, profile/session context, PII, API keys, raw provider errors, prompts, and hidden reasoning.
 - `local_stt_transcription` is explicitly outside the receipt path: no policy LLM, filesystem I/O, or extra round trip in the audio hot path.
 

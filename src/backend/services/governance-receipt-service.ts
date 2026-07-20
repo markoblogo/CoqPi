@@ -20,7 +20,16 @@ const toPublicReceipt = (receipt: GovernanceReceipt): GovernanceReceipt => ({
   ...(receipt.tokenCount !== undefined
     ? { tokenCount: receipt.tokenCount }
     : {}),
-  ...(receipt.costUsd !== undefined ? { costUsd: receipt.costUsd } : {})
+  ...(receipt.costUsd !== undefined ? { costUsd: receipt.costUsd } : {}),
+  ...(receipt.routeIndex !== undefined ? { routeIndex: receipt.routeIndex } : {}),
+  ...(receipt.routeCount !== undefined ? { routeCount: receipt.routeCount } : {}),
+  ...(receipt.routeLabel ? { routeLabel: receipt.routeLabel } : {}),
+  ...(receipt.providerTimeoutMs !== undefined
+    ? { providerTimeoutMs: receipt.providerTimeoutMs }
+    : {}),
+  ...(receipt.providerBudgetMs !== undefined
+    ? { providerBudgetMs: receipt.providerBudgetMs }
+    : {})
 })
 
 export const appendReceipt = async (
