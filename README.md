@@ -1,6 +1,6 @@
 # CoqPi
 
-![CoqPi logo](assets/coqpi-logo-dark-bg-transparent.png)
+<img src="assets/coqpi-logo-dark-bg-transparent.png" alt="CoqPi logo" width="260" />
 
 CoqPi is a private local desktop application for stressful interview and professional call situations in English and French. It runs as an Electron + React + TypeScript app, keeps API access in the Electron backend, and is designed to stay readable under pressure.
 
@@ -139,6 +139,8 @@ Shortcuts:
 - `pnpm handoff`
 - `pnpm handoff:signed`
 - `pnpm handoff:with-dates`
+- `pnpm handoff:with-dates:signed`
+- `pnpm handoff:with-dates:reject-partial`
 
 Snapshot output includes:
 

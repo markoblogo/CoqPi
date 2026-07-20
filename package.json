@@ -23,7 +23,9 @@
     "dump-manifest": "node scripts/dump-manifest.cjs",
     "handoff": "pnpm dump-manifest -- --handoff",
     "handoff:signed": "pnpm dump-manifest -- --handoff --sign",
-    "handoff:with-dates": "node scripts/handoff-with-dates.cjs"
+    "handoff:with-dates": "node scripts/handoff-with-dates.cjs",
+    "handoff:with-dates:signed": "pnpm handoff:with-dates -- --sign",
+    "handoff:with-dates:reject-partial": "pnpm handoff:with-dates -- --reject-partial"
   },
   "build": {
     "appId": "local.coqpi.app",

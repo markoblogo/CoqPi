@@ -34,7 +34,9 @@ const run = async (options = {}) => {
   const snapshotOutput = path.join(outputDir, 'handoff.snapshot.json')
 
   const validation = await validateManifest({
-    '--manifest-dir': manifestDir
+    '--manifest-dir': manifestDir,
+    '--reject-partial': args['--reject-partial'],
+    '--sign': args['--sign']
   })
 
   await fs.writeFile(validationOutput, `${stableJson(validation)}\n`, 'utf8')
@@ -43,6 +45,12 @@ const run = async (options = {}) => {
     console.error('handoff aborted: validation failed')
     for (const error of validation.errors) {
       console.error(` - ${error}`)
+    }
+    if (validation.rejectPartialEnabled && validation.warnings.length > 0) {
+      console.error(' - blocking warnings enabled by --reject-partial')
+      for (const warning of validation.warnings) {
+        console.error(`   ! ${warning}`)
+      }
     }
     return {
       outputDir,

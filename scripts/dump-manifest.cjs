@@ -19,6 +19,7 @@ const parseArgs = (argv) => {
       index += 1
     } else if (
       key === '--sign' ||
+      key === '--reject-partial' ||
       key === '--dump-manifest' ||
       key === '--validate' ||
       key === '--handoff' ||
@@ -145,15 +146,20 @@ const validateManifest = async (options) => {
     previousEventHash = event.eventHash || previousEventHash
   }
 
+  const rejectPartialEnabled = Boolean(options['--reject-partial'])
+  const hasBlockingWarnings = rejectPartialEnabled && warnings.length > 0
+
   return {
-    valid: errors.length === 0,
+    valid: errors.length === 0 && !hasBlockingWarnings,
     manifestPath,
     manifestDir,
     manifestHash: computeHash(stableJson(manifest)),
     manifest,
     history,
     errors,
-    warnings
+    warnings,
+    rejectPartialEnabled,
+    blockingWarnings: hasBlockingWarnings
   }
 }
 
@@ -175,7 +181,7 @@ const resolveCoreDirectory = (args) => {
 const usage = () => `Usage:
   node scripts/dump-manifest.cjs --dump-manifest [--manifest-dir DIR] [--output FILE] [--sign [KEY]]
   node scripts/dump-manifest.cjs --validate [--manifest-dir DIR]
-  node scripts/dump-manifest.cjs --handoff [--manifest-dir DIR] [--sign] [--validate-output FILE] [--snapshot-output FILE]
+  node scripts/dump-manifest.cjs --handoff [--manifest-dir DIR] [--sign] [--reject-partial] [--validate-output FILE] [--snapshot-output FILE]
 
 Options:
   --dump-manifest          Emit a compact handoff snapshot.
@@ -186,6 +192,7 @@ Options:
   --validate-output <file>  Save validation report to file in handoff mode (default: handoff.validation.json).
   --snapshot-output <file>  Save snapshot JSON to file in handoff mode (default: handoff.snapshot.json).
   --sign                   Sign snapshot payload with HMAC-SHA256.
+  --reject-partial         In --validate/--handoff: reject handoff when warnings are present.
   --key <key>              Signing key for --sign (or COQPI_CONTEXT_PACK_SIGNING_KEY env var).
   --help                   Show this help.`
 
