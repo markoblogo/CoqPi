@@ -109,7 +109,8 @@ export const getAssistantRunHint = (
   assistantError: string | null,
   lastAnalyzedUtteranceId: string | null,
   lastUtteranceId: string | undefined,
-  cooldownRemainingSeconds = 0
+  cooldownRemainingSeconds = 0,
+  assistantErrorSource?: string | null
 ): AssistantRunHint | null => {
   const formatRetryHint = (baseHint: string) => {
     if (cooldownRemainingSeconds <= 0) {
@@ -188,7 +189,11 @@ export const getAssistantRunHint = (
           assistantError ??
           'Маршрут анализа остановлен после политики: ошибка не подходит для повторной попытки.',
         tone: 'error',
-        actionHint: 'Проверь конфиг провайдера/ответ модели/входные поля и повтори вручную.'
+        actionHint: formatRetryHint(
+          `Проверь ${
+            assistantErrorSource ? `источник ${assistantErrorSource} / ` : ''
+          }конфиг провайдера/ответ модели/входные поля и повтори вручную.`
+        )
       }
     }
 
@@ -231,12 +236,14 @@ export const getAssistantRunHint = (
 export interface AssistantStatusRecoveryGuide {
   reason: string
   recovery: string
+  source?: string
 }
 
 export const getAssistantStatusRecoveryGuide = (
   assistantState: AssistantState,
   errorCode: AssistantStatusCode,
-  assistantError: string | null
+  assistantError: string | null,
+  assistantErrorSource?: string | null
 ): AssistantStatusRecoveryGuide | null => {
   if (assistantState !== 'error' || !errorCode) {
     return null
@@ -244,6 +251,7 @@ export const getAssistantStatusRecoveryGuide = (
 
   if (errorCode === 'provider_not_retryable') {
     return {
+      source: assistantErrorSource ?? 'local policy / transport',
       reason:
         assistantError ??
         'Путь анализа остановлен: ошибка не подходит для автоматического retry по политике.',
@@ -254,6 +262,7 @@ export const getAssistantStatusRecoveryGuide = (
 
   if (errorCode === 'provider_error' || errorCode === 'provider_timeout') {
     return {
+      source: assistantErrorSource ?? 'provider path',
       reason: 'Повторный вызов провайдера уже возможен по политике.',
       recovery: 'Нажми Retry/ручной запуск после паузы или переключись на другой профиль.'
     }
@@ -261,6 +270,7 @@ export const getAssistantStatusRecoveryGuide = (
 
   if (errorCode === 'analysis_budget_exhausted') {
     return {
+      source: assistantErrorSource ?? 'local budget gate',
       reason: 'Лимит общего budget на маршрут анализа исчерпан.',
       recovery:
         'Сбрось сессию (Reset) и продолжай анализ после паузы.'

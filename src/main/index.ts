@@ -272,6 +272,15 @@ const registerIpcHandlers = () => {
             : new Error('Unknown assistant analysis error.')
         const message = analysisError.message
 
+        const source =
+          typeof (analysisError as { source?: unknown }).source === 'string'
+            ? ((analysisError as { source?: string }).source ?? null)
+            : null
+        const routeSourceMatch =
+          source ??
+          message.match(/\((openai\([^)]*\)|ollama\([^)]*\))\)/i)?.[1] ??
+          message.match(/\(([^)]*provider[^)]*)\)/i)?.[1]
+
         const lowerMessage = message.toLowerCase()
         let code: AssistantAnalysisError['code'] = 'assistant_error'
 
@@ -297,7 +306,12 @@ const registerIpcHandlers = () => {
           ok: false,
           error: {
             code,
-            message
+            message,
+            source: routeSourceMatch
+              ? String(routeSourceMatch)
+              : source
+                ? String(source)
+                : 'local policy / transport'
           }
         }
       }

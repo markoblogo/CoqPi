@@ -198,6 +198,7 @@ type RunAssistantAnalysisOptions = {
   mode: 'full' | 'keywords'
   trigger?: 'manual' | 'auto'
   targetUtteranceId?: string | null
+  bypassCooldown?: boolean
 }
 
 const createTranscriptId = () => {
@@ -690,6 +691,9 @@ export const App = () => {
   const [assistantError, setAssistantError] = useState<string | null>(null)
   const [assistantErrorCode, setAssistantErrorCode] =
     useState<AssistantStatusCode>(null)
+  const [assistantErrorSource, setAssistantErrorSource] = useState<string | null>(
+    null
+  )
   const [assistantResult, setAssistantResult] =
     useState<AssistantAnalysisResult>(emptyAnalysis)
   const [assistantResultUpdatedAt, setAssistantResultUpdatedAt] = useState<
@@ -2140,6 +2144,7 @@ export const App = () => {
     lastAutoAnalyzedFingerprintRef.current = null
     scheduledAutoAnalysisFingerprintRef.current = null
     setAssistantErrorCode(null)
+    setAssistantErrorSource(null)
 
     if (clearTranscriptState) {
       setTranscriptUtterances(clearTranscript())
@@ -2157,6 +2162,7 @@ export const App = () => {
     setCostNotice(null)
     setAssistantState('idle')
     setAssistantError(null)
+    setAssistantErrorSource(null)
     setAssistantResult(emptyAnalysis)
     setAssistantResultUpdatedAt(null)
     setLastAnalyzedUtteranceId(latestUtteranceId)
@@ -2353,22 +2359,25 @@ export const App = () => {
     seconds,
     mode,
     trigger = 'manual',
-    targetUtteranceId = null
+    targetUtteranceId = null,
+    bypassCooldown = false
   }: RunAssistantAnalysisOptions): Promise<boolean> => {
     const setErrorState = (
       message: string,
-      code: AssistantStatusCode = 'assistant_error'
+      code: AssistantStatusCode = 'assistant_error',
+      source: string | null = null
     ) => {
       setAssistantState('error')
       setAssistantError(message)
       setAssistantErrorCode(code)
+      setAssistantErrorSource(source)
     }
 
     if (assistantState === 'analyzing') {
       return false
     }
 
-    if (Date.now() < analysisCooldownUntil) {
+    if (!bypassCooldown && Date.now() < analysisCooldownUntil) {
       if (trigger === 'manual') {
         setCostNotice('Assistant analysis is on cooldown for a few seconds.')
       }
@@ -2470,6 +2479,7 @@ export const App = () => {
     setAssistantState('analyzing')
     setAssistantError(null)
     setAssistantErrorCode(null)
+    setAssistantErrorSource(null)
     setAnalysisCooldownUntil(Date.now() + ANALYSIS_COOLDOWN_MS)
 
     try {
@@ -2477,7 +2487,11 @@ export const App = () => {
         await window.coqpi.assistant.analyzeRecentTranscript(request)
 
       if (!response.ok) {
-        setErrorState(response.error.message, response.error.code)
+        setErrorState(
+          response.error.message,
+          response.error.code,
+          response.error.source ?? null
+        )
         return false
       }
 
@@ -2505,7 +2519,9 @@ export const App = () => {
       setErrorState(
         error instanceof Error
           ? error.message
-          : 'Unable to analyze the transcript.'
+          : 'Unable to analyze the transcript.',
+        'assistant_error',
+        'local / renderer failure'
       )
     }
 
@@ -2521,6 +2537,19 @@ export const App = () => {
       mode: 'full',
       trigger: 'manual',
       targetUtteranceId: latestUtteranceId
+    })
+  }
+
+  const runManualAssistantRetryNow = () => {
+    const latestUtteranceId = getLastUtterance(transcriptUtterances)?.id ?? null
+
+    return runAssistantAnalysis({
+      recentWindowLabel: '30s',
+      seconds: 30,
+      mode: 'full',
+      trigger: 'manual',
+      targetUtteranceId: latestUtteranceId,
+      bypassCooldown: true
     })
   }
 
@@ -2633,12 +2662,14 @@ export const App = () => {
     assistantError,
     lastAnalyzedUtteranceId,
     lastUtterance?.id,
-    cooldownRemainingSeconds
+    cooldownRemainingSeconds,
+    assistantErrorSource
   )
   const assistantRecoveryGuide = getAssistantStatusRecoveryGuide(
     assistantState,
     assistantErrorCode,
-    assistantError
+    assistantError,
+    assistantErrorSource
   )
   const canStartListening =
     realtimeStatus !== 'connecting' &&
@@ -2812,6 +2843,9 @@ export const App = () => {
         <div className="assist-recovery">
           <strong>Recovery</strong>
           <p>{assistantRecoveryGuide.reason}</p>
+          {assistantRecoveryGuide.source ? (
+            <p>Источник: {assistantRecoveryGuide.source}</p>
+          ) : null}
           <p>{assistantRecoveryGuide.recovery}</p>
         </div>
       ) : null}
@@ -3521,6 +3555,16 @@ export const App = () => {
                 type="button"
               >
                 Retry
+              </button>
+              <button
+                title="Run retry immediately and bypass cooldown"
+                disabled={assistantState === 'analyzing' || transcriptUtterances.length === 0}
+                onClick={() => {
+                  void runManualAssistantRetryNow()
+                }}
+                type="button"
+              >
+                Retry now
               </button>
             </div>
 

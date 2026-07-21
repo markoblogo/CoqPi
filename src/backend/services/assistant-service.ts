@@ -476,6 +476,18 @@ const parseStructuredResponse = (payload: string) => {
   }
 }
 
+const attachAssistantFailureSource = (
+  error: Error,
+  source: string
+): Error => {
+  const withSource = error instanceof Error ? error : new Error(String(error))
+
+  withSource.name = withSource.name === 'Error' ? 'AssistantProviderError' : withSource.name
+  ;(withSource as Error & { source?: string }).source = source
+
+  return withSource
+}
+
 export const analyzeRecentTranscript = async (
   request: AssistantAnalysisRequest
 ): Promise<AssistantAnalysisResult> => {
@@ -502,6 +514,7 @@ export const analyzeRecentTranscript = async (
 
     const attemptTimeoutMs = Math.min(remainingBudgetMs, perProviderTimeoutMs)
     const attemptStartMs = performance.now()
+    const profileSource = `${profile.provider}(${profile.model})`
 
     try {
       const result = await analyzeWithProviderFailureAware(
@@ -519,8 +532,14 @@ export const analyzeRecentTranscript = async (
       return parseStructuredResponse(result.outputText)
     } catch (error) {
       remainingBudgetMs -= Math.round(performance.now() - attemptStartMs)
-      lastError = error instanceof Error ? error : new Error('Unknown provider error.')
+      lastError = attachAssistantFailureSource(
+        error instanceof Error
+          ? error
+          : new Error('Unknown provider error.'),
+        profileSource
+      )
       if (!isRetryableProviderError(lastError)) {
+        ;(lastError as Error & { source?: string }).source = profileSource
         throw lastError
       }
 
@@ -531,7 +550,14 @@ export const analyzeRecentTranscript = async (
   }
 
   const message =
-    lastError?.message || 'No provider in COQPI_ASSISTANT_PROVIDER_PROFILE could complete the request.'
+    lastError?.message ||
+    'No provider in COQPI_ASSISTANT_PROVIDER_PROFILE could complete the request.'
 
-  throw new Error(`Assistant analysis failed for ${providerRoute}: ${message}`)
+  const routeSource =
+    lastError &&
+    (lastError as Error & { source?: string }).source
+      ? (lastError as Error & { source?: string }).source
+      : 'provider route'
+
+  throw new Error(`Assistant analysis failed for ${providerRoute} (${routeSource}): ${message}`)
 }

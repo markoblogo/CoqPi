@@ -351,6 +351,7 @@ export interface AssistantAnalysisError {
     | 'analysis_budget_exhausted'
     | 'provider_error'
   message: string
+  source?: string
 }
 
 export type AssistantAnalysisResponse =

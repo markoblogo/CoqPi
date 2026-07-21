@@ -550,20 +550,24 @@ test('assistant recovery guide surfaces manual recovery for retry-blocked flow',
   const blocked = getAssistantStatusRecoveryGuide(
     'error',
     'provider_not_retryable',
-    'Schema validation rejected by policy boundary.'
+    'Schema validation rejected by policy boundary.',
+    'openai(test-model)'
   )
 
   assert.equal(blocked !== null, true)
+  assert.equal(blocked?.source, 'openai(test-model)')
   assert.match(blocked.reason, /не подходит|policy|policy boundary|почему/)
-  assert.match(blocked.recovery, /ручн|проверь|запусти/) 
+  assert.match(blocked.recovery, /ручн|проверь|запусти/)
 
   const retryable = getAssistantStatusRecoveryGuide(
     'error',
     'provider_error',
-    'openai temporary failure'
+    'openai temporary failure',
+    'provider gateway'
   )
 
   assert.equal(retryable !== null, true)
+  assert.equal(retryable?.source, 'provider gateway')
   assert.match(retryable.recovery, /Retry|паузы|провайдер/)
 })
 
@@ -590,10 +594,13 @@ test('manual retry after blocked state keeps active transcript non-stale in UI s
     'provider_not_retryable',
     'Schema validation rejected by policy boundary.',
     'old-id',
-    liveUtteranceId
+    liveUtteranceId,
+    0,
+    'openai(test-model)'
   )
   assert.equal(blockedHint?.tone, 'error')
   assert.match(blockedHint.actionHint ?? '', /Retry|ручн|повтори/i)
+  assert.match(blockedHint.message, /не подходит|policy|policy boundary|почему/i)
 
   const resetToActiveState = getAssistantStatusLabel(
     'idle',
