@@ -20,7 +20,6 @@ import {
   type CounterpartyContextPack,
   type CounterpartyContextPackDraft,
   type CounterpartyContextPackKind,
-  type CounterpartyFinderPayloadPreviewCandidate,
   type CounterpartyFinderPayloadPreviewResult,
   type ContextSourceKind,
   type ControlState,
@@ -55,6 +54,12 @@ import {
 import {
   normalizeLinksText
 } from '@shared/counterparty-pack-import'
+import {
+  createFinderPreviewItems,
+  getFinderPreviewSelectionStats,
+  type CounterpartyFinderPreviewItem,
+  toggleSelectAllFinderCandidates as toggleSelectAllFinderCandidatesModel
+} from '@shared/finder-preview-state'
 import {
   AudioLevelMonitor,
   defaultAudioLevelReading,
@@ -121,10 +126,6 @@ const emptyContextSourceDraft: {
 type CounterpartyPackFormDraft = CounterpartyContextPackDraft & {
   linksText: string
   kind: CounterpartyContextPackKind
-}
-
-type CounterpartyFinderPreviewItem = CounterpartyFinderPayloadPreviewCandidate & {
-  selected: boolean
 }
 
 const emptyCounterpartyPackDraft: CounterpartyPackFormDraft = {
@@ -640,15 +641,13 @@ export const App = () => {
   >([])
   const [isSavingCounterpartyPacks, setIsSavingCounterpartyPacks] = useState(false)
   const finderPayloadCandidatesCount = counterpartyFinderPayloadItems.length
-  const finderPayloadCandidateCountNonDuplicate = counterpartyFinderPayloadItems.filter(
-    (candidate) => !candidate.duplicate
-  ).length
-  const selectedFinderCandidatesCount = counterpartyFinderPayloadItems.filter(
-    (candidate) => candidate.selected && !candidate.duplicate
-  ).length
+  const finderPayloadSelectionStats =
+    getFinderPreviewSelectionStats(counterpartyFinderPayloadItems)
+  const finderPayloadCandidateCountNonDuplicate =
+    finderPayloadSelectionStats.nonDuplicate
+  const selectedFinderCandidatesCount = finderPayloadSelectionStats.selected
   const areAllFinderCandidatesSelected =
-    finderPayloadCandidateCountNonDuplicate > 0 &&
-    selectedFinderCandidatesCount === finderPayloadCandidateCountNonDuplicate
+    finderPayloadSelectionStats.areAllSelected
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [contextSourceDraft, setContextSourceDraft] = useState(
     emptyContextSourceDraft
@@ -1511,10 +1510,7 @@ export const App = () => {
         payloadText
       )
 
-      const nextItems = preview.candidates.map((candidate) => ({
-        ...candidate,
-        selected: !candidate.duplicate
-      }))
+      const nextItems = createFinderPreviewItems(preview)
 
       setCounterpartyFinderPayloadPreview(preview)
       setCounterpartyFinderPayloadItems(nextItems)
@@ -1614,10 +1610,9 @@ export const App = () => {
     }
 
     setCounterpartyFinderPayloadItems((current) =>
-      current.map((item) =>
-        item.duplicate
-          ? { ...item, selected: false }
-          : { ...item, selected: !areAllFinderCandidatesSelected }
+      toggleSelectAllFinderCandidatesModel(
+        current,
+        areAllFinderCandidatesSelected
       )
     )
   }
