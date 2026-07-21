@@ -61,6 +61,13 @@ export const getAssistantStatusLabel = (
       }
     }
 
+    if (errorCode === 'provider_not_retryable') {
+      return {
+        label: 'Retry blocked',
+        classNameSuffix: 'retry-blocked'
+      }
+    }
+
     return {
       label: 'Error',
       classNameSuffix: 'error'
@@ -171,6 +178,17 @@ export const getAssistantRunHint = (
         message: 'Нужные профили или сессионные данные временно не удалось собрать.',
         tone: 'warning',
         actionHint: 'Проверь профиль/selected packs и повтори анализ.'
+      }
+    }
+
+    if (errorCode === 'provider_not_retryable') {
+      return {
+        title: 'Анализ заблокирован',
+        message:
+          assistantError ??
+          'Маршрут анализа остановлен после политики: ошибка не подходит для повторной попытки.',
+        tone: 'error',
+        actionHint: 'Проверь конфиг провайдера/ответ модели/входные поля и повтори вручную.'
       }
     }
 

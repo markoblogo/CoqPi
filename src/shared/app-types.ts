@@ -342,6 +342,7 @@ export interface AssistantAnalysisResult {
 export interface AssistantAnalysisError {
   code:
     | 'assistant_error'
+    | 'provider_not_retryable'
     | 'missing_api_key'
     | 'empty_transcript'
     | 'profile_context_error'

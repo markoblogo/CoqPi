@@ -58,6 +58,14 @@ test('does not retry on temporary client-side HTTP errors', () => {
     isRetryableProviderError(new Error('OpenAI request failed with status 413')),
     false
   )
+  assert.equal(
+    isRetryableProviderError(new Error('OpenAI request failed with status 401')),
+    false
+  )
+  assert.equal(
+    isRetryableProviderError(new Error('OpenAI request failed with status 403')),
+    false
+  )
 })
 
 test('does not retry governance blocks', () => {

@@ -91,7 +91,7 @@ COQPI_ASSISTANT_REQUEST_BUDGET_MS=25000
 Retry behavior for provider fallback:
 
 - Retry happens only for operational/provider transport errors (network/API errors, temporary failures).
-- Non-retryable cases: JSON schema/contract errors and explicit config/authorization failures (for example `OPENAI_API_KEY` missing, invalid structured response).
+- Non-retryable cases: non-retryable provider failures (for example explicit config/authorization failures, schema/contract errors, and non-operational provider errors), plus malformed model responses.
 - Timeout and budget behavior:
   - `COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS` caps a single provider attempt.
   - `COQPI_ASSISTANT_REQUEST_BUDGET_MS` caps total analysis routing time across all attempts.
@@ -238,6 +238,7 @@ docs/
 4. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
 5. ✅ Pass 7/8 completion: finder batch import now flows through session context into selected pack IDs used by `analyzeRecentTranscript`/retrieval.
 6. ✅ Pass 9 hardening: timeout/budget/retry UX now has cooldown-aware hints and dedicated regression checks.
+7. ✅ Pass 10 hardening: provider retryability is policy-driven (`isRetryableProviderError`), non-retryable errors are surfaced as `provider_not_retryable`, and UI distinguishes retry-blocked state.
 7. Add training mode using the same profile, session-context, and assistant-provider layers.
 
 The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).

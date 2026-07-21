@@ -665,6 +665,12 @@ button:disabled {
   background: #2a1718;
 }
 
+.assist-status-retry-blocked {
+  color: #f4d6aa !important;
+  border-color: #7a5d31;
+  background: #2b2115;
+}
+
 .assist-status-error {
   color: #f0a7a7 !important;
   border-color: #854444;

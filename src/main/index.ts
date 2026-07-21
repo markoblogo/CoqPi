@@ -20,6 +20,7 @@ import type {
   SettingsPayload
 } from '../shared/app-types'
 import { analyzeRecentTranscript } from '../backend/services/assistant-service'
+import { isRetryableProviderError } from '../backend/services/assistant-service-retry-policy'
 import { getConfigStatus } from '../backend/services/config-service'
 import { getProfileContext } from '../backend/services/profile-service'
 import { createRealtimeTranscriptionAnswer } from '../backend/services/realtime-transcription-service'
@@ -265,10 +266,11 @@ const registerIpcHandlers = () => {
           data
         }
       } catch (error) {
-        const message =
+        const analysisError =
           error instanceof Error
-            ? error.message
-            : 'Unknown assistant analysis error.'
+            ? error
+            : new Error('Unknown assistant analysis error.')
+        const message = analysisError.message
 
         const lowerMessage = message.toLowerCase()
         let code: AssistantAnalysisError['code'] = 'assistant_error'
@@ -285,8 +287,10 @@ const registerIpcHandlers = () => {
           code = 'profile_context_error'
         } else if (lowerMessage.includes('invalid model response')) {
           code = 'invalid_model_response'
-        } else if (lowerMessage.includes('failed')) {
+        } else if (isRetryableProviderError(analysisError)) {
           code = 'provider_error'
+        } else {
+          code = 'provider_not_retryable'
         }
 
         return {

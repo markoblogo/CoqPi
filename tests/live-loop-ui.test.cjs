@@ -474,6 +474,15 @@ test('auto analyze maps timeout and budget statuses for UI chain', () => {
   )
   assert.equal(budget.label, 'Budget exhausted')
   assert.equal(budget.classNameSuffix, 'budget-exhausted')
+
+  const blocked = getAssistantStatusLabel(
+    'error',
+    'prev-id',
+    'prev-id',
+    'provider_not_retryable'
+  )
+  assert.equal(blocked.label, 'Retry blocked')
+  assert.equal(blocked.classNameSuffix, 'retry-blocked')
 })
 
 test('auto analyze maps stale/ready/error statuses for UI chain', () => {
@@ -520,6 +529,17 @@ test('assistant run hint summarizes operational failures for UI', () => {
   )
   assert.equal(timeout.tone, 'warning')
   assert.equal(timeout.title, 'Тайм-аут ответа провайдера')
+
+  const blockedHint = getAssistantRunHint(
+    'error',
+    'provider_not_retryable',
+    'assistant analysis failed: non-retryable provider policy violation',
+    'u-a',
+    'u-a'
+  )
+  assert.equal(blockedHint !== null, true)
+  assert.equal(blockedHint.tone, 'error')
+  assert.equal(blockedHint.title, 'Анализ заблокирован')
 
   const ready = getAssistantRunHint('idle', null, null, null, undefined)
   assert.equal(ready, null)
