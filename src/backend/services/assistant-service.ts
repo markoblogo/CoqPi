@@ -11,6 +11,7 @@ import { getProfileContext } from './profile-service'
 import { getPersonalInterviewRetrieval } from './context-source-service'
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
+import { getSessionContext } from './session-context-service'
 import {
   DEFAULT_OPENAI_ASSISTANT_MODEL,
   interviewAssistantSystemPrompt
@@ -497,7 +498,16 @@ export const analyzeRecentTranscript = async (
     )
   }
 
-  const input = await buildUserPrompt(request)
+  const fallbackSessionContext = (await getSessionContext()).context
+  const resolvedRequest: AssistantAnalysisRequest = {
+    ...request,
+    sessionContext: request.sessionContext ?? fallbackSessionContext,
+    selectedCounterpartyPackIds:
+      request.selectedCounterpartyPackIds ??
+      fallbackSessionContext.selectedCounterpartyPackIds
+  }
+
+  const input = await buildUserPrompt(resolvedRequest)
   const providerProfiles = getOrderedEnabledProviderProfiles()
   const providerRoute = getProviderRouteLabel(providerProfiles)
   const routeBudgetMs = getAnalysisBudgetMs()
@@ -518,7 +528,7 @@ export const analyzeRecentTranscript = async (
 
     try {
       const result = await analyzeWithProviderFailureAware(
-        request,
+        resolvedRequest,
         profile,
         input,
         {

@@ -580,6 +580,100 @@ test('finder batch import payload survives session persistence and flows into se
   )
 })
 
+test('analyzeRecentTranscript resolves selected pack ids from persisted session when omitted from request', async () => {
+  const observed = {
+    requestSelectedCounterpartyPackIds: undefined,
+    retrievalSelectedCounterpartyPackIds: undefined,
+    contextSelectedCounterpartyPackIds: undefined
+  }
+
+  let selectedPackIds = []
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:session-default-999',
+              partnerName: 'Default Session',
+              title: 'Session fallback check',
+              summary: 'Packet must be recovered from saved session context.'
+            },
+            {
+              kind: 'partner',
+              sourceId: 'finder:partner:fallback-999',
+              partnerName: 'Fallback Partner',
+              title: 'Fallback channel',
+              summary: 'Should remain deselected in session unless chosen.'
+            }
+          ])
+
+        const importedJob = importResult.manifest.counterpartyPacks?.find(
+          (pack) => pack.sourceId === 'finder:job:session-default-999'
+        )
+
+        selectedPackIds = importedJob ? [importedJob.id] : []
+
+        await services.sessionContextService.saveSessionContext({
+          company: 'Acme Holdings',
+          role: 'Founder',
+          context: 'Hiring session',
+          goal: 'Validate fallback to persisted selection',
+          notes: 'No live request should be needed for session-selected packs.',
+          selectedCounterpartyPackIds: selectedPackIds
+        })
+      },
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      onAnalyzeRequest: (request) => {
+        observed.requestSelectedCounterpartyPackIds =
+          request.selectedCounterpartyPackIds
+        observed.contextSelectedCounterpartyPackIds =
+          request.sessionContext?.selectedCounterpartyPackIds
+      },
+      onSelectedPackIds: (selectedPackIdsFromRetrieval) => {
+        observed.retrievalSelectedCounterpartyPackIds = [
+          ...(selectedPackIdsFromRetrieval ?? [])
+        ]
+      },
+      fetchHandler: async () =>
+        makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Подборка подтянулась из сохранённого сеанса.',
+              detectedQuestion: 'Which candidate pack was selected?',
+              intent: 'selection check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'The saved session pack is now active.',
+                  answerMeaningRu: 'Выбранный в сессии пакет уже активен.'
+                }
+              ],
+              keywordsToRemember: ['session', 'fallback'],
+              openingPhrase: 'Great one.'
+            })
+          }
+        })
+    })
+  })
+
+  assert.deepEqual(
+    observed.requestSelectedCounterpartyPackIds,
+    undefined
+  )
+  assert.deepEqual(
+    observed.retrievalSelectedCounterpartyPackIds,
+    selectedPackIds
+  )
+})
+
 test('analyzeRecentTranscript returns structured result on valid Ollama JSON', async () => {
   const response = {
     meaningRu: 'Кандидат объясняет интерес к роли и следующий шаг.',
