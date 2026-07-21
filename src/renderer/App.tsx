@@ -2424,12 +2424,13 @@ export const App = () => {
     }
 
     const analysisText = getRecentTranscriptText(transcriptUtterances, 30)
-    const decision = decideAutoAnalysis({
+  const decision = decideAutoAnalysis({
       latestFinalUtterance,
       transcriptText: analysisText,
       lastAutoAnalyzedFingerprint: lastAutoAnalyzedFingerprintRef.current,
       scheduledAutoAnalysisFingerprint: scheduledAutoAnalysisFingerprintRef.current,
-      assistantState
+      assistantState,
+      selectedCounterpartyPackIds: sessionContext.selectedCounterpartyPackIds
     })
 
     if (!decision.shouldRun || decision.fingerprint === null) {
@@ -2478,7 +2479,12 @@ export const App = () => {
         autoAnalysisTimeoutRef.current = null
       }
     }
-  }, [analysisCooldownUntil, assistantState, transcriptUtterances])
+  }, [
+    analysisCooldownUntil,
+    assistantState,
+    transcriptUtterances,
+    sessionContext.selectedCounterpartyPackIds
+  ])
 
   const realtimeMinutes =
     (accumulatedRealtimeMs +

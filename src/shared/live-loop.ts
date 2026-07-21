@@ -15,11 +15,16 @@ export type AssistantStatusLabelInfo = {
 
 export const getAutoAnalysisFingerprint = (
   latestFinalUtterance: TranscriptUtterance,
-  transcriptText: string
+  transcriptText: string,
+  selectedCounterpartyPackIds: string[] = []
 ) =>
   `${latestFinalUtterance.id}::${latestFinalUtterance.speaker}::${transcriptText
     .slice(-500)
-    .trim()}`
+    .trim()}::packs:${[
+    ...new Set(selectedCounterpartyPackIds.filter(Boolean))
+  ]
+    .sort()
+    .join(',')}`
 
 export const getAssistantStatusLabel = (
   assistantState: AssistantState,
@@ -100,13 +105,15 @@ export const decideAutoAnalysis = ({
   transcriptText,
   lastAutoAnalyzedFingerprint,
   scheduledAutoAnalysisFingerprint,
-  assistantState
+  assistantState,
+  selectedCounterpartyPackIds = []
 }: {
   latestFinalUtterance: TranscriptUtterance | undefined
   transcriptText: string
   lastAutoAnalyzedFingerprint: string | null
   scheduledAutoAnalysisFingerprint: string | null
   assistantState: AssistantState
+  selectedCounterpartyPackIds?: string[]
 }): LiveLoopDecision => {
   if (!latestFinalUtterance) {
     return {
@@ -118,7 +125,8 @@ export const decideAutoAnalysis = ({
 
   const fingerprint = getAutoAnalysisFingerprint(
     latestFinalUtterance,
-    transcriptText
+    transcriptText,
+    selectedCounterpartyPackIds
   )
 
   if (fingerprint === lastAutoAnalyzedFingerprint) {

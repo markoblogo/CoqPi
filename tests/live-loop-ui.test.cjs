@@ -21,6 +21,61 @@ const makeUtterance = (overrides) => ({
 
 const analysisText = 'I have experience with product management and leadership.'
 
+test('auto analyze fingerprint includes selected counterparty pack ids', () => {
+  const latestFinal = makeUtterance({ id: 'u-4' })
+  const withSelection = decideAutoAnalysis({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    selectedCounterpartyPackIds: ['pack-B', 'pack-A', 'pack-A']
+  })
+
+  const withoutSelection = decideAutoAnalysis({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    selectedCounterpartyPackIds: []
+  })
+
+  assert.equal(withSelection.shouldRun, true)
+  assert.equal(withSelection.reason, 'schedule')
+  assert.equal(withSelection.fingerprint.includes('::packs:pack-A,pack-B'), true)
+  assert.equal(withoutSelection.shouldRun, true)
+  assert.equal(withoutSelection.fingerprint.includes('::packs:'), true)
+  assert.equal(withSelection.fingerprint, 'u-4::other::I have experience with product management and leadership.::packs:pack-A,pack-B')
+  assert.equal(withoutSelection.fingerprint, 'u-4::other::I have experience with product management and leadership.::packs:')
+})
+
+test('auto analyze re-schedules when selected pack set changes while transcript is same', () => {
+  const latestFinal = makeUtterance({ id: 'u-5' })
+  const withPackA = decideAutoAnalysis({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    selectedCounterpartyPackIds: ['pack-A']
+  })
+  assert.equal(withPackA.shouldRun, true)
+
+  const withPackB = decideAutoAnalysis({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: withPackA.fingerprint,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    selectedCounterpartyPackIds: ['pack-B']
+  })
+
+  assert.equal(withPackB.shouldRun, true)
+  assert.equal(withPackB.reason, 'schedule')
+  assert.equal(withPackB.fingerprint.includes('::packs:pack-B'), true)
+})
+
 test('auto analyze dedupe does not rerun on repeated other final utterance', () => {
   const latestFinal = makeUtterance({ id: 'u-1' })
   const first = decideAutoAnalysis({
