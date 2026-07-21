@@ -2549,7 +2549,7 @@ export const App = () => {
       mode: 'full',
       trigger: 'manual',
       targetUtteranceId: latestUtteranceId,
-      bypassCooldown: false
+      bypassCooldown: true
     })
   }
 

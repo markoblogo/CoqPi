@@ -368,9 +368,8 @@ test('selected change during in-flight analysis retries with latest pack after s
   assert.equal(assistantState, 'done')
 })
 
-test('retry now is cooldown-aware and preserves assistant state while using latest selected packs', async () => {
+test('retry now bypasses cooldown and uses latest selected packs', async () => {
   let assistantState = 'error'
-  let analysisCooldownUntil = Date.now() + 1200
   let selectedCounterpartyPackIds = ['pack-A']
   const capturedRequests = []
   const stateTransitions = []
@@ -382,19 +381,12 @@ test('retry now is cooldown-aware and preserves assistant state while using late
   )
 
   const runManualRetryNow = () => {
-    const cooldownRemainingSeconds = Math.max(
-      0,
-      Math.ceil((analysisCooldownUntil - Date.now()) / 1000)
-    )
-
-    if (
-      cooldownRemainingSeconds > 0 ||
-      assistantState === 'analyzing'
-    ) {
-      stateTransitions.push('blocked-by-cooldown')
+    if (assistantState === 'analyzing') {
+      stateTransitions.push('blocked-by-state')
       return Promise.resolve(false)
     }
 
+    // Retry-now intentionally ignores cooldown to keep the user-provided action explicit.
     stateTransitions.push(
       `run:${selectedCounterpartyPackIds.join(',')}`
     )
@@ -416,12 +408,11 @@ test('retry now is cooldown-aware and preserves assistant state while using late
 
   const firstAttempt = await runManualRetryNow()
 
-  assert.equal(firstAttempt, false)
-  assert.equal(assistantState, 'error')
-  assert.deepEqual(capturedRequests, [])
+  assert.equal(firstAttempt, true)
+  assert.equal(assistantState, 'done')
+  assert.deepEqual(capturedRequests, [['pack-A']])
 
   selectedCounterpartyPackIds = ['pack-B']
-  analysisCooldownUntil = Date.now() - 1
 
   const secondAttempt = runManualRetryNow()
 
@@ -431,8 +422,11 @@ test('retry now is cooldown-aware and preserves assistant state while using late
 
   assert.equal(secondResult, true)
   assert.equal(assistantState, 'done')
-  assert.deepEqual(capturedRequests, [['pack-B']])
-  assert.equal(stateTransitions.join(' -> '), 'blocked-by-cooldown -> run:pack-B -> analyzing -> done')
+  assert.deepEqual(capturedRequests, [['pack-A'], ['pack-B']])
+  assert.equal(
+    stateTransitions.join(' -> '),
+    'run:pack-A -> analyzing -> done -> run:pack-B -> analyzing -> done'
+  )
 })
 
 test('auto analyze dedupe does not rerun on repeated other final utterance', () => {
