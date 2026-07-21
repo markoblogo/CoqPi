@@ -240,6 +240,132 @@ test('App live-loop scheduling replaces pending auto-analysis request when selec
   assert.equal(capturedRequests[0].selectedCounterpartyPackIds.join(','), 'pack-B')
 })
 
+test('selected change during in-flight analysis retries with latest pack after status error', async () => {
+  const latestFinal = makeUtterance({ id: 'u-9' })
+  const analysisText = latestFinal.text + ' Need to follow up.'
+  const capturedRequests = []
+  let autoAnalysisTimeoutId = null
+  let scheduledAutoAnalysisFingerprint = null
+  let lastAutoAnalyzedFingerprint = null
+  let assistantState = 'idle'
+  let selectedCounterpartyPackIds = ['pack-A']
+  let firstRunResolver = null
+
+  const firstPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: Date.now() + 20
+  })
+
+  const secondPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: firstPlan.fingerprint,
+    assistantState: 'error',
+    analysisCooldownUntil: Date.now() + 20,
+    selectedCounterpartyPackIds: ['pack-B']
+  })
+
+  assert.equal(firstPlan.shouldRun, true)
+  assert.equal(secondPlan.shouldRun, true)
+  assert.notEqual(firstPlan.fingerprint, secondPlan.fingerprint)
+
+  const runAssistantAnalysis = () =>
+    new Promise((resolve) => {
+      capturedRequests.push(selectedCounterpartyPackIds)
+
+      if (selectedCounterpartyPackIds[0] === 'pack-A') {
+        firstRunResolver = resolve
+        return
+      }
+
+      assistantState = 'done'
+      resolve(true)
+    })
+
+  const schedule = () => {
+    const plan = buildAutoAnalysisSchedule({
+      latestFinalUtterance: latestFinal,
+      transcriptText: analysisText,
+      lastAutoAnalyzedFingerprint,
+      scheduledAutoAnalysisFingerprint,
+      assistantState,
+      analysisCooldownUntil: Date.now() + 20,
+      selectedCounterpartyPackIds
+    })
+
+    if (!plan.shouldRun || plan.fingerprint === null) {
+      return false
+    }
+
+    if (autoAnalysisTimeoutId !== null) {
+      clearTimeout(autoAnalysisTimeoutId)
+    }
+
+    autoAnalysisTimeoutId = setTimeout(() => {
+      const activeFingerprint = plan.fingerprint
+
+      if (activeFingerprint === null) {
+        return
+      }
+
+      scheduledAutoAnalysisFingerprint = activeFingerprint
+      assistantState = 'analyzing'
+
+      void runAssistantAnalysis().then((didRun) => {
+        if (didRun) {
+          lastAutoAnalyzedFingerprint = activeFingerprint
+        }
+
+        if (scheduledAutoAnalysisFingerprint === activeFingerprint) {
+          scheduledAutoAnalysisFingerprint = null
+        }
+
+        assistantState = didRun ? 'done' : 'error'
+      })
+    }, plan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS)
+
+    return true
+  }
+
+  assert.equal(schedule(), true)
+  assert.equal(assistantState, 'idle')
+  await new Promise((resolve) => setTimeout(resolve, firstPlan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS + 40))
+
+  assert.equal(capturedRequests.length, 1)
+  assert.deepEqual(capturedRequests[0], ['pack-A'])
+
+  // Request is in-flight while assistant state is analyzing.
+  assert.equal(assistantState, 'analyzing')
+
+  // Simulate status switch to error and selected pack change while analyze is still running.
+  selectedCounterpartyPackIds = ['pack-B']
+  assistantState = 'error'
+  assert.equal(schedule(), true)
+
+  assert.equal(firstRunResolver !== null, true)
+  firstRunResolver(false)
+  firstRunResolver = null
+
+  await new Promise((resolve) =>
+    setTimeout(resolve, (secondPlan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS) + 120)
+  )
+
+  if (autoAnalysisTimeoutId !== null) {
+    clearTimeout(autoAnalysisTimeoutId)
+    autoAnalysisTimeoutId = null
+  }
+
+  assert.equal(capturedRequests.length, 2)
+  assert.deepEqual(capturedRequests[1], ['pack-B'])
+  assert.equal(lastAutoAnalyzedFingerprint, secondPlan.fingerprint)
+  assert.equal(assistantState, 'done')
+})
+
 test('auto analyze dedupe does not rerun on repeated other final utterance', () => {
   const latestFinal = makeUtterance({ id: 'u-1' })
   const first = decideAutoAnalysis({
