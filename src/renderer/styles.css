@@ -441,6 +441,37 @@ button:disabled {
   color: #f1c2c2;
 }
 
+.assistant-diagnostic {
+  padding: 6px 7px;
+  border-radius: 3px;
+  font-size: var(--font-sm);
+  line-height: 1.3;
+  display: grid;
+  gap: 3px;
+}
+
+.assistant-diagnostic p {
+  margin: 0;
+}
+
+.assistant-diagnostic-warning {
+  border: 1px solid #6f4e32;
+  background: #241d14;
+  color: #efd7aa;
+}
+
+.assistant-diagnostic-info {
+  border: 1px solid #385470;
+  background: #15212c;
+  color: #cce4fb;
+}
+
+.assistant-diagnostic-error {
+  border: 1px solid #7c4747;
+  background: #261616;
+  color: #f1c2c2;
+}
+
 .live-main {
   display: grid;
   grid-template-columns: minmax(0, 1.22fr) minmax(0, 1fr);

@@ -119,6 +119,7 @@ Receipt writes are best-effort so a local disk failure cannot interrupt a live c
 - `Live Call`: primary cockpit with realtime health, transcript, Russian meaning, suggested answers, and keywords.
 - `Prepare`: mock transcript controls, manual analysis actions, cost counters, and collapsible profile context.
 - `Settings / Debug`: secure API key handling, defaults, audio advanced controls, realtime diagnostics, and privacy info.
+- Live diagnostics in the `Assist` path now show concise status reasons for timeout/budget/manual errors and direct next-action hints, with a one-click `Reset conversation` action available from the transcript card.
 
 ## Mock Transcript Mode
 

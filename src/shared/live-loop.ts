@@ -87,6 +87,116 @@ export const getAssistantStatusLabel = (
   }
 }
 
+export type AssistantRunHintTone = 'info' | 'warning' | 'error'
+
+export interface AssistantRunHint {
+  title: string
+  message: string
+  tone: AssistantRunHintTone
+  actionHint: string | null
+}
+
+export const getAssistantRunHint = (
+  assistantState: AssistantState,
+  errorCode: AssistantStatusCode,
+  assistantError: string | null,
+  lastAnalyzedUtteranceId: string | null,
+  lastUtteranceId: string | undefined
+): AssistantRunHint | null => {
+  if (assistantState === 'analyzing') {
+    return {
+      title: 'Анализ...',
+      message: 'Идёт обработка последней финальной реплики.',
+      tone: 'info',
+      actionHint: null
+    }
+  }
+
+  if (assistantState === 'error') {
+    if (errorCode === 'provider_timeout') {
+      return {
+        title: 'Тайм-аут ответа провайдера',
+        message:
+          'Ответ не пришёл вовремя. Обычно помогает короче сформулировать реплику.',
+        tone: 'warning',
+        actionHint: 'Нажми Retry-режим (A30/KW) или подожди 1–2 секунды и повтори ручной запуск.'
+      }
+    }
+
+    if (errorCode === 'analysis_budget_exhausted') {
+      return {
+        title: 'Лимит budget исчерпан',
+        message: 'Запросов больше нет: системный лимит на retry/маршруты исчерпан.',
+        tone: 'warning',
+        actionHint: 'Сбрось сеанс кнопкой reset и попробуй после паузы или с меньшим окном.'
+      }
+    }
+
+    if (errorCode === 'missing_api_key') {
+      return {
+        title: 'Нет ключа API',
+        message:
+          'Assistant analysis не может стартовать без рабочего ключа OpenAI.',
+        tone: 'error',
+        actionHint: 'Открой Settings и сохрани API-ключ.'
+      }
+    }
+
+    if (errorCode === 'invalid_model_response') {
+      return {
+        title: 'Некорректный ответ модели',
+        message:
+          'Модель вернула невалидную структуру ответа, поэтому разбор невозможен.',
+        tone: 'error',
+        actionHint: 'Повтори запуск вручную. Уточни язык и повтори вопрос/ответ.'
+      }
+    }
+
+    if (errorCode === 'profile_context_error') {
+      return {
+        title: 'Ошибка профиля/контекста',
+        message: 'Нужные профили или сессионные данные временно не удалось собрать.',
+        tone: 'warning',
+        actionHint: 'Проверь профиль/selected packs и повтори анализ.'
+      }
+    }
+
+    if (errorCode === 'assistant_error' || errorCode === 'provider_error') {
+      return {
+        title: 'Ошибка обработки запроса',
+        message:
+          assistantError ??
+          'Сбой маршрута анализа. Проверь подключение и повтори анализ.',
+        tone: 'error',
+        actionHint: 'Нажми A30/KW повторно, или переключись на другой режим cost.'
+      }
+    }
+
+    return {
+      title: 'Неизвестная ошибка',
+      message:
+        assistantError ??
+        'Непредвиденная ошибка в блоке анализа.',
+      tone: 'error',
+      actionHint: 'Нажми Reset conversation и попробуй заново.'
+    }
+  }
+
+  if (assistantState === 'done' && lastUtteranceId) {
+    if (lastAnalyzedUtteranceId && lastAnalyzedUtteranceId !== lastUtteranceId) {
+      return {
+        title: 'Старая подсказка',
+        message:
+          'Сейчас на экране результат по предыдущей реплике; новый final ещё не обработан.',
+        tone: 'warning',
+        actionHint: 'Дождись завершения debounce и auto-анализ подтянет новый контент.'
+      }
+    }
+  }
+
+  return null
+}
+
 export type LiveLoopDecisionReason =
   | 'schedule'
   | 'no-final'

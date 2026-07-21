@@ -37,6 +37,7 @@ import {
   AssistantState,
   type AssistantStatusCode,
   buildAutoAnalysisSchedule,
+  getAssistantRunHint,
   getAssistantStatusLabel
 } from '@shared/live-loop'
 import {
@@ -2591,6 +2592,13 @@ export const App = () => {
     assistantErrorCode
   )
   const assistantFreshnessLabel = assistantStatus.label
+  const assistantRunHint = getAssistantRunHint(
+    assistantState,
+    assistantErrorCode,
+    assistantError,
+    lastAnalyzedUtteranceId,
+    lastUtterance?.id
+  )
   const canStartListening =
     realtimeStatus !== 'connecting' &&
     realtimeStatus !== 'connected' &&
@@ -2704,7 +2712,7 @@ export const App = () => {
           onClick={clearTranscriptState}
           type="button"
         >
-          New call
+          Reset conversation
         </button>
       </div>
       {transcriptUtterances.length === 0 ? (
@@ -3628,13 +3636,21 @@ export const App = () => {
             </div>
           </section>
 
-          {(realtimeError || assistantError || costNotice) && (
+          {(assistantRunHint || realtimeError || assistantError || costNotice) && (
             <div className="stack live-alerts">
+              {assistantRunHint ? (
+                <div
+                  className={`assistant-diagnostic assistant-diagnostic-${assistantRunHint.tone}`}
+                >
+                  <strong>{assistantRunHint.title}</strong>
+                  <p>{assistantRunHint.message}</p>
+                  {assistantRunHint.actionHint ? (
+                    <p>{assistantRunHint.actionHint}</p>
+                  ) : null}
+                </div>
+              ) : null}
               {realtimeError ? (
                 <div className="error-box">{realtimeError}</div>
-              ) : null}
-              {assistantError ? (
-                <div className="error-box">{assistantError}</div>
               ) : null}
               {costNotice ? <div className="info-box">{costNotice}</div> : null}
             </div>

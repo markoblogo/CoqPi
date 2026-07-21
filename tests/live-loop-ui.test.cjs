@@ -5,6 +5,7 @@ const {
   AUTO_ANALYSIS_DEBOUNCE_MS,
   buildAutoAnalysisSchedule,
   decideAutoAnalysis,
+  getAssistantRunHint,
   getAssistantStatusLabel
 } = require('../dist-electron/shared/live-loop.js')
 
@@ -492,6 +493,36 @@ test('auto analyze maps stale/ready/error statuses for UI chain', () => {
   )
   assert.equal(genericError.label, 'Error')
   assert.equal(genericError.classNameSuffix, 'error')
+})
+
+test('assistant run hint summarizes operational failures for UI', () => {
+  const budget = getAssistantRunHint(
+    'error',
+    'analysis_budget_exhausted',
+    'analysis budget exhausted',
+    'u-a',
+    'u-a'
+  )
+  assert.equal(budget !== null, true)
+  assert.equal(budget.tone, 'warning')
+  assert.equal(
+    budget.title,
+    'Лимит budget исчерпан'
+  )
+  assert.equal(typeof budget.actionHint, 'string')
+
+  const timeout = getAssistantRunHint(
+    'error',
+    'provider_timeout',
+    'provider timeout',
+    'u-a',
+    'u-a'
+  )
+  assert.equal(timeout.tone, 'warning')
+  assert.equal(timeout.title, 'Тайм-аут ответа провайдера')
+
+  const ready = getAssistantRunHint('idle', null, null, null, undefined)
+  assert.equal(ready, null)
 })
 
 test('auto-analysis debounce constant stays as expected', () => {
