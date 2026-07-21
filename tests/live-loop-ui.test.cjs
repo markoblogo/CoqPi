@@ -142,6 +142,104 @@ test('selected/unselected change still reschedules during error state', () => {
   assert.equal(failedRetry.fingerprint.includes('::packs:pack-B'), true)
 })
 
+test('App live-loop scheduling replaces pending auto-analysis request when selected packs change', async () => {
+  const latestFinal = makeUtterance({ id: 'u-8' })
+  const analysisText = latestFinal.text + ' Detailed discussion of this role.'
+  const capturedRequests = []
+  let autoAnalysisTimeoutId = null
+  let scheduledAutoAnalysisFingerprint = null
+  let lastAutoAnalyzedFingerprint = null
+  const analysisCooldownUntil = Date.now() + 80
+
+  const runAssistantAnalysis = (selectedCounterpartyPackIds) => {
+    capturedRequests.push({ selectedCounterpartyPackIds })
+    return Promise.resolve(true)
+  }
+
+  const schedule = (selectedCounterpartyPackIds) => {
+    const plan = buildAutoAnalysisSchedule({
+      latestFinalUtterance: latestFinal,
+      transcriptText: analysisText,
+      lastAutoAnalyzedFingerprint,
+      scheduledAutoAnalysisFingerprint,
+      assistantState: 'idle',
+      analysisCooldownUntil,
+      selectedCounterpartyPackIds
+    })
+
+    if (!plan.shouldRun || plan.fingerprint === null) {
+      return false
+    }
+
+    if (autoAnalysisTimeoutId !== null) {
+      clearTimeout(autoAnalysisTimeoutId)
+    }
+
+    autoAnalysisTimeoutId = setTimeout(() => {
+      const activeFingerprint = plan.fingerprint
+
+      if (!activeFingerprint) {
+        return
+      }
+
+      scheduledAutoAnalysisFingerprint = activeFingerprint
+
+      void runAssistantAnalysis(selectedCounterpartyPackIds).then((didRun) => {
+        if (didRun) {
+          lastAutoAnalyzedFingerprint = activeFingerprint
+        }
+
+        if (scheduledAutoAnalysisFingerprint === activeFingerprint) {
+          scheduledAutoAnalysisFingerprint = null
+        }
+      })
+    }, plan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS)
+
+    return true
+  }
+
+  const scheduleA = schedule(['pack-A'])
+  assert.equal(scheduleA, true)
+
+  const expectedFirstPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: Date.now() + 80,
+    selectedCounterpartyPackIds: ['pack-A']
+  })
+  const expectedSecondPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: expectedFirstPlan.fingerprint,
+    assistantState: 'idle',
+    analysisCooldownUntil: Date.now() + 80,
+    selectedCounterpartyPackIds: ['pack-B']
+  })
+
+  assert.equal(expectedFirstPlan.shouldRun, true)
+  assert.equal(expectedSecondPlan.shouldRun, true)
+  assert.notEqual(expectedFirstPlan.fingerprint, expectedSecondPlan.fingerprint)
+
+  await new Promise((resolve) => setTimeout(resolve, 40))
+
+  const scheduleB = schedule(['pack-B'])
+  assert.equal(scheduleB, true)
+
+  await new Promise((resolve) => setTimeout(resolve, (AUTO_ANALYSIS_DEBOUNCE_MS + 80) + 120))
+
+  if (autoAnalysisTimeoutId !== null) {
+    clearTimeout(autoAnalysisTimeoutId)
+    autoAnalysisTimeoutId = null
+  }
+
+  assert.equal(capturedRequests.length, 1)
+  assert.equal(capturedRequests[0].selectedCounterpartyPackIds.join(','), 'pack-B')
+})
+
 test('auto analyze dedupe does not rerun on repeated other final utterance', () => {
   const latestFinal = makeUtterance({ id: 'u-1' })
   const first = decideAutoAnalysis({
