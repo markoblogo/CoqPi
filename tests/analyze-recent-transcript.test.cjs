@@ -3,6 +3,7 @@ const test = require('node:test')
 const Module = require('node:module')
 const path = require('node:path')
 const os = require('node:os')
+const fs = require('node:fs/promises')
 const { buildAutoAnalysisSchedule } = require('../dist-electron/shared/live-loop.js')
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
@@ -33,6 +34,7 @@ const withElectronMock = async (run) => {
     const assistantService = require('../dist-electron/backend/services/assistant-service.js')
     const assistantProviderProfile = require('../dist-electron/backend/services/assistant-provider-profile.js')
     const contextSourceService = require('../dist-electron/backend/services/context-source-service.js')
+    const sessionContextService = require('../dist-electron/backend/services/session-context-service.js')
     const profileService = require('../dist-electron/backend/services/profile-service.js')
     const secretStorageService = require('../dist-electron/backend/services/secret-storage-service.js')
     const governanceService = require('../dist-electron/backend/services/governance-service.js')
@@ -41,6 +43,7 @@ const withElectronMock = async (run) => {
       assistantService,
       assistantProviderProfile,
       contextSourceService,
+      sessionContextService,
       profileService,
       secretStorageService,
       governanceService
@@ -93,6 +96,7 @@ const withStubbedProviderRoute = ({
   profileCount,
   fetchHandler,
   requestOverrides,
+  beforeAnalyze,
   onRetrievalCall,
   onSelectedPackIds,
   onAnalyzeRequest
@@ -139,14 +143,56 @@ const withStubbedProviderRoute = ({
           async (_action, execute) => execute()
         ]
       ],
-      () => {
+      async () => {
         global.fetch = fetchHandler
-        const request = makeRequest(requestOverrides)
+        if (beforeAnalyze) {
+          await beforeAnalyze(services)
+        }
+
+        const resolvedOverrides =
+          typeof requestOverrides === 'function'
+            ? requestOverrides(services)
+            : requestOverrides
+        const request = makeRequest(resolvedOverrides)
         onAnalyzeRequest?.(request)
         return services.assistantService.analyzeRecentTranscript(request)
       }
     )
   })
+
+const withLocalKnowledgeWorkspace = async (run) => {
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), 'coqpi-analyze-session-relay-')
+  )
+  const previousCoreDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  const previousSessionsDirectory = process.env.COQPI_SESSIONS_DIR
+  const coreDirectory = path.join(directory, 'core')
+  const sessionsDirectory = path.join(directory, 'sessions')
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = coreDirectory
+  process.env.COQPI_SESSIONS_DIR = sessionsDirectory
+
+  await fs.mkdir(coreDirectory, { recursive: true })
+  await fs.mkdir(sessionsDirectory, { recursive: true })
+  await fs.writeFile(path.join(coreDirectory, 'coqpi-ingress.events.jsonl'), '')
+
+  try {
+    await run()
+  } finally {
+    if (previousCoreDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousCoreDirectory
+    }
+
+    if (previousSessionsDirectory === undefined) {
+      delete process.env.COQPI_SESSIONS_DIR
+    } else {
+      process.env.COQPI_SESSIONS_DIR = previousSessionsDirectory
+    }
+
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+}
 
 test('selected pack changes during cooldown replace scheduled analyzeRecentTranscript request', async () => {
   const capturedRequests = []
@@ -325,6 +371,103 @@ test('analyzeRecentTranscript passes selected counterparty pack ids to context s
   })
 
   assert.deepEqual(observed.selectedCounterpartyPackIds, ['pack-1', 'pack-2'])
+})
+
+test('finder-imported pack selection persists through session reload and is sent with analyze', async () => {
+  const observed = {
+    requestSelectedCounterpartyPackIds: undefined,
+    contextSelectedCounterpartyPackIds: undefined,
+    retrievalSelectedCounterpartyPackIds: undefined
+  }
+  let activeSessionContext = {
+    company: '',
+    role: '',
+    context: '',
+    goal: '',
+    notes: '',
+    selectedCounterpartyPackIds: []
+  }
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const imported = await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts(
+          [
+            {
+              kind: 'job',
+              sourceId: 'finder:job:fr-relance-007',
+              partnerName: 'Agri Relay',
+              title: 'Agri PM',
+              summary: 'Short summary for persistence verification.'
+            }
+          ]
+        )
+
+        const importedId =
+          imported.manifest.counterpartyPacks?.[0]?.id
+
+        await services.sessionContextService.saveSessionContext({
+          company: 'Acme Holdings',
+          role: 'Product Lead',
+          context: 'Hiring interview preparation',
+          goal: 'Prepare a 15-minute call',
+          notes: 'Focus on EN interview context.',
+          selectedCounterpartyPackIds: importedId ? [importedId] : []
+        })
+
+        const reloadedSession =
+          await services.sessionContextService.getSessionContext()
+
+        activeSessionContext = reloadedSession.context
+        observed.contextSelectedCounterpartyPackIds =
+          activeSessionContext.selectedCounterpartyPackIds
+      },
+      requestOverrides: () => ({
+        sessionContext: activeSessionContext,
+        selectedCounterpartyPackIds:
+          activeSessionContext.selectedCounterpartyPackIds
+      }),
+      onAnalyzeRequest: (request) => {
+        observed.requestSelectedCounterpartyPackIds =
+          request.selectedCounterpartyPackIds
+      },
+      onSelectedPackIds: (selectedCounterpartyPackIds) => {
+        observed.retrievalSelectedCounterpartyPackIds = [
+          ...(selectedCounterpartyPackIds ?? [])
+        ]
+      },
+      fetchHandler: async () =>
+        makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Кандидат рассказал о релевантной позиции.',
+              detectedQuestion: 'What is your experience with PM?',
+              intent: 'understand fit',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I have led product teams end-to-end.',
+                  answerMeaningRu: 'Я руководил продуктовой командой.'
+                }
+              ],
+              keywordsToRemember: ['interview', 'pm'],
+              openingPhrase: 'Good point.'
+            })
+          }
+        })
+    })
+  })
+
+  assert.deepEqual(
+    observed.requestSelectedCounterpartyPackIds,
+    observed.contextSelectedCounterpartyPackIds
+  )
+  assert.deepEqual(
+    observed.retrievalSelectedCounterpartyPackIds,
+    observed.contextSelectedCounterpartyPackIds
+  )
 })
 
 test('analyzeRecentTranscript returns structured result on valid Ollama JSON', async () => {

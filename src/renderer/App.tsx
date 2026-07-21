@@ -478,6 +478,19 @@ const getSessionSelectedCounterpartyPackIdsWithImported = (
   return [...selectedSet]
 }
 
+const getSessionContextWithImportedCandidates = (
+  context: SessionContext,
+  availablePacks: CounterpartyContextPack[],
+  importedCandidates: CounterpartyContextPackDraft[] = []
+) => ({
+  ...context,
+  selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIdsWithImported(
+    context,
+    availablePacks,
+    importedCandidates
+  )
+})
+
 const getSessionContextRetrievalKinds = (
   context: SessionContext
 ): CounterpartyContextPackKind[] | undefined => {
@@ -1510,6 +1523,10 @@ export const App = () => {
       const nonDuplicateCount = nextItems.filter((item) => !item.duplicate).length
       const hasItems = nextItems.length > 0
       const hasValid = preview.validCount > 0
+      const allDuplicate =
+        hasItems &&
+        preview.validCount === 0 &&
+        preview.duplicateCount === preview.requestedCount
       const hasOnlyDuplicates =
         hasItems && preview.validCount > 0 && nonDuplicateCount === 0
 
@@ -1517,6 +1534,16 @@ export const App = () => {
         notices.push(
           `${preview.requestedCount} total entries parsed. ${preview.validCount} valid.`
         )
+      }
+
+      if (!hasValid && hasItems) {
+        if (allDuplicate) {
+          notices.push('0 valid entries, всё дубликаты / already imported.')
+        } else if (preview.errors.length > 0) {
+          notices.push(
+            `0 valid entries. ${preview.errors.length} invalid entries.`
+          )
+        }
       }
 
       if (preview.errors.length > 0) {
@@ -1541,12 +1568,6 @@ export const App = () => {
       if (hasOnlyDuplicates) {
         notices.push(
           'No new non-duplicate candidates found; everything is already imported.'
-        )
-      }
-
-      if (hasItems && !hasValid) {
-        notices.push(
-          'No valid candidates in this payload. Check JSON shape and required fields.'
         )
       }
 
@@ -1636,11 +1657,31 @@ export const App = () => {
       const payload = await window.coqpi.contextPacks.add(
         selected.map((candidate) => candidate.draft)
       )
+      const importedCandidates = selected.map((candidate) => candidate.draft)
+      const nextPacks = payload.manifest.counterpartyPacks ?? []
+      const nextSessionContext = getSessionContextWithImportedCandidates(
+        sessionContext,
+        nextPacks,
+        importedCandidates
+      )
 
       applyCounterpartyPackManifest(
-        payload.manifest.counterpartyPacks ?? [],
-        selected.map((candidate) => candidate.draft)
+        nextPacks,
+        importedCandidates
       )
+      setSessionContext(nextSessionContext)
+      setSessionContextDraft(nextSessionContext)
+      try {
+        const saved = await window.coqpi.session.saveContext(nextSessionContext)
+        setSessionContext(saved.context)
+        setSessionContextDraft(saved.context)
+      } catch (error) {
+        setSessionContextError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to save session selection for imported candidates.'
+        )
+      }
 
       const previewDuplicateCount = counterpartyFinderPayloadPreview?.duplicateCount ?? 0
       const previewErrorCount = counterpartyFinderPayloadPreview?.errors.length ?? 0
@@ -4143,6 +4184,7 @@ export const App = () => {
                     Import selected candidates
                   </button>
                   <button
+                    disabled={isSavingCounterpartyPacks}
                     onClick={() => {
                       clearFinderPayloadInput()
                     }}
