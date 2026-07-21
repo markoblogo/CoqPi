@@ -100,6 +100,24 @@ export type LiveLoopDecision = {
   fingerprint: string | null
 }
 
+export type LiveLoopScheduleInput = {
+  latestFinalUtterance: TranscriptUtterance | undefined
+  transcriptText: string
+  lastAutoAnalyzedFingerprint: string | null
+  scheduledAutoAnalysisFingerprint: string | null
+  assistantState: AssistantState
+  analysisCooldownUntil: number
+  nowMs?: number
+  selectedCounterpartyPackIds?: string[]
+}
+
+export type LiveLoopSchedulePlan = {
+  shouldRun: boolean
+  reason: LiveLoopDecisionReason
+  fingerprint: string | null
+  delayMs: number | null
+}
+
 export const decideAutoAnalysis = ({
   latestFinalUtterance,
   transcriptText,
@@ -157,5 +175,44 @@ export const decideAutoAnalysis = ({
     shouldRun: true,
     reason: 'schedule',
     fingerprint
+  }
+}
+
+export const buildAutoAnalysisSchedule = ({
+  latestFinalUtterance,
+  transcriptText,
+  lastAutoAnalyzedFingerprint,
+  scheduledAutoAnalysisFingerprint,
+  assistantState,
+  analysisCooldownUntil,
+  nowMs,
+  selectedCounterpartyPackIds
+}: LiveLoopScheduleInput): LiveLoopSchedulePlan => {
+  const decision = decideAutoAnalysis({
+    latestFinalUtterance,
+    transcriptText,
+    lastAutoAnalyzedFingerprint,
+    scheduledAutoAnalysisFingerprint,
+    assistantState,
+    selectedCounterpartyPackIds
+  })
+
+  if (!decision.shouldRun || decision.fingerprint === null) {
+    return {
+      shouldRun: false,
+      reason: decision.reason,
+      fingerprint: null,
+      delayMs: null
+    }
+  }
+
+  const currentNow = nowMs ?? Date.now()
+  const cooldownDelay = Math.max(0, analysisCooldownUntil - currentNow)
+
+  return {
+    shouldRun: true,
+    reason: decision.reason,
+    fingerprint: decision.fingerprint,
+    delayMs: AUTO_ANALYSIS_DEBOUNCE_MS + cooldownDelay
   }
 }

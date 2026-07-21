@@ -3,6 +3,7 @@ const test = require('node:test')
 
 const {
   AUTO_ANALYSIS_DEBOUNCE_MS,
+  buildAutoAnalysisSchedule,
   decideAutoAnalysis,
   getAssistantStatusLabel
 } = require('../dist-electron/shared/live-loop.js')
@@ -74,6 +75,71 @@ test('auto analyze re-schedules when selected pack set changes while transcript 
   assert.equal(withPackB.shouldRun, true)
   assert.equal(withPackB.reason, 'schedule')
   assert.equal(withPackB.fingerprint.includes('::packs:pack-B'), true)
+})
+
+test('buildAutoAnalysisSchedule extends delay by remaining cooldown window', () => {
+  const latestFinal = makeUtterance({ id: 'u-6' })
+  const now = Date.now()
+  const base = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: now + 800,
+    nowMs: now,
+    selectedCounterpartyPackIds: ['pack-A']
+  })
+
+  assert.equal(base.shouldRun, true)
+  assert.equal(base.delayMs, AUTO_ANALYSIS_DEBOUNCE_MS + 800)
+
+  const delayed = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: now + 800,
+    nowMs: now + 500,
+    selectedCounterpartyPackIds: ['pack-B']
+  })
+  assert.equal(delayed.shouldRun, true)
+  assert.equal(delayed.delayMs, AUTO_ANALYSIS_DEBOUNCE_MS + 300)
+  assert.equal(
+    delayed.fingerprint.includes('::packs:pack-B'),
+    true
+  )
+  assert.notEqual(base.fingerprint, delayed.fingerprint)
+})
+
+test('selected/unselected change still reschedules during error state', () => {
+  const latestFinal = makeUtterance({ id: 'u-7' })
+  const failedPackPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'error',
+    analysisCooldownUntil: Date.now(),
+    selectedCounterpartyPackIds: ['pack-A']
+  })
+
+  assert.equal(failedPackPlan.shouldRun, true)
+  assert.equal(failedPackPlan.fingerprint.includes('::packs:pack-A'), true)
+
+  const failedRetry = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: failedPackPlan.fingerprint,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'error',
+    analysisCooldownUntil: Date.now(),
+    selectedCounterpartyPackIds: ['pack-B']
+  })
+
+  assert.equal(failedRetry.shouldRun, true)
+  assert.equal(failedRetry.fingerprint.includes('::packs:pack-B'), true)
 })
 
 test('auto analyze dedupe does not rerun on repeated other final utterance', () => {

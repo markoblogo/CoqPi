@@ -37,7 +37,7 @@ import {
   AUTO_ANALYSIS_DEBOUNCE_MS,
   AssistantState,
   type AssistantStatusCode,
-  decideAutoAnalysis,
+  buildAutoAnalysisSchedule,
   getAssistantStatusLabel
 } from '@shared/live-loop'
 import {
@@ -2424,16 +2424,17 @@ export const App = () => {
     }
 
     const analysisText = getRecentTranscriptText(transcriptUtterances, 30)
-  const decision = decideAutoAnalysis({
+    const plan = buildAutoAnalysisSchedule({
       latestFinalUtterance,
       transcriptText: analysisText,
       lastAutoAnalyzedFingerprint: lastAutoAnalyzedFingerprintRef.current,
       scheduledAutoAnalysisFingerprint: scheduledAutoAnalysisFingerprintRef.current,
       assistantState,
+      analysisCooldownUntil,
       selectedCounterpartyPackIds: sessionContext.selectedCounterpartyPackIds
     })
 
-    if (!decision.shouldRun || decision.fingerprint === null) {
+    if (!plan.shouldRun || plan.fingerprint === null) {
       return
     }
 
@@ -2441,17 +2442,12 @@ export const App = () => {
       window.clearTimeout(autoAnalysisTimeoutRef.current)
     }
 
-    const cooldownDelay = Math.max(
-      0,
-      analysisCooldownUntil - Date.now()
-    )
-
     autoAnalysisTimeoutRef.current = window.setTimeout(() => {
       if (!runAssistantAnalysisRef.current) {
         return
       }
 
-      const activeFingerprint = decision.fingerprint
+      const activeFingerprint = plan.fingerprint
       scheduledAutoAnalysisFingerprintRef.current = activeFingerprint
 
       void runAssistantAnalysisRef.current({
@@ -2471,7 +2467,7 @@ export const App = () => {
           scheduledAutoAnalysisFingerprintRef.current = null
         }
       })
-    }, AUTO_ANALYSIS_DEBOUNCE_MS + cooldownDelay)
+    }, plan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS)
 
     return () => {
       if (autoAnalysisTimeoutRef.current !== null) {
