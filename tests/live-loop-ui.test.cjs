@@ -368,6 +368,73 @@ test('selected change during in-flight analysis retries with latest pack after s
   assert.equal(assistantState, 'done')
 })
 
+test('retry now is cooldown-aware and preserves assistant state while using latest selected packs', async () => {
+  let assistantState = 'error'
+  let analysisCooldownUntil = Date.now() + 1200
+  let selectedCounterpartyPackIds = ['pack-A']
+  const capturedRequests = []
+  const stateTransitions = []
+  const runStatus = getAssistantStatusLabel(
+    assistantState,
+    'prev-id',
+    'live-id',
+    'provider_not_retryable'
+  )
+
+  const runManualRetryNow = () => {
+    const cooldownRemainingSeconds = Math.max(
+      0,
+      Math.ceil((analysisCooldownUntil - Date.now()) / 1000)
+    )
+
+    if (
+      cooldownRemainingSeconds > 0 ||
+      assistantState === 'analyzing'
+    ) {
+      stateTransitions.push('blocked-by-cooldown')
+      return Promise.resolve(false)
+    }
+
+    stateTransitions.push(
+      `run:${selectedCounterpartyPackIds.join(',')}`
+    )
+    capturedRequests.push([...selectedCounterpartyPackIds])
+    assistantState = 'analyzing'
+    stateTransitions.push('analyzing')
+
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        assistantState = 'done'
+        stateTransitions.push('done')
+        resolve(true)
+      }, 10)
+    })
+  }
+
+  assert.equal(runStatus.label, 'Retry blocked')
+  assert.equal(runStatus.classNameSuffix, 'retry-blocked')
+
+  const firstAttempt = await runManualRetryNow()
+
+  assert.equal(firstAttempt, false)
+  assert.equal(assistantState, 'error')
+  assert.deepEqual(capturedRequests, [])
+
+  selectedCounterpartyPackIds = ['pack-B']
+  analysisCooldownUntil = Date.now() - 1
+
+  const secondAttempt = runManualRetryNow()
+
+  assert.equal(assistantState, 'analyzing')
+
+  const secondResult = await secondAttempt
+
+  assert.equal(secondResult, true)
+  assert.equal(assistantState, 'done')
+  assert.deepEqual(capturedRequests, [['pack-B']])
+  assert.equal(stateTransitions.join(' -> '), 'blocked-by-cooldown -> run:pack-B -> analyzing -> done')
+})
+
 test('auto analyze dedupe does not rerun on repeated other final utterance', () => {
   const latestFinal = makeUtterance({ id: 'u-1' })
   const first = decideAutoAnalysis({
