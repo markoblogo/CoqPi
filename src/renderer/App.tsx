@@ -419,6 +419,11 @@ const getSessionContextLabel = (context: SessionContext) => {
 const getSortedCounterpartyPackIds = (packs: CounterpartyContextPack[]) =>
   [...packs.map((pack) => pack.id)].sort()
 
+const buildCounterpartySourceKey = (
+  sourceId: string,
+  kind: CounterpartyContextPackKind
+) => `${sourceId}::${kind}`
+
 const getSessionSelectedCounterpartyPackIds = (
   context: SessionContext,
   availablePacks: CounterpartyContextPack[]
@@ -437,6 +442,40 @@ const getSessionSelectedCounterpartyPackIds = (
   }
 
   return unique
+}
+
+const getSessionSelectedCounterpartyPackIdsWithImported = (
+  context: SessionContext,
+  availablePacks: CounterpartyContextPack[],
+  importedCandidates: CounterpartyContextPackDraft[] = []
+) => {
+  const nextIds = getSessionSelectedCounterpartyPackIds(context, availablePacks)
+  const selectedSet = new Set(nextIds)
+
+  if (importedCandidates.length === 0) {
+    return [...selectedSet]
+  }
+
+  const importKeys = new Set(
+    importedCandidates.map((candidate) =>
+      buildCounterpartySourceKey(candidate.sourceId, candidate.kind)
+    )
+  )
+  const packIdBySourceKey = new Map(
+    availablePacks.map((pack) => [
+      buildCounterpartySourceKey(pack.sourceId, pack.kind),
+      pack.id
+    ])
+  )
+
+  for (const key of importKeys) {
+    const packId = packIdBySourceKey.get(key)
+    if (packId) {
+      selectedSet.add(packId)
+    }
+  }
+
+  return [...selectedSet]
 }
 
 const getSessionContextRetrievalKinds = (
@@ -1294,21 +1333,26 @@ export const App = () => {
     setContextSourcesError(null)
   }
 
-  const applyCounterpartyPackManifest = (packs: CounterpartyContextPack[]) => {
+  const applyCounterpartyPackManifest = (
+    packs: CounterpartyContextPack[],
+    importedCandidates: CounterpartyContextPackDraft[] = []
+  ) => {
     setCounterpartyPacks(packs)
     setCounterpartyPackDraftError(null)
     setSessionContext((current) => ({
       ...current,
-      selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIds(
+      selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIdsWithImported(
         current,
-        packs
+        packs,
+        importedCandidates
       )
     }))
     setSessionContextDraft((current) => ({
       ...current,
-      selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIds(
+      selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIdsWithImported(
         current,
-        packs
+        packs,
+        importedCandidates
       )
     }))
   }
@@ -1407,15 +1451,17 @@ export const App = () => {
     setCounterpartyPackImportErrors([])
 
     try {
-      const payload = await window.coqpi.contextPacks.add([
-        normalizeCounterpartyPackDraft(draft)
-      ])
+      const nextDraft = normalizeCounterpartyPackDraft(draft)
+      const payload = await window.coqpi.contextPacks.add([nextDraft])
 
       if (counterpartyPackDraftingId) {
         await window.coqpi.contextPacks.remove(counterpartyPackDraftingId)
       }
 
-      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+      applyCounterpartyPackManifest(
+        payload.manifest.counterpartyPacks ?? [],
+        nextDraft.selected === false ? [] : [nextDraft]
+      )
 
       if (resetDraft) {
         resetCounterpartyPackDraft()
@@ -1591,7 +1637,10 @@ export const App = () => {
         selected.map((candidate) => candidate.draft)
       )
 
-      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+      applyCounterpartyPackManifest(
+        payload.manifest.counterpartyPacks ?? [],
+        selected.map((candidate) => candidate.draft)
+      )
 
       const previewDuplicateCount = counterpartyFinderPayloadPreview?.duplicateCount ?? 0
       const previewErrorCount = counterpartyFinderPayloadPreview?.errors.length ?? 0
