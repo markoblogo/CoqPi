@@ -2549,7 +2549,7 @@ export const App = () => {
       mode: 'full',
       trigger: 'manual',
       targetUtteranceId: latestUtteranceId,
-      bypassCooldown: true
+      bypassCooldown: false
     })
   }
 
@@ -3557,8 +3557,12 @@ export const App = () => {
                 Retry
               </button>
               <button
-                title="Run retry immediately and bypass cooldown"
-                disabled={assistantState === 'analyzing' || transcriptUtterances.length === 0}
+                title="Run retry now"
+                disabled={
+                  cooldownRemainingSeconds > 0 ||
+                  assistantState === 'analyzing' ||
+                  transcriptUtterances.length === 0
+                }
                 onClick={() => {
                   void runManualAssistantRetryNow()
                 }}
