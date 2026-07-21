@@ -236,7 +236,9 @@ docs/
 2. ✅ Added OpenAI-to-Ollama runtime fallback for text assistant analysis with governance and retry-policy checks; next iteration will refine model-specific routing policies.
 3. ✅ Added batch-friendly finder/context integration: single and batch counterparty pack ingest, preview/import UX, and retrieval-kind gating for interview/founder modes.
 4. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
-5. Add training mode using the same profile, session-context, and assistant-provider layers.
+5. ✅ Pass 7/8 completion: finder batch import now flows through session context into selected pack IDs used by `analyzeRecentTranscript`/retrieval.
+6. ✅ Pass 9 hardening: timeout/budget/retry UX now has cooldown-aware hints and dedicated regression checks.
+7. Add training mode using the same profile, session-context, and assistant-provider layers.
 
 The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).
 

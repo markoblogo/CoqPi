@@ -101,8 +101,17 @@ export const getAssistantRunHint = (
   errorCode: AssistantStatusCode,
   assistantError: string | null,
   lastAnalyzedUtteranceId: string | null,
-  lastUtteranceId: string | undefined
+  lastUtteranceId: string | undefined,
+  cooldownRemainingSeconds = 0
 ): AssistantRunHint | null => {
+  const formatRetryHint = (baseHint: string) => {
+    if (cooldownRemainingSeconds <= 0) {
+      return baseHint
+    }
+
+    return `${baseHint} Повтор запланирован через ${cooldownRemainingSeconds} сек.`
+  }
+
   if (assistantState === 'analyzing') {
     return {
       title: 'Анализ...',
@@ -119,7 +128,9 @@ export const getAssistantRunHint = (
         message:
           'Ответ не пришёл вовремя. Обычно помогает короче сформулировать реплику.',
         tone: 'warning',
-        actionHint: 'Нажми Retry-режим (A30/KW) или подожди 1–2 секунды и повтори ручной запуск.'
+        actionHint: formatRetryHint(
+          'Нажми Retry-режим (A30/KW) или повтори ручной запуск после паузы.'
+        )
       }
     }
 
@@ -128,7 +139,9 @@ export const getAssistantRunHint = (
         title: 'Лимит budget исчерпан',
         message: 'Запросов больше нет: системный лимит на retry/маршруты исчерпан.',
         tone: 'warning',
-        actionHint: 'Сбрось сеанс кнопкой reset и попробуй после паузы или с меньшим окном.'
+        actionHint: formatRetryHint(
+          'Сбрось сеанс кнопкой reset и попробуй после паузы или с меньшим окном.'
+        )
       }
     }
 

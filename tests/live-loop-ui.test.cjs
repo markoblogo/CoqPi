@@ -525,6 +525,21 @@ test('assistant run hint summarizes operational failures for UI', () => {
   assert.equal(ready, null)
 })
 
+test('assistant run hint adds retry guidance with cooldown window', () => {
+  const timeoutWithDelay = getAssistantRunHint(
+    'error',
+    'provider_timeout',
+    'provider timeout',
+    'u-a',
+    'u-a',
+    7
+  )
+
+  assert.equal(timeoutWithDelay !== null, true)
+  assert.equal(timeoutWithDelay.tone, 'warning')
+  assert.match(timeoutWithDelay.actionHint ?? '', /Через\s+7\s+сек\.|Повтор запланирован через 7 сек\./)
+})
+
 test('auto-analysis debounce constant stays as expected', () => {
   assert.equal(AUTO_ANALYSIS_DEBOUNCE_MS, 900)
 })

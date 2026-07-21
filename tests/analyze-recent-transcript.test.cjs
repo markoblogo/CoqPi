@@ -470,6 +470,116 @@ test('finder-imported pack selection persists through session reload and is sent
   )
 })
 
+test('finder batch import payload survives session persistence and flows into selected pack ids for analysis', async () => {
+  const observed = {
+    requestSelectedCounterpartyPackIds: undefined,
+    contextSelectedCounterpartyPackIds: undefined,
+    retrievalSelectedCounterpartyPackIds: undefined
+  }
+  let activeSessionContext = {
+    company: '',
+    role: '',
+    context: '',
+    goal: '',
+    notes: '',
+    selectedCounterpartyPackIds: []
+  }
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const imported = await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+          {
+            kind: 'job',
+            sourceId: 'finder:job:batch-demo-011',
+            partnerName: 'Northfield Labs',
+            title: 'Head of Product',
+            summary: 'Batch import candidate for interview workflow.'
+          },
+          {
+            kind: 'investor',
+            sourceId: 'finder:investor:seed-fund-011',
+            partnerName: 'Agri Ventures',
+            title: 'Seed investor',
+            summary: 'Potential investment partner for pilot funding.'
+          },
+          {
+            kind: 'partner',
+            sourceId: 'finder:partner:ops-011',
+            partnerName: 'Pilot Partner',
+            title: 'Potential implementation partner',
+            summary: 'Potential pilot partner for workflow integration.'
+          }
+        ])
+
+        const importedIds = (imported.manifest.counterpartyPacks ?? [])
+          .slice(0, 2)
+          .map((pack) => pack.id)
+
+        await services.sessionContextService.saveSessionContext({
+          company: 'Acme Holdings',
+          role: 'Product Lead',
+          context: 'Hiring + partner outreach interview',
+          goal: 'Keep context short and relevant',
+          notes: 'Prefer one-line follow up from me.',
+          selectedCounterpartyPackIds: importedIds
+        })
+
+        const reloadedSession =
+          await services.sessionContextService.getSessionContext()
+
+        activeSessionContext = reloadedSession.context
+        observed.contextSelectedCounterpartyPackIds =
+          activeSessionContext.selectedCounterpartyPackIds
+      },
+      requestOverrides: () => ({
+        sessionContext: activeSessionContext,
+        selectedCounterpartyPackIds:
+          activeSessionContext.selectedCounterpartyPackIds
+      }),
+      onAnalyzeRequest: (request) => {
+        observed.requestSelectedCounterpartyPackIds =
+          request.selectedCounterpartyPackIds
+      },
+      onSelectedPackIds: (selectedCounterpartyPackIds) => {
+        observed.retrievalSelectedCounterpartyPackIds = [
+          ...(selectedCounterpartyPackIds ?? [])
+        ]
+      },
+      fetchHandler: async () =>
+        makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Нужно связать вакансии, партнёров и инвесторов по сценарию.',
+              detectedQuestion: 'What scope and timeline do you recommend?',
+              intent: 'understand strategy',
+              risk: 'medium',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I would propose a two-week pilot.',
+                  answerMeaningRu: 'Предлагаю запуск на две недели.'
+                }
+              ],
+              keywordsToRemember: ['pilot', 'timeline'],
+              openingPhrase: 'Great point.'
+            })
+          }
+        })
+    })
+  })
+
+  assert.deepEqual(
+    observed.requestSelectedCounterpartyPackIds,
+    observed.contextSelectedCounterpartyPackIds
+  )
+  assert.deepEqual(
+    observed.retrievalSelectedCounterpartyPackIds,
+    observed.contextSelectedCounterpartyPackIds
+  )
+})
+
 test('analyzeRecentTranscript returns structured result on valid Ollama JSON', async () => {
   const response = {
     meaningRu: 'Кандидат объясняет интерес к роли и следующий шаг.',

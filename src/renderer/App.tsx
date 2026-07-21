@@ -2592,12 +2592,17 @@ export const App = () => {
     assistantErrorCode
   )
   const assistantFreshnessLabel = assistantStatus.label
+  const cooldownRemainingSeconds = Math.max(
+    0,
+    Math.ceil((analysisCooldownUntil - uiNow) / 1000)
+  )
   const assistantRunHint = getAssistantRunHint(
     assistantState,
     assistantErrorCode,
     assistantError,
     lastAnalyzedUtteranceId,
-    lastUtterance?.id
+    lastUtterance?.id,
+    cooldownRemainingSeconds
   )
   const canStartListening =
     realtimeStatus !== 'connecting' &&
@@ -2619,10 +2624,6 @@ export const App = () => {
     hasTranscriptActivity,
     assistantState === 'analyzing',
     isRealtimeReady
-  )
-  const cooldownRemainingSeconds = Math.max(
-    0,
-    Math.ceil((analysisCooldownUntil - uiNow) / 1000)
   )
   const selectedDeviceLabel =
     audioDevices.find((device) => device.deviceId === selectedAudioDeviceId)
