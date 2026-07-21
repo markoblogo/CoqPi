@@ -10,10 +10,13 @@ import type {
   ContextSourceManifestResult,
   CounterpartyContextPack,
   CounterpartyContextPackDraft,
+  ContextPackRetrievalKind,
+  RetrievalProvider,
   CounterpartyFinderPayloadPreviewCandidate,
   CounterpartyFinderPayloadPreviewResult,
   CounterpartyPayloadIngestSummary
 } from '../../shared/app-types'
+import { contextPackKindValues } from '../../shared/app-types'
 import {
   normalizeFinderCounterpartyDraft,
   parseFinderCounterpartyPayloadTextPermissive,
@@ -62,7 +65,7 @@ type ManifestHistoryEvent = {
 
 const sourceKinds: ContextSourceKind[] = ['link', 'file', 'folder', 'path']
 const finderRetrievalScopes = ['coqpi_interview_en_fr']
-const allowedPackKinds = ['job', 'partner', 'investor', 'accelerator', 'other'] as const
+const allowedPackKinds = contextPackKindValues
 const RETENTION_DAYS = 30
 const MAX_CAPTURE_BYTES = 10 * 1024 * 1024
 const MAX_CAPTURE_TEXT_CHARS = 12000
@@ -114,6 +117,26 @@ const getLegacyManifestPath = () =>
 
 const sanitizeText = (value: unknown) =>
   typeof value === 'string' ? value.trim() : ''
+
+const sanitizePackIds = (packIds?: string[]) =>
+  [...new Set((packIds ?? []).map(sanitizeText).filter(Boolean))]
+
+const sanitizeContextPackRetrievalKinds = (
+  kinds?: unknown
+): ContextPackRetrievalKind[] | undefined => {
+  if (!Array.isArray(kinds)) {
+    return undefined
+  }
+
+  const normalized = kinds
+    .map((kind) => sanitizeText(kind))
+    .filter(
+      (kind): kind is ContextPackRetrievalKind =>
+        (contextPackKindValues as readonly string[]).includes(kind)
+    )
+
+  return normalized.length > 0 ? [...new Set(normalized)] : undefined
+}
 
 const locatorSha256 = (kind: ContextSourceKind, location: string) =>
   createHash('sha256')
@@ -936,9 +959,15 @@ export const captureAndClassifyContextSource = async (
 export const getPersonalInterviewRetrieval = async (
   query: string,
   answerLanguage: 'en' | 'fr',
-  retrievalKinds?: CounterpartyContextPack['kind'][],
-  selectedPackIds?: string[]
+  retrievalKinds?: ContextPackRetrievalKind[],
+  selectedPackIds?: string[],
+  retrievalProvider: RetrievalProvider = 'legacy'
 ) => {
+  if (retrievalProvider === 'future_vector') {
+    // future_vector provider is intentionally not enabled yet.
+    // Keep the contract stable by routing to legacy retrieval for now.
+  }
+
   if (!['en', 'fr'].includes(answerLanguage) || !query.trim()) {
     return ''
   }
@@ -952,7 +981,8 @@ export const getPersonalInterviewRetrieval = async (
   }
 
   const manifest = deriveManifest(events)
-  const selectedPackIdSet = new Set(selectedPackIds?.filter(Boolean))
+  const selectedPackIdSet = new Set(sanitizePackIds(selectedPackIds))
+  const normalizedKinds = sanitizeContextPackRetrievalKinds(retrievalKinds)
   const terms = query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []
   const capturedTextById = new Map<string, string>()
   for (const event of events) {
@@ -969,9 +999,9 @@ export const getPersonalInterviewRetrieval = async (
           : pack.selected) &&
         pack.status === 'retrieval_ready' &&
         pack.retrievalScopes.includes('coqpi_interview_en_fr') &&
-        (!Array.isArray(retrievalKinds) || retrievalKinds.length === 0
+        (!Array.isArray(normalizedKinds) || normalizedKinds.length === 0
           ? true
-          : retrievalKinds.includes(pack.kind))
+          : normalizedKinds.includes(pack.kind))
     )
     .map((pack) => {
       const packText = `${pack.partnerName}: ${pack.title}. ${pack.summary}. ${pack.context}`

@@ -109,6 +109,12 @@ On ingest, malformed packets are reported in `counterpartyPayloadIngestSummary.e
 
 Selected counterparty packs participate in retrieval for EN/FR interview/self-presentation analysis. If no suitable packet is found, the assistant is instructed to ask a concise clarification question instead of inventing counterparty-specific facts.
 
+The EN/FR retrieval contract is now explicit:
+
+- `contextPackRetrievalKinds` is the strict allowlist for pack kind filtering.
+- `selectedCounterpartyPackIds`, when non-empty, is a strict candidate allowlist: retrieval may use only these packs and does not auto-expand to other selected packs.
+- `retrievalProvider` is a pluggable provider selector for the retrieval path with supported values `legacy | future_vector` (currently routed to `legacy`).
+
 Folders, manual paths, links, binary files, PDFs, office documents, external URL fetching, and recursive scans remain pending. They cannot enter retrieval merely because they were recorded as ingress.
 
 Assistant retrieval is limited to sources explicitly captured into `coqpi_interview_en_fr`. It is a compact local keyword retrieval for English/French interview and self-presentation guidance. If it finds no eligible evidence, the assistant prompt requires a concise clarification or neutral answer instead of an invented personal fact. The core excerpt is read only after assistant analysis begins; it is never used by the realtime audio hot path.

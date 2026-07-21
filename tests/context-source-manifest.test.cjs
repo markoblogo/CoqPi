@@ -229,6 +229,25 @@ test('retrieves only explicitly selected pack ids when provided', async () => {
     )
     assert.equal(onlySecond.includes('Acme Ventures'), false)
     assert.equal(onlySecond.includes('North Star'), true)
+
+    const withUnknownAndDuplicate = await service.getPersonalInterviewRetrieval(
+      'What AI product role and pilot support did we discuss?',
+      'en',
+      undefined,
+      [packIds[0], packIds[0], 'non-existing-pack-id']
+    )
+
+    assert.equal(withUnknownAndDuplicate.includes('Acme Ventures'), true)
+    assert.equal(withUnknownAndDuplicate.includes('North Star'), false)
+
+    const onlyUnknown = await service.getPersonalInterviewRetrieval(
+      'What AI product role and pilot support did we discuss?',
+      'en',
+      undefined,
+      ['non-existing-pack-id']
+    )
+
+    assert.equal(onlyUnknown, '')
   } finally {
     if (previousDirectory === undefined) {
       delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR

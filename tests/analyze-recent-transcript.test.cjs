@@ -99,11 +99,16 @@ const withStubbedProviderRoute = ({
   beforeAnalyze,
   onRetrievalCall,
   onSelectedPackIds,
-  onAnalyzeRequest
+  onAnalyzeRequest,
+  onProviderProfiles
 }) =>
   withElectronMock(async (services) => {
     process.env.COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS = '120'
     process.env.COQPI_ASSISTANT_REQUEST_BUDGET_MS = '150'
+    const previousProviderProfile = process.env.COQPI_ASSISTANT_PROVIDER_PROFILE
+    const previousOllamaBaseUrl = process.env.OLLAMA_BASE_URL
+    process.env.COQPI_ASSISTANT_PROVIDER_PROFILE = 'ollama:0'
+    process.env.OLLAMA_BASE_URL = 'http://127.0.0.1:11434'
 
     const profiles = Array.from({ length: profileCount }).map((_, index) => ({
       provider: 'ollama',
@@ -115,12 +120,16 @@ const withStubbedProviderRoute = ({
       failoverEnabled: true
     }))
 
-    return withPatchedModules(
+    try {
+      return withPatchedModules(
       [
         [
           services.assistantProviderProfile,
           'getOrderedEnabledProviderProfiles',
-          () => profiles
+          () => {
+            onProviderProfiles?.(profiles)
+            return profiles
+          }
         ],
         [services.profileService, 'getProfileContext', async () => ({ content: '' })],
         [
@@ -143,8 +152,17 @@ const withStubbedProviderRoute = ({
           async (_action, execute) => execute()
         ]
       ],
-      async () => {
-        global.fetch = fetchHandler
+        async () => {
+        const fetchDescriptor = Object.getOwnPropertyDescriptor(global, 'fetch')
+        if (fetchDescriptor && fetchDescriptor.configurable) {
+          Object.defineProperty(global, 'fetch', {
+            ...fetchDescriptor,
+            value: fetchHandler
+          })
+        } else {
+          global.fetch = fetchHandler
+        }
+
         if (beforeAnalyze) {
           await beforeAnalyze(services)
         }
@@ -156,8 +174,20 @@ const withStubbedProviderRoute = ({
         const request = makeRequest(resolvedOverrides)
         onAnalyzeRequest?.(request)
         return services.assistantService.analyzeRecentTranscript(request)
+      })
+    } finally {
+      if (previousProviderProfile === undefined) {
+        delete process.env.COQPI_ASSISTANT_PROVIDER_PROFILE
+      } else {
+        process.env.COQPI_ASSISTANT_PROVIDER_PROFILE = previousProviderProfile
       }
-    )
+
+      if (previousOllamaBaseUrl === undefined) {
+        delete process.env.OLLAMA_BASE_URL
+      } else {
+        process.env.OLLAMA_BASE_URL = previousOllamaBaseUrl
+      }
+    }
   })
 
 const withLocalKnowledgeWorkspace = async (run) => {
@@ -246,6 +276,7 @@ test('selected pack changes during cooldown replace scheduled analyzeRecentTrans
 
   let scheduledTimer = null
   let scheduledFingerprint = null
+  let runningAnalysisPromise = Promise.resolve()
 
   const executeRequest = async (selectedCounterpartyPackIds) => {
     await withStubbedProviderRoute({
@@ -287,7 +318,7 @@ test('selected pack changes during cooldown replace scheduled analyzeRecentTrans
 
     scheduledFingerprint = plan.fingerprint
     scheduledTimer = setTimeout(() => {
-      void executeRequest(selectedCounterpartyPackIds)
+      runningAnalysisPromise = executeRequest(selectedCounterpartyPackIds)
     }, plan.delayMs ?? 0)
     return true
   }
@@ -305,6 +336,7 @@ test('selected pack changes during cooldown replace scheduled analyzeRecentTrans
   assert.notEqual(firstPlan.fingerprint, scheduledFingerprint)
 
   await sleep((secondPlan.delayMs ?? 0) + 120)
+  await runningAnalysisPromise
   if (scheduledTimer !== null) {
     clearTimeout(scheduledTimer)
   }

@@ -9,6 +9,26 @@ export const enum PatterLikeProviderKind {
   Ollama = 'ollama'
 }
 
+export const contextPackKindValues = [
+  'job',
+  'partner',
+  'investor',
+  'accelerator',
+  'other'
+] as const
+
+export type CounterpartyContextPackKind =
+  (typeof contextPackKindValues)[number]
+
+export const contextPackRetrievalKindValues = [
+  ...contextPackKindValues
+] as const
+
+export type ContextPackRetrievalKind = (typeof contextPackRetrievalKindValues)[number]
+
+export const retrievalProviderValues = ['legacy', 'future_vector'] as const
+export type RetrievalProvider = (typeof retrievalProviderValues)[number]
+
 export interface PatterLikeProviderProfile {
   provider: PatterLikeProviderKind
   priority: number
@@ -152,13 +172,6 @@ export interface ContextSource {
   retrievalScopes: string[]
   promotion: 'explicit_audit_required'
 }
-
-export type CounterpartyContextPackKind =
-  | 'job'
-  | 'partner'
-  | 'investor'
-  | 'accelerator'
-  | 'other'
 
 export interface CounterpartyContextPackDraft {
   sourceId: string
@@ -323,7 +336,9 @@ export interface AssistantAnalysisRequest {
   mode: AssistantAnalysisMode
   includeProfileContext: boolean
   sessionContext?: SessionContext
-  retrievalKinds?: CounterpartyContextPackKind[]
+  retrievalKinds?: ContextPackRetrievalKind[]
+  contextPackRetrievalKinds?: ContextPackRetrievalKind[]
+  retrievalProvider?: RetrievalProvider
   selectedCounterpartyPackIds?: string[]
   recentWindowLabel: AssistantRecentWindowLabel
   costMode: AssistantCostMode
