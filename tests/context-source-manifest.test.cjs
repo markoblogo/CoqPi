@@ -178,6 +178,67 @@ test('ingests selected counterparty packs and uses them in EN/FR retrieval', asy
   }
 })
 
+test('retrieves only explicitly selected pack ids when provided', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-counterparty-pack-filter-'))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+
+  try {
+    const seeded = await service.addCounterpartyContextPacks([
+      {
+        sourceId: 'finder:job:backend-001',
+        kind: 'job',
+        partnerName: 'Acme Ventures',
+        title: 'Senior Product Lead',
+        summary: 'Role asks for AI product strategy and team leadership.',
+      },
+      {
+        sourceId: 'finder:partner:partner-001',
+        kind: 'partner',
+        partnerName: 'North Star',
+        title: 'Pilot partner',
+        summary: 'Potential pilot project partner.',
+      },
+    ])
+
+    const packIds = seeded.manifest.counterpartyPacks.map((pack) => pack.id)
+
+    const bothKinds = await service.getPersonalInterviewRetrieval(
+      'What AI product role and pilot support did we discuss?',
+      'en'
+    )
+    assert.equal(bothKinds.includes('Acme Ventures'), true)
+    assert.equal(bothKinds.includes('North Star'), true)
+
+    const onlyFirst = await service.getPersonalInterviewRetrieval(
+      'What AI product role and pilot support did we discuss?',
+      'en',
+      undefined,
+      [packIds[0] ?? '']
+    )
+    assert.equal(onlyFirst.includes('Acme Ventures'), true)
+    assert.equal(onlyFirst.includes('North Star'), false)
+
+    const onlySecond = await service.getPersonalInterviewRetrieval(
+      'What AI product role and pilot support did we discuss?',
+      'en',
+      undefined,
+      [packIds[1] ?? '']
+    )
+    assert.equal(onlySecond.includes('Acme Ventures'), false)
+    assert.equal(onlySecond.includes('North Star'), true)
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('rejects malformed counterparty packs', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-counterparty-invalid-'))
   const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR

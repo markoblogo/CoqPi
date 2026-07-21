@@ -114,6 +114,7 @@ export interface SessionContext {
   context: string
   goal: string
   notes: string
+  selectedCounterpartyPackIds: string[]
 }
 
 export interface SessionContextResult {
@@ -323,6 +324,7 @@ export interface AssistantAnalysisRequest {
   includeProfileContext: boolean
   sessionContext?: SessionContext
   retrievalKinds?: CounterpartyContextPackKind[]
+  selectedCounterpartyPackIds?: string[]
   recentWindowLabel: AssistantRecentWindowLabel
   costMode: AssistantCostMode
 }

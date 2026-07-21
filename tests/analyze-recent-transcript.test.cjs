@@ -90,7 +90,8 @@ const withStubbedProviderRoute = ({
   profileCount,
   fetchHandler,
   requestOverrides,
-  onRetrievalCall
+  onRetrievalCall,
+  onSelectedPackIds
 }) =>
   withElectronMock(async (services) => {
     process.env.COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS = '120'
@@ -117,8 +118,9 @@ const withStubbedProviderRoute = ({
         [
           services.contextSourceService,
           'getPersonalInterviewRetrieval',
-          async (_transcriptText, _answerLanguage, retrievalKinds) => {
+          async (_transcriptText, _answerLanguage, retrievalKinds, selectedPackIds) => {
             onRetrievalCall?.(retrievalKinds)
+            onSelectedPackIds?.(selectedPackIds)
             return ''
           }
         ],
@@ -170,6 +172,36 @@ test('analyzeRecentTranscript passes retrieval kinds to context source service',
   })
 
   assert.deepEqual(observed.retrievalKinds?.sort(), ['job', 'partner'])
+})
+
+test('analyzeRecentTranscript passes selected counterparty pack ids to context source service', async () => {
+  const observed = { selectedCounterpartyPackIds: undefined }
+
+  await withStubbedProviderRoute({
+    profileCount: 1,
+    requestOverrides: {
+      selectedCounterpartyPackIds: ['pack-1', 'pack-2']
+    },
+    onSelectedPackIds: (selectedCounterpartyPackIds) => {
+      observed.selectedCounterpartyPackIds = selectedCounterpartyPackIds
+    },
+    fetchHandler: async () =>
+      makeOllamaResponse({
+        message: {
+          content: JSON.stringify({
+            meaningRu: 'кратко',
+            detectedQuestion: 'What experience do you have?',
+            intent: 'understand fit',
+            risk: 'low',
+            suggestedAnswers: [],
+            keywordsToRemember: ['fit', 'role'],
+            openingPhrase: 'Great.'
+          })
+        }
+      })
+  })
+
+  assert.deepEqual(observed.selectedCounterpartyPackIds, ['pack-1', 'pack-2'])
 })
 
 test('analyzeRecentTranscript returns structured result on valid Ollama JSON', async () => {

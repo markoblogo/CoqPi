@@ -11,7 +11,8 @@ const emptySessionContext: SessionContext = {
   role: '',
   context: '',
   goal: '',
-  notes: ''
+  notes: '',
+  selectedCounterpartyPackIds: []
 }
 
 const getSessionContextPath = () => {
@@ -20,6 +21,25 @@ const getSessionContextPath = () => {
 
 const sanitizeText = (value: unknown) => {
   return typeof value === 'string' ? value.trim() : ''
+}
+
+const sanitizeStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const seen = new Set<string>()
+
+  for (const item of value) {
+    const entry = sanitizeText(item)
+    if (!entry) {
+      continue
+    }
+
+    seen.add(entry)
+  }
+
+  return [...seen]
 }
 
 const sanitizeSessionContext = (value: unknown): SessionContext => {
@@ -34,7 +54,8 @@ const sanitizeSessionContext = (value: unknown): SessionContext => {
     role: sanitizeText(candidate.role),
     context: sanitizeText(candidate.context),
     goal: sanitizeText(candidate.goal),
-    notes: sanitizeText(candidate.notes)
+    notes: sanitizeText(candidate.notes),
+    selectedCounterpartyPackIds: sanitizeStringArray(candidate.selectedCounterpartyPackIds)
   }
 }
 

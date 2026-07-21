@@ -16,7 +16,8 @@ import type {
 } from '../../shared/app-types'
 import {
   normalizeFinderCounterpartyDraft,
-  parseFinderCounterpartyPayloadTextPermissive
+  parseFinderCounterpartyPayloadTextPermissive,
+  type ParsedFinderCounterpartyPayload
 } from '../../shared/finder-ingest-contract'
 import { getAppInfo } from './app-state'
 
@@ -544,6 +545,12 @@ const validateCounterpartyDraft = (draft: CounterpartyContextPackDraft) => {
   }
 }
 
+export const createContextPackFromFinder = (
+  payloadText: string
+): ParsedFinderCounterpartyPayload => {
+  return parseFinderCounterpartyPayloadTextPermissive(payloadText)
+}
+
 const parseFinderCounterpartyPayloadDrafts = (drafts: unknown[]) => {
   if (!Array.isArray(drafts)) {
     throw new Error('Finder payload must be an array for batch counterparty ingest.')
@@ -746,7 +753,7 @@ export const addCounterpartyContextPacks = async (
 export const ingestCounterpartyFinderPayload = async (
   payloadText: string
 ): Promise<ContextSourceManifestResult> => {
-  const parsed = parseFinderCounterpartyPayloadTextPermissive(payloadText)
+  const parsed = createContextPackFromFinder(payloadText)
   return ingestCounterpartyFinderDraftsWithSummary(parsed)
 }
 
@@ -761,7 +768,7 @@ export const ingestCounterpartyFinderPayloadDrafts = async (
 export const previewCounterpartyFinderPayload = async (
   payloadText: string
 ): Promise<CounterpartyFinderPayloadPreviewResult> => {
-  const parsed = parseFinderCounterpartyPayloadTextPermissive(payloadText)
+  const parsed = createContextPackFromFinder(payloadText)
 
   const manifest = await readManifest()
   const existingKeys = new Set(
@@ -929,7 +936,8 @@ export const captureAndClassifyContextSource = async (
 export const getPersonalInterviewRetrieval = async (
   query: string,
   answerLanguage: 'en' | 'fr',
-  retrievalKinds?: CounterpartyContextPack['kind'][]
+  retrievalKinds?: CounterpartyContextPack['kind'][],
+  selectedPackIds?: string[]
 ) => {
   if (!['en', 'fr'].includes(answerLanguage) || !query.trim()) {
     return ''
@@ -944,6 +952,7 @@ export const getPersonalInterviewRetrieval = async (
   }
 
   const manifest = deriveManifest(events)
+  const selectedPackIdSet = new Set(selectedPackIds?.filter(Boolean))
   const terms = query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []
   const capturedTextById = new Map<string, string>()
   for (const event of events) {
@@ -955,7 +964,9 @@ export const getPersonalInterviewRetrieval = async (
   const counterpartyMatches = manifest.counterpartyPacks
     .filter(
       (pack) =>
-        pack.selected &&
+        (selectedPackIdSet.size > 0
+          ? selectedPackIdSet.has(pack.id)
+          : pack.selected) &&
         pack.status === 'retrieval_ready' &&
         pack.retrievalScopes.includes('coqpi_interview_en_fr') &&
         (!Array.isArray(retrievalKinds) || retrievalKinds.length === 0

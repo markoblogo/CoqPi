@@ -417,7 +417,8 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
   const personalKnowledgeContext = await getPersonalInterviewRetrieval(
     request.transcriptText,
     request.answerLanguage,
-    request.retrievalKinds
+    request.retrievalKinds,
+    request.selectedCounterpartyPackIds
   )
 
   if (personalKnowledgeContext) {

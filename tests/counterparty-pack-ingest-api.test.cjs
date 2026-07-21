@@ -100,6 +100,33 @@ test('ingests finder payload through backend endpoint: dedupe, batch, malformed 
   })
 })
 
+test('createContextPackFromFinder normalizes finder payload once for ingest and preview paths', async () => {
+  const result = contextSourceService.createContextPackFromFinder(
+    JSON.stringify([
+      {
+        kind: 'job',
+        sourceId: 'finder:job:backend-001',
+        partnerName: 'Nova Works',
+        title: 'Senior Product Lead',
+        summary: 'Built PM workflows for growth systems.',
+        linksText: 'https://nova.example/job\nhttps://nova.example/contact'
+      },
+      {
+        kind: 'job',
+        partnerName: 'Missing sourceId',
+        title: 'Role',
+        summary: 'summary'
+      }
+    ])
+  )
+
+  assert.equal(result.requestedCount, 2)
+  assert.equal(result.drafts.length, 1)
+  assert.equal(result.errors.length, 1)
+  assert.equal(result.drafts[0].sourceId, 'finder:job:backend-001')
+  assert.equal(result.drafts[0].links?.length, 2)
+})
+
 test('previews finder payload: marks duplicates and invalid entries without mutating packs', async () => {
   await withCoreDirectory(async () => {
     const seed = await contextSourceService.ingestCounterpartyFinderPayload(

@@ -104,7 +104,8 @@ const emptySessionContext: SessionContext = {
   role: '',
   context: '',
   goal: '',
-  notes: ''
+  notes: '',
+  selectedCounterpartyPackIds: []
 }
 
 const emptyContextSourceDraft: {
@@ -415,6 +416,29 @@ const getSessionContextLabel = (context: SessionContext) => {
   return company || role || 'No session'
 }
 
+const getSortedCounterpartyPackIds = (packs: CounterpartyContextPack[]) =>
+  [...packs.map((pack) => pack.id)].sort()
+
+const getSessionSelectedCounterpartyPackIds = (
+  context: SessionContext,
+  availablePacks: CounterpartyContextPack[]
+) => {
+  const availableIds = new Set(getSortedCounterpartyPackIds(availablePacks))
+  const unique: string[] = []
+  const seen = new Set<string>()
+
+  for (const id of context.selectedCounterpartyPackIds) {
+    if (!id || seen.has(id) || !availableIds.has(id)) {
+      continue
+    }
+
+    seen.add(id)
+    unique.push(id)
+  }
+
+  return unique
+}
+
 const getSessionContextRetrievalKinds = (
   context: SessionContext
 ): CounterpartyContextPackKind[] | undefined => {
@@ -695,11 +719,18 @@ export const App = () => {
         setConfigStatus(status)
         setProfileContext(profile.content)
         setProfileError(null)
-        setSessionContext(session.context)
-        setSessionContextDraft(session.context)
+        const packs = contextSourcePayload.manifest.counterpartyPacks ?? []
+        const syncedSessionContext = {
+          ...session.context,
+          selectedCounterpartyPackIds:
+            getSessionSelectedCounterpartyPackIds(session.context, packs)
+        }
+
+        setCounterpartyPacks(packs)
+        setSessionContext(syncedSessionContext)
+        setSessionContextDraft(syncedSessionContext)
         setSessionContextError(null)
         setContextSources(contextSourcePayload.manifest.sources)
-        setCounterpartyPacks(contextSourcePayload.manifest.counterpartyPacks ?? [])
         setContextSourcesError(null)
         setCounterpartyPackDraftError(null)
         setCounterpartyPackDraftNotice(null)
@@ -1266,6 +1297,20 @@ export const App = () => {
   const applyCounterpartyPackManifest = (packs: CounterpartyContextPack[]) => {
     setCounterpartyPacks(packs)
     setCounterpartyPackDraftError(null)
+    setSessionContext((current) => ({
+      ...current,
+      selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIds(
+        current,
+        packs
+      )
+    }))
+    setSessionContextDraft((current) => ({
+      ...current,
+      selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIds(
+        current,
+        packs
+      )
+    }))
   }
 
   const getContextSourceErrorMessage = (error: unknown) => {
@@ -1609,6 +1654,23 @@ export const App = () => {
       contextSourceMutationRef.current = false
       setIsSavingCounterpartyPacks(false)
     }
+  }
+
+  const setSessionCounterpartyPackSelection = (id: string, selected: boolean) => {
+    setSessionContextDraft((current) => {
+      const selectedSet = new Set(current.selectedCounterpartyPackIds)
+
+      if (selected) {
+        selectedSet.add(id)
+      } else {
+        selectedSet.delete(id)
+      }
+
+      return {
+        ...current,
+        selectedCounterpartyPackIds: [...selectedSet]
+      }
+    })
   }
 
   const removeCounterpartyPack = async (id: string) => {
@@ -2295,6 +2357,7 @@ export const App = () => {
       includeProfileContext,
       sessionContext,
       retrievalKinds: getSessionContextRetrievalKinds(sessionContext),
+      selectedCounterpartyPackIds: sessionContext.selectedCounterpartyPackIds,
       recentWindowLabel,
       costMode
     }
@@ -2469,6 +2532,18 @@ export const App = () => {
   const selectedDeviceLabel =
     audioDevices.find((device) => device.deviceId === selectedAudioDeviceId)
       ?.label || 'No device selected'
+  const selectedCounterpartyPackNames = sessionContext.selectedCounterpartyPackIds
+    .map((packId) => counterpartyPacks.find((pack) => pack.id === packId)?.partnerName)
+    .filter((label): label is string => Boolean(label))
+    .slice(0, 3)
+  const selectedCounterpartyPackNamesLabel =
+    selectedCounterpartyPackNames.length > 0
+      ? selectedCounterpartyPackNames.join(', ')
+      : 'No pack selected'
+  const selectedCounterpartyPacksLabel =
+    sessionContext.selectedCounterpartyPackIds.length > 0
+      ? `Packs: ${selectedCounterpartyPackNamesLabel}`
+      : 'No packs selected'
   const requestCostPreview = estimateAssistantRequestCost(
     lastUtterance?.text.length ?? 0,
     (includeProfileContext ? profileContext.length : 0) +
@@ -3294,6 +3369,12 @@ export const App = () => {
               >
                 {activeSessionLabel}
               </span>
+              <span
+                className="session-chip"
+                title={selectedCounterpartyPacksLabel}
+              >
+                {selectedCounterpartyPacksLabel}
+              </span>
 
               <div className="popover-anchor" data-popover-root="true">
                 <button
@@ -3661,6 +3742,46 @@ export const App = () => {
                     value={sessionContextDraft.notes}
                   />
                 </label>
+                <div className="context-source-list">
+                  <div className="settings-row-label">Counterparty packs for this call</div>
+                  {counterpartyPacks.length === 0 ? (
+                    <div className="context-source-empty">
+                      Add counterparty packs in Context tab first.
+                    </div>
+                  ) : (
+                    counterpartyPacks.map((pack) => {
+                      const isChecked = sessionContextDraft.selectedCounterpartyPackIds.includes(
+                        pack.id
+                      )
+
+                      return (
+                        <div className="context-source-item" key={`session-${pack.id}`}>
+                          <label className="context-source-select">
+                            <input
+                              checked={isChecked}
+                              disabled={isSavingSessionContext}
+                              onChange={(event) => {
+                                setSessionCounterpartyPackSelection(
+                                  pack.id,
+                                  event.target.checked
+                                )
+                              }}
+                              type="checkbox"
+                            />
+                            <span>{isChecked ? 'In session' : 'Not in session'}</span>
+                          </label>
+                          <div className="context-source-details">
+                            <strong>{pack.partnerName}</strong>
+                            <span>
+                              {pack.kind} · {pack.title}
+                            </span>
+                            <code>{pack.sourceId}</code>
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
                 <div className="button-row settings-actions">
                   <button
                     disabled={isSavingSessionContext}

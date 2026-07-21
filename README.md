@@ -26,6 +26,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 Additional session-aware behavior:
 
 - EN/FR assistant retrieval can be restricted to selected counterparty pack kinds (`job`, `partner`, `investor`, `accelerator`, `other`) based on session context.
+- Session prep now lets you pin specific counterparty/job/investor packs to the active call session (`selectedCounterpartyPackIds`) so assistant retrieval can target only those packs.
 - Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
 
 No phone system integration, voice output, system audio routing, vector DB, or new AI capabilities are implemented in this step.
