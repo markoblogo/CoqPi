@@ -3,6 +3,9 @@ const test = require('node:test')
 const Module = require('node:module')
 const path = require('node:path')
 const os = require('node:os')
+const { buildAutoAnalysisSchedule } = require('../dist-electron/shared/live-loop.js')
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const mockElectron = {
   app: {
@@ -91,7 +94,8 @@ const withStubbedProviderRoute = ({
   fetchHandler,
   requestOverrides,
   onRetrievalCall,
-  onSelectedPackIds
+  onSelectedPackIds,
+  onAnalyzeRequest
 }) =>
   withElectronMock(async (services) => {
     process.env.COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS = '120'
@@ -137,12 +141,131 @@ const withStubbedProviderRoute = ({
       ],
       () => {
         global.fetch = fetchHandler
-        return services.assistantService.analyzeRecentTranscript(
-          makeRequest(requestOverrides)
-        )
+        const request = makeRequest(requestOverrides)
+        onAnalyzeRequest?.(request)
+        return services.assistantService.analyzeRecentTranscript(request)
       }
     )
   })
+
+test('selected pack changes during cooldown replace scheduled analyzeRecentTranscript request', async () => {
+  const capturedRequests = []
+  const analysisResult = {
+    meaningRu: 'кратко',
+    detectedQuestion: 'What experience do you have?',
+    intent: 'understand fit',
+    risk: 'low',
+    suggestedAnswers: [],
+    keywordsToRemember: ['fit', 'role'],
+    openingPhrase: 'Great.'
+  }
+  const now = Date.now()
+  const latestFinalUtterance = {
+    id: 'u-42',
+    speaker: 'other',
+    text: 'I have experience in this role.',
+    isFinal: true,
+    timestampStart: new Date().toISOString(),
+    timestampEnd: new Date().toISOString(),
+    source: 'realtime',
+    language: 'en'
+  }
+  const analysisText = latestFinalUtterance.text
+
+  const firstPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: now + 80,
+    nowMs: now,
+    selectedCounterpartyPackIds: ['pack-A']
+  })
+
+  const secondPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: firstPlan.fingerprint,
+    assistantState: 'idle',
+    analysisCooldownUntil: now + 80,
+    nowMs: now + 50,
+    selectedCounterpartyPackIds: ['pack-B']
+  })
+
+  assert.equal(firstPlan.shouldRun, true)
+  assert.equal(secondPlan.shouldRun, true)
+  assert.equal(firstPlan.fingerprint !== secondPlan.fingerprint, true)
+
+  let scheduledTimer = null
+  let scheduledFingerprint = null
+
+  const executeRequest = async (selectedCounterpartyPackIds) => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      requestOverrides: {
+        selectedCounterpartyPackIds
+      },
+      onAnalyzeRequest: (request) => {
+        capturedRequests.push(request)
+      },
+      fetchHandler: async () =>
+        makeOllamaResponse({
+          message: {
+            content: JSON.stringify(analysisResult)
+          }
+        })
+    })
+    scheduledFingerprint = null
+  }
+
+  const scheduleRequest = (selectedCounterpartyPackIds) => {
+    const plan = buildAutoAnalysisSchedule({
+      latestFinalUtterance,
+      transcriptText: analysisText,
+      lastAutoAnalyzedFingerprint: null,
+      scheduledAutoAnalysisFingerprint: scheduledFingerprint,
+      assistantState: 'idle',
+      analysisCooldownUntil: now + 80,
+      selectedCounterpartyPackIds
+    })
+
+    if (!plan.shouldRun || plan.fingerprint === null) {
+      return false
+    }
+
+    if (scheduledTimer !== null) {
+      clearTimeout(scheduledTimer)
+    }
+
+    scheduledFingerprint = plan.fingerprint
+    scheduledTimer = setTimeout(() => {
+      void executeRequest(selectedCounterpartyPackIds)
+    }, plan.delayMs ?? 0)
+    return true
+  }
+
+  const firstScheduled = scheduleRequest(['pack-A'])
+  assert.equal(firstScheduled, true)
+  assert.equal(scheduledFingerprint, firstPlan.fingerprint)
+
+  // Still in cooldown window; new pack selection should invalidate previous plan.
+  await sleep(40)
+
+  const secondScheduled = scheduleRequest(['pack-B'])
+  assert.equal(secondScheduled, true)
+  assert.equal(scheduledFingerprint, secondPlan.fingerprint)
+  assert.notEqual(firstPlan.fingerprint, scheduledFingerprint)
+
+  await sleep((secondPlan.delayMs ?? 0) + 120)
+  if (scheduledTimer !== null) {
+    clearTimeout(scheduledTimer)
+  }
+
+  assert.equal(capturedRequests.length, 1)
+  assert.deepEqual(capturedRequests[0].selectedCounterpartyPackIds, ['pack-B'])
+})
 
 test('analyzeRecentTranscript passes retrieval kinds to context source service', async () => {
   const observed = { retrievalKinds: undefined }
