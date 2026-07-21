@@ -639,3 +639,62 @@ test('analyzeRecentTranscript fails fast with budget exhausted after retries', a
     /budget exhausted while routing/
   )
 })
+
+test('manual recovery succeeds after non-retryable first-pass analysis block', async () => {
+  const answerResult = {
+    meaningRu: 'Короткий тезис ответа по запросу собеседования.',
+    detectedQuestion: 'Could you summarize your project impact?',
+    intent: 'assess fit',
+    risk: 'low',
+    suggestedAnswers: [
+      {
+        label: 'short',
+        text: 'I improved delivery and reduced cycle time by 20%.',
+        answerMeaningRu: 'Я улучшил delivery и сократил цикл на 20%.'
+      }
+    ],
+    keywordsToRemember: ['project', 'impact'],
+    openingPhrase: 'Good point.'
+  }
+
+  let calls = 0
+
+  const fetchHandler = async () => {
+    calls += 1
+
+    if (calls === 1) {
+      return {
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        text: async () => 'unauthorized',
+        json: async () => ({ error: 'Unauthorized' })
+      }
+    }
+
+    return makeOllamaResponse({
+      message: {
+        content: JSON.stringify(answerResult)
+      }
+    })
+  }
+
+  await assert.rejects(
+    () =>
+      withStubbedProviderRoute({
+        profileCount: 1,
+        fetchHandler
+      }),
+    /Ollama API request failed: 401 Unauthorized/
+  )
+
+  const recovered = await withStubbedProviderRoute({
+    profileCount: 1,
+    fetchHandler
+  })
+
+  assert.equal(calls, 2)
+  assert.equal(recovered.meaningRu, answerResult.meaningRu)
+  assert.equal(recovered.detectedQuestion, answerResult.detectedQuestion)
+  assert.equal(recovered.suggestedAnswers[0].label, 'short')
+})

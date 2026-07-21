@@ -239,7 +239,8 @@ docs/
 5. ✅ Pass 7/8 completion: finder batch import now flows through session context into selected pack IDs used by `analyzeRecentTranscript`/retrieval.
 6. ✅ Pass 9 hardening: timeout/budget/retry UX now has cooldown-aware hints and dedicated regression checks.
 7. ✅ Pass 10 hardening: provider retryability is policy-driven (`isRetryableProviderError`), non-retryable errors are surfaced as `provider_not_retryable`, and UI distinguishes retry-blocked state.
-7. Add training mode using the same profile, session-context, and assistant-provider layers.
+8. ✅ Pass 11 communication slice: assistant status now includes explicit blocked/recovery diagnostics and manual-recovery checks for retry-blocked flow.
+9. Add training mode using the same profile, session-context, and assistant-provider layers.
 
 The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).
 

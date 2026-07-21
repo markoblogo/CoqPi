@@ -228,6 +228,48 @@ export const getAssistantRunHint = (
   return null
 }
 
+export interface AssistantStatusRecoveryGuide {
+  reason: string
+  recovery: string
+}
+
+export const getAssistantStatusRecoveryGuide = (
+  assistantState: AssistantState,
+  errorCode: AssistantStatusCode,
+  assistantError: string | null
+): AssistantStatusRecoveryGuide | null => {
+  if (assistantState !== 'error' || !errorCode) {
+    return null
+  }
+
+  if (errorCode === 'provider_not_retryable') {
+    return {
+      reason:
+        assistantError ??
+        'Путь анализа остановлен: ошибка не подходит для автоматического retry по политике.',
+      recovery:
+        'Сейчас нужно ручное восстановление: проверь провайдер, модель, токен или входные поля и запусти анализ заново.'
+    }
+  }
+
+  if (errorCode === 'provider_error' || errorCode === 'provider_timeout') {
+    return {
+      reason: 'Повторный вызов провайдера уже возможен по политике.',
+      recovery: 'Нажми Retry/ручной запуск после паузы или переключись на другой профиль.'
+    }
+  }
+
+  if (errorCode === 'analysis_budget_exhausted') {
+    return {
+      reason: 'Лимит общего budget на маршрут анализа исчерпан.',
+      recovery:
+        'Сбрось сессию (Reset conversation) и продолжай анализ после паузы.'
+    }
+  }
+
+  return null
+}
+
 export type LiveLoopDecisionReason =
   | 'schedule'
   | 'no-final'

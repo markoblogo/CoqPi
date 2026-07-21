@@ -38,6 +38,7 @@ import {
   type AssistantStatusCode,
   buildAutoAnalysisSchedule,
   getAssistantRunHint,
+  getAssistantStatusRecoveryGuide,
   getAssistantStatusLabel
 } from '@shared/live-loop'
 import {
@@ -2604,6 +2605,11 @@ export const App = () => {
     lastUtterance?.id,
     cooldownRemainingSeconds
   )
+  const assistantRecoveryGuide = getAssistantStatusRecoveryGuide(
+    assistantState,
+    assistantErrorCode,
+    assistantError
+  )
   const canStartListening =
     realtimeStatus !== 'connecting' &&
     realtimeStatus !== 'connected' &&
@@ -2761,6 +2767,13 @@ export const App = () => {
           {assistantFreshnessLabel}
         </span>
       </div>
+      {assistantRecoveryGuide ? (
+        <div className="assist-recovery">
+          <strong>Recovery</strong>
+          <p>{assistantRecoveryGuide.reason}</p>
+          <p>{assistantRecoveryGuide.recovery}</p>
+        </div>
+      ) : null}
       <div className="assist-rows">
         <div className="assist-row">
           <strong>Meaning RU</strong>

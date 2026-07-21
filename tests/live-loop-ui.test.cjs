@@ -5,6 +5,7 @@ const {
   AUTO_ANALYSIS_DEBOUNCE_MS,
   buildAutoAnalysisSchedule,
   decideAutoAnalysis,
+  getAssistantStatusRecoveryGuide,
   getAssistantRunHint,
   getAssistantStatusLabel
 } = require('../dist-electron/shared/live-loop.js')
@@ -543,6 +544,27 @@ test('assistant run hint summarizes operational failures for UI', () => {
 
   const ready = getAssistantRunHint('idle', null, null, null, undefined)
   assert.equal(ready, null)
+})
+
+test('assistant recovery guide surfaces manual recovery for retry-blocked flow', () => {
+  const blocked = getAssistantStatusRecoveryGuide(
+    'error',
+    'provider_not_retryable',
+    'Schema validation rejected by policy boundary.'
+  )
+
+  assert.equal(blocked !== null, true)
+  assert.match(blocked.reason, /не подходит|policy|policy boundary|почему/)
+  assert.match(blocked.recovery, /ручн|проверь|запусти/) 
+
+  const retryable = getAssistantStatusRecoveryGuide(
+    'error',
+    'provider_error',
+    'openai temporary failure'
+  )
+
+  assert.equal(retryable !== null, true)
+  assert.match(retryable.recovery, /Retry|паузы|провайдер/)
 })
 
 test('assistant run hint adds retry guidance with cooldown window', () => {

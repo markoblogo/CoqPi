@@ -616,6 +616,26 @@ button:disabled {
   gap: var(--space-1);
 }
 
+.assist-recovery {
+  margin-bottom: 6px;
+  border: 1px solid #6f4e32;
+  border-radius: 3px;
+  padding: 5px 6px;
+  background: #231b14;
+  color: #f2d8a3;
+  display: grid;
+  gap: 2px;
+  font-size: var(--font-xs);
+}
+
+.assist-recovery strong {
+  color: #ffe6b5;
+}
+
+.assist-recovery p {
+  margin: 0;
+}
+
 .assist-status {
   padding: 1px 5px;
   border: 1px solid #394756;
