@@ -147,7 +147,7 @@ export const getAssistantRunHint = (
         message: 'Запросов больше нет: системный лимит на retry/маршруты исчерпан.',
         tone: 'warning',
         actionHint: formatRetryHint(
-          'Сбрось сеанс кнопкой reset и попробуй после паузы или с меньшим окном.'
+          'Сбрось сеанс кнопкой Reset и попробуй после паузы или с меньшим окном.'
         )
       }
     }
@@ -199,7 +199,7 @@ export const getAssistantRunHint = (
           assistantError ??
           'Сбой маршрута анализа. Проверь подключение и повтори анализ.',
         tone: 'error',
-        actionHint: 'Нажми A30/KW повторно, или переключись на другой режим cost.'
+        actionHint: 'Нажми Retry, A30 или KW повторно, или переключись на другой режим cost.'
       }
     }
 
@@ -209,7 +209,7 @@ export const getAssistantRunHint = (
         assistantError ??
         'Непредвиденная ошибка в блоке анализа.',
       tone: 'error',
-      actionHint: 'Нажми Reset conversation и попробуй заново.'
+      actionHint: 'Нажми Reset и попробуй заново.'
     }
   }
 
@@ -263,7 +263,7 @@ export const getAssistantStatusRecoveryGuide = (
     return {
       reason: 'Лимит общего budget на маршрут анализа исчерпан.',
       recovery:
-        'Сбрось сессию (Reset conversation) и продолжай анализ после паузы.'
+        'Сбрось сессию (Reset) и продолжай анализ после паузы.'
     }
   }
 

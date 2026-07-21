@@ -567,6 +567,59 @@ test('assistant recovery guide surfaces manual recovery for retry-blocked flow',
   assert.match(retryable.recovery, /Retry|паузы|провайдер/)
 })
 
+test('manual retry after blocked state keeps active transcript non-stale in UI status model', () => {
+  const liveUtteranceId = 'final-11'
+
+  const blockedLabel = getAssistantStatusLabel(
+    'error',
+    'old-id',
+    liveUtteranceId,
+    'provider_not_retryable'
+  )
+  assert.equal(blockedLabel.label, 'Retry blocked')
+
+  const recoveryGuide = getAssistantStatusRecoveryGuide(
+    'error',
+    'provider_not_retryable',
+    'Schema validation rejected by policy boundary.'
+  )
+  assert.equal(recoveryGuide !== null, true)
+
+  const blockedHint = getAssistantRunHint(
+    'error',
+    'provider_not_retryable',
+    'Schema validation rejected by policy boundary.',
+    'old-id',
+    liveUtteranceId
+  )
+  assert.equal(blockedHint?.tone, 'error')
+  assert.match(blockedHint.actionHint ?? '', /Retry|ручн|повтори/i)
+
+  const resetToActiveState = getAssistantStatusLabel(
+    'idle',
+    liveUtteranceId,
+    liveUtteranceId,
+    null
+  )
+  assert.equal(resetToActiveState.label, 'Waiting')
+
+  const analyzing = getAssistantStatusLabel(
+    'analyzing',
+    liveUtteranceId,
+    liveUtteranceId,
+    null
+  )
+  assert.equal(analyzing.label, 'Analyzing')
+
+  const recovered = getAssistantStatusLabel(
+    'done',
+    liveUtteranceId,
+    liveUtteranceId,
+    null
+  )
+  assert.equal(recovered.label, 'Ready')
+})
+
 test('assistant run hint adds retry guidance with cooldown window', () => {
   const timeoutWithDelay = getAssistantRunHint(
     'error',

@@ -2120,29 +2120,47 @@ export const App = () => {
   }
 
   const clearTranscriptState = () => {
+    resetAssistantConversationState({
+      clearTranscriptState: true
+    })
+  }
+
+  const resetAssistantConversationState = ({
+    clearTranscriptState = false
+  }: {
+    clearTranscriptState?: boolean
+  } = {}) => {
     if (autoAnalysisTimeoutRef.current !== null) {
       window.clearTimeout(autoAnalysisTimeoutRef.current)
       autoAnalysisTimeoutRef.current = null
     }
 
+    const latestUtteranceId = getLastUtterance(transcriptUtterances)?.id
+
     lastAutoAnalyzedFingerprintRef.current = null
     scheduledAutoAnalysisFingerprintRef.current = null
     setAssistantErrorCode(null)
-    setTranscriptUtterances(clearTranscript())
+
+    if (clearTranscriptState) {
+      setTranscriptUtterances(clearTranscript())
+      setRealtimeEventTypes([])
+      setRealtimeEventCounters({
+        total: 0,
+        delta: 0,
+        completed: 0,
+        failed: 0,
+        genericError: 0
+      })
+    }
+
     setMockError(null)
+    setCostNotice(null)
     setAssistantState('idle')
     setAssistantError(null)
     setAssistantResult(emptyAnalysis)
     setAssistantResultUpdatedAt(null)
-    setLastAnalyzedUtteranceId(null)
-    setRealtimeEventTypes([])
-    setRealtimeEventCounters({
-      total: 0,
-      delta: 0,
-      completed: 0,
-      failed: 0,
-      genericError: 0
-    })
+    setLastAnalyzedUtteranceId(latestUtteranceId)
+    setAnalysisCooldownUntil(0)
   }
 
   const startRealtimeListening = async () => {
@@ -2494,6 +2512,18 @@ export const App = () => {
     return false
   }
 
+  const runManualAssistantRetry = () => {
+    const latestUtteranceId = getLastUtterance(transcriptUtterances)?.id ?? null
+
+    return runAssistantAnalysis({
+      recentWindowLabel: '30s',
+      seconds: 30,
+      mode: 'full',
+      trigger: 'manual',
+      targetUtteranceId: latestUtteranceId
+    })
+  }
+
   runAssistantAnalysisRef.current = runAssistantAnalysis
 
   useEffect(() => {
@@ -2761,6 +2791,17 @@ export const App = () => {
         <div>
           <h2>Assist</h2>
         </div>
+        <button
+          type="button"
+          onClick={() =>
+            resetAssistantConversationState({
+              clearTranscriptState: false
+            })
+          }
+          title="Reset assistant result without clearing transcript."
+        >
+          Reset
+        </button>
         <span
           className={`assist-status assist-status-${assistantStatus.classNameSuffix}`}
         >
@@ -3466,6 +3507,20 @@ export const App = () => {
                 type="button"
               >
                 KW
+              </button>
+              <button
+                title="Retry last analysis with current context"
+                disabled={
+                  cooldownRemainingSeconds > 0 ||
+                  assistantState === 'analyzing' ||
+                  transcriptUtterances.length === 0
+                }
+                onClick={() => {
+                  void runManualAssistantRetry()
+                }}
+                type="button"
+              >
+                Retry
               </button>
             </div>
 
