@@ -94,6 +94,27 @@ export const getAssistantStatusLabel = (
   }
 }
 
+export interface RetryButtonGateInput {
+  assistantState: AssistantState
+  cooldownRemainingSeconds: number
+  hasTranscript: boolean
+}
+
+export const isRetryButtonDisabled = ({
+  assistantState,
+  cooldownRemainingSeconds,
+  hasTranscript
+}: RetryButtonGateInput): boolean =>
+  assistantState === 'analyzing' ||
+  !hasTranscript ||
+  cooldownRemainingSeconds > 0
+
+export const isRetryNowButtonDisabled = ({
+  assistantState,
+  hasTranscript
+}: Pick<RetryButtonGateInput, 'assistantState' | 'hasTranscript'>): boolean =>
+  assistantState === 'analyzing' || !hasTranscript
+
 export type AssistantRunHintTone = 'info' | 'warning' | 'error'
 
 export interface AssistantRunHint {

@@ -37,6 +37,8 @@ import {
   AssistantState,
   type AssistantStatusCode,
   buildAutoAnalysisSchedule,
+  isRetryButtonDisabled,
+  isRetryNowButtonDisabled,
   getAssistantRunHint,
   getAssistantStatusRecoveryGuide,
   getAssistantStatusLabel
@@ -2652,10 +2654,20 @@ export const App = () => {
     assistantErrorCode
   )
   const assistantFreshnessLabel = assistantStatus.label
+  const hasTranscript = transcriptUtterances.length > 0
   const cooldownRemainingSeconds = Math.max(
     0,
     Math.ceil((analysisCooldownUntil - uiNow) / 1000)
   )
+  const retryButtonDisabled = isRetryButtonDisabled({
+    assistantState,
+    cooldownRemainingSeconds,
+    hasTranscript
+  })
+  const retryNowButtonDisabled = isRetryNowButtonDisabled({
+    assistantState,
+    hasTranscript
+  })
   const assistantRunHint = getAssistantRunHint(
     assistantState,
     assistantErrorCode,
@@ -3544,11 +3556,7 @@ export const App = () => {
               </button>
               <button
                 title="Retry last analysis with current context"
-                disabled={
-                  cooldownRemainingSeconds > 0 ||
-                  assistantState === 'analyzing' ||
-                  transcriptUtterances.length === 0
-                }
+                disabled={retryButtonDisabled}
                 onClick={() => {
                   void runManualAssistantRetry()
                 }}
@@ -3558,11 +3566,7 @@ export const App = () => {
               </button>
               <button
                 title="Run retry now"
-                disabled={
-                  cooldownRemainingSeconds > 0 ||
-                  assistantState === 'analyzing' ||
-                  transcriptUtterances.length === 0
-                }
+                disabled={retryNowButtonDisabled}
                 onClick={() => {
                   void runManualAssistantRetryNow()
                 }}

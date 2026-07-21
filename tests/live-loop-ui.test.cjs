@@ -5,6 +5,8 @@ const {
   AUTO_ANALYSIS_DEBOUNCE_MS,
   buildAutoAnalysisSchedule,
   decideAutoAnalysis,
+  isRetryButtonDisabled,
+  isRetryNowButtonDisabled,
   getAssistantStatusRecoveryGuide,
   getAssistantRunHint,
   getAssistantStatusLabel
@@ -545,6 +547,55 @@ test('auto analyze maps timeout and budget statuses for UI chain', () => {
   )
   assert.equal(blocked.label, 'Retry blocked')
   assert.equal(blocked.classNameSuffix, 'retry-blocked')
+})
+
+test('budget exhausted exposes recovery guidance and button behavior stays explicit', () => {
+  const hasTranscript = true
+  const budget = getAssistantStatusLabel(
+    'error',
+    'u-final',
+    'u-final',
+    'analysis_budget_exhausted'
+  )
+  assert.equal(budget.label, 'Budget exhausted')
+  assert.equal(budget.classNameSuffix, 'budget-exhausted')
+
+  const budgetHint = getAssistantRunHint(
+    'error',
+    'analysis_budget_exhausted',
+    'analysis budget exhausted',
+    'u-final',
+    'u-final'
+  )
+  assert.equal(budgetHint !== null, true)
+  assert.equal(budgetHint?.title, 'Лимит budget исчерпан')
+  assert.match(
+    budgetHint?.actionHint ?? '',
+    /сбрось|reset|паузы|pause/i
+  )
+
+  const budgetRecovery = getAssistantStatusRecoveryGuide(
+    'error',
+    'analysis_budget_exhausted',
+    'analysis budget exhausted',
+    'local budget gate'
+  )
+  assert.equal(budgetRecovery !== null, true)
+  assert.equal(budgetRecovery?.source, 'local budget gate')
+  assert.match(budgetRecovery?.recovery ?? '', /сбрось|reset|паузы|pause/i)
+
+  const retryDisabled = isRetryButtonDisabled({
+    assistantState: 'error',
+    cooldownRemainingSeconds: 12,
+    hasTranscript
+  })
+  assert.equal(retryDisabled, true)
+
+  const retryNowDisabled = isRetryNowButtonDisabled({
+    assistantState: 'error',
+    hasTranscript
+  })
+  assert.equal(retryNowDisabled, false)
 })
 
 test('auto analyze maps stale/ready/error statuses for UI chain', () => {
