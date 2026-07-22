@@ -1053,6 +1053,35 @@ button:disabled {
   font-size: var(--font-sm);
 }
 
+.finder-runner-import {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.finder-runner-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.finder-runner-header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.finder-runner-header strong {
+  color: #e5edf4;
+  font-size: var(--font-sm);
+}
+
+.finder-runner-header span {
+  color: #99abbc;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
 .finder-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);

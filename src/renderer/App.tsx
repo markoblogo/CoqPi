@@ -107,8 +107,11 @@ import {
 import {
   createContextPackDraftFromFinderResult,
   createFinderCandidateResult,
+  createFinderRecordsFromRunnerPayload,
   createFinderSearchJob,
   getFinderSearchStatusCounts,
+  parseFinderRunnerPayloadText,
+  type FinderRunnerPayloadPreviewResult,
   updateFinderSearchJobStatus
 } from '@shared/finder-search-module'
 import {
@@ -735,6 +738,9 @@ export const App = () => {
   const [finderSearchNotice, setFinderSearchNotice] = useState<string | null>(
     null
   )
+  const [finderRunnerPayloadText, setFinderRunnerPayloadText] = useState('')
+  const [finderRunnerPayloadPreview, setFinderRunnerPayloadPreview] =
+    useState<FinderRunnerPayloadPreviewResult | null>(null)
   const finderPayloadCandidatesCount = counterpartyFinderPayloadItems.length
   const finderPayloadSelectionStats =
     getFinderPreviewSelectionStats(counterpartyFinderPayloadItems)
@@ -1974,6 +1980,62 @@ export const App = () => {
         result.id === resultId ? { ...result, status } : result
       )
     )
+  }
+
+  const previewFinderRunnerPayload = () => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const preview = parseFinderRunnerPayloadText(finderRunnerPayloadText)
+      setFinderRunnerPayloadPreview(preview)
+      setFinderSearchNotice(
+        `Runner payload preview: ${preview.validCount} valid of ${preview.requestedCount} candidate results.`
+      )
+    } catch (error) {
+      setFinderRunnerPayloadPreview(null)
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to preview finder runner payload.'
+      )
+    }
+  }
+
+  const importFinderRunnerPayload = () => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const now = new Date().toISOString()
+      const records = createFinderRecordsFromRunnerPayload(
+        finderRunnerPayloadText,
+        {
+          jobId: createLocalId('finder-runner-job'),
+          resultId: (index) => createLocalId(`finder-runner-result-${index}`),
+          now
+        }
+      )
+
+      setFinderSearchJobs((current) => [records.job, ...current])
+      setFinderCandidateResults((current) => [...records.results, ...current])
+      setSelectedFinderSearchJobId(records.job.id)
+      setFinderRunnerPayloadPreview(null)
+      setFinderRunnerPayloadText('')
+      setFinderSearchNotice(
+        `Runner payload imported: ${records.results.length} candidate result${
+          records.results.length === 1 ? '' : 's'
+        }. ${records.errors.length} issue${
+          records.errors.length === 1 ? '' : 's'
+        } skipped.`
+      )
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to import finder runner payload.'
+      )
+    }
   }
 
   const importFinderCandidateResult = async (result: FinderCandidateResult) => {
@@ -4859,6 +4921,74 @@ export const App = () => {
                     </div>
                   )
                 )}
+              </div>
+              <div className="finder-runner-import context-source-form">
+                <div className="finder-runner-header">
+                  <div>
+                    <strong>Runner payload</strong>
+                    <span>Paste JSON from a future search module. Valid results become local candidates.</span>
+                  </div>
+                  {finderRunnerPayloadPreview ? (
+                    <span>
+                      {finderRunnerPayloadPreview.validCount}/
+                      {finderRunnerPayloadPreview.requestedCount} valid
+                    </span>
+                  ) : null}
+                </div>
+                <textarea
+                  className="prepare-textarea"
+                  onChange={(event) => {
+                    setFinderRunnerPayloadText(event.target.value)
+                    setFinderRunnerPayloadPreview(null)
+                    setFinderSearchError(null)
+                    setFinderSearchNotice(null)
+                  }}
+                  placeholder='{"job":{"kind":"job","label":"France product roles","query":"senior product manager france agtech"},"results":[{"sourceId":"finder:job:acme","partnerName":"Acme","title":"Senior PM","summary":"Relevant role","links":["https://..."]}]}'
+                  rows={4}
+                  value={finderRunnerPayloadText}
+                />
+                {finderRunnerPayloadPreview?.errors.length ? (
+                  <ul className="error-list">
+                    {finderRunnerPayloadPreview.errors.slice(0, 5).map((error, index) => (
+                      <li key={`${index}-${error.reason}`}>
+                        {error.index === undefined
+                          ? error.reason
+                          : `Item ${error.index + 1}: ${error.reason}`}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <div className="button-row settings-actions">
+                  <button
+                    disabled={!finderRunnerPayloadText.trim()}
+                    onClick={() => previewFinderRunnerPayload()}
+                    type="button"
+                  >
+                    Preview runner JSON
+                  </button>
+                  <button
+                    disabled={
+                      !finderRunnerPayloadText.trim() ||
+                      finderRunnerPayloadPreview?.validCount === 0
+                    }
+                    onClick={() => importFinderRunnerPayload()}
+                    type="button"
+                  >
+                    Import runner results
+                  </button>
+                  <button
+                    disabled={!finderRunnerPayloadText.trim()}
+                    onClick={() => {
+                      setFinderRunnerPayloadText('')
+                      setFinderRunnerPayloadPreview(null)
+                      setFinderSearchError(null)
+                      setFinderSearchNotice(null)
+                    }}
+                    type="button"
+                  >
+                    Clear runner JSON
+                  </button>
+                </div>
               </div>
               <div className="finder-grid">
                 <div className="finder-column">

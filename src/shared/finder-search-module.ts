@@ -134,6 +134,145 @@ export const createContextPackDraftFromFinderResult = (
   selected: true
 })
 
+export type FinderRunnerPayloadError = {
+  index?: number
+  reason: string
+}
+
+export type FinderRunnerPayloadPreviewCandidate = {
+  draft: FinderCandidateResultDraft
+  index: number
+}
+
+export type FinderRunnerPayloadPreviewResult = {
+  requestedCount: number
+  validCount: number
+  jobDraft: FinderSearchJobDraft | null
+  candidates: FinderRunnerPayloadPreviewCandidate[]
+  errors: FinderRunnerPayloadError[]
+}
+
+export type FinderRunnerPayloadRecords = {
+  job: FinderSearchJob
+  results: FinderCandidateResult[]
+  errors: FinderRunnerPayloadError[]
+}
+
+const parseJsonObject = (text: string): Record<string, unknown> => {
+  const payload = JSON.parse(text) as unknown
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Finder runner payload must be a JSON object.')
+  }
+
+  return payload as Record<string, unknown>
+}
+
+export const parseFinderRunnerPayloadText = (
+  text: string
+): FinderRunnerPayloadPreviewResult => {
+  const payload = parseJsonObject(text)
+  const errors: FinderRunnerPayloadError[] = []
+  let jobDraft: FinderSearchJobDraft | null = null
+
+  try {
+    jobDraft = normalizeJob(
+      (payload.job ?? {}) as FinderSearchJobDraft
+    )
+  } catch (error) {
+    errors.push({
+      reason:
+        error instanceof Error
+          ? error.message
+          : 'Finder runner payload requires a valid job.'
+    })
+  }
+
+  const rawResults = Array.isArray(payload.results) ? payload.results : []
+  if (!Array.isArray(payload.results)) {
+    errors.push({
+      reason: 'Finder runner payload requires results as an array.'
+    })
+  }
+
+  const candidates: FinderRunnerPayloadPreviewCandidate[] = []
+
+  if (jobDraft) {
+    rawResults.forEach((rawCandidate, index) => {
+      try {
+        const normalized = normalizeCandidate(
+          rawCandidate as FinderCandidateResultDraft,
+          jobDraft.kind
+        )
+
+        candidates.push({
+          index,
+          draft: {
+            sourceId: normalized.sourceId,
+            partnerName: normalized.partnerName,
+            title: normalized.title,
+            summary: normalized.summary,
+            context: normalized.context,
+            links: normalized.links,
+            score: normalized.score
+          }
+        })
+      } catch (error) {
+        errors.push({
+          index,
+          reason:
+            error instanceof Error
+              ? error.message
+              : 'Invalid finder runner candidate.'
+        })
+      }
+    })
+  }
+
+  return {
+    requestedCount: rawResults.length,
+    validCount: candidates.length,
+    jobDraft,
+    candidates,
+    errors
+  }
+}
+
+export const createFinderRecordsFromRunnerPayload = (
+  text: string,
+  options: {
+    jobId: string
+    resultId: (index: number) => string
+    now: string
+  }
+): FinderRunnerPayloadRecords => {
+  const preview = parseFinderRunnerPayloadText(text)
+
+  if (!preview.jobDraft) {
+    throw new Error(
+      preview.errors[0]?.reason ?? 'Finder runner payload requires a valid job.'
+    )
+  }
+
+  const job = createFinderSearchJob(preview.jobDraft, {
+    id: options.jobId,
+    now: options.now,
+    status: preview.validCount > 0 ? 'ready' : 'draft'
+  })
+  const results = preview.candidates.map((candidate) =>
+    createFinderCandidateResult(job, candidate.draft, {
+      id: options.resultId(candidate.index),
+      now: options.now
+    })
+  )
+
+  return {
+    job,
+    results,
+    errors: preview.errors
+  }
+}
+
 export const getFinderSearchStatusCounts = (
   jobs: readonly FinderSearchJob[]
 ): FinderSearchStatusCounts =>
