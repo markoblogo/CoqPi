@@ -221,6 +221,42 @@ export interface FinderCandidateResult extends FinderCandidateResultDraft {
   createdAt: string
 }
 
+export interface FinderRecordProvenance {
+  sourceId: string
+  locatorSha256: string
+}
+
+export interface FinderStatusHistoryEntry {
+  status: FinderSearchJobStatus | FinderCandidateResult['status']
+  at: string
+  reason: string
+}
+
+export interface StoredFinderSearchJob extends FinderSearchJob {
+  ownerId: 'owner'
+  provenance: FinderRecordProvenance
+  contentHash: string
+  statusHistory: FinderStatusHistoryEntry[]
+}
+
+export interface StoredFinderCandidateResult extends FinderCandidateResult {
+  ownerId: 'owner'
+  provenance: FinderRecordProvenance
+  contentHash: string
+  statusHistory: FinderStatusHistoryEntry[]
+}
+
+export interface FinderSearchStore {
+  version: 1
+  jobs: StoredFinderSearchJob[]
+  results: StoredFinderCandidateResult[]
+}
+
+export interface FinderSearchStoreResult {
+  store: FinderSearchStore
+  errors?: { index?: number; reason: string }[]
+}
+
 export interface FinderSearchStatusCounts {
   draft: number
   ready: number

@@ -10,6 +10,10 @@ import type {
   ContextSourceManifestResult,
   CounterpartyContextPackDraft,
   DeleteOpenAIKeyResult,
+  FinderCandidateResultDraft,
+  FinderSearchJobDraft,
+  FinderSearchJobStatus,
+  FinderSearchStoreResult,
   OpenAIKeyStatus,
   RealtimeTranscriptionError,
   RealtimeTranscriptionResponse,
@@ -44,6 +48,14 @@ import {
   getSmokeTestNotes,
   saveSmokeTestNote
 } from '../backend/services/smoke-note-service'
+import {
+  addFinderCandidateResult,
+  addFinderSearchJob,
+  getFinderSearchStore,
+  ingestFinderRunnerPayload,
+  setFinderCandidateResultStatus,
+  setFinderSearchJobStatus
+} from '../backend/services/finder-search-service'
 import {
   addContextSource,
   addCounterpartyContextPacks,
@@ -236,6 +248,53 @@ const registerIpcHandlers = () => {
     'coqpi:smoke-notes:save',
     async (_event, draft: SmokeTestNoteDraft): Promise<SmokeTestNote> =>
       saveSmokeTestNote(draft)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:get',
+    async (): Promise<FinderSearchStoreResult> => getFinderSearchStore()
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:add-job',
+    async (
+      _event,
+      draft: FinderSearchJobDraft
+    ): Promise<FinderSearchStoreResult> => addFinderSearchJob(draft)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:set-job-status',
+    async (
+      _event,
+      id: string,
+      status: FinderSearchJobStatus
+    ): Promise<FinderSearchStoreResult> => setFinderSearchJobStatus(id, status)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:add-candidate-result',
+    async (
+      _event,
+      jobId: string,
+      draft: FinderCandidateResultDraft
+    ): Promise<FinderSearchStoreResult> => addFinderCandidateResult(jobId, draft)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:set-candidate-status',
+    async (
+      _event,
+      id: string,
+      status: 'ready' | 'imported' | 'rejected'
+    ): Promise<FinderSearchStoreResult> =>
+      setFinderCandidateResultStatus(id, status)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:ingest-runner-payload',
+    async (_event, payloadText: string): Promise<FinderSearchStoreResult> =>
+      ingestFinderRunnerPayload(payloadText)
   )
 
   ipcMain.handle(

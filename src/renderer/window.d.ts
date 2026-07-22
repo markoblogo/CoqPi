@@ -8,6 +8,10 @@ import type {
   ContextSourceManifestResult,
   ConfigStatus,
   DeleteOpenAIKeyResult,
+  FinderCandidateResultDraft,
+  FinderSearchJobDraft,
+  FinderSearchJobStatus,
+  FinderSearchStoreResult,
   OpenAIKeyStatus,
   ProfileContextResult,
   RealtimeTranscriptionResponse,
@@ -38,6 +42,25 @@ declare global {
       smokeNotes: {
         get: () => Promise<SmokeTestNotesResult>
         save: (draft: SmokeTestNoteDraft) => Promise<SmokeTestNote>
+      }
+      finderSearch: {
+        get: () => Promise<FinderSearchStoreResult>
+        addJob: (draft: FinderSearchJobDraft) => Promise<FinderSearchStoreResult>
+        setJobStatus: (
+          id: string,
+          status: FinderSearchJobStatus
+        ) => Promise<FinderSearchStoreResult>
+        addCandidateResult: (
+          jobId: string,
+          draft: FinderCandidateResultDraft
+        ) => Promise<FinderSearchStoreResult>
+        setCandidateStatus: (
+          id: string,
+          status: 'ready' | 'imported' | 'rejected'
+        ) => Promise<FinderSearchStoreResult>
+        ingestRunnerPayload: (
+          payloadText: string
+        ) => Promise<FinderSearchStoreResult>
       }
       contextSources: {
         get: () => Promise<ContextSourceManifestResult>

@@ -106,13 +106,9 @@ import {
 } from '@shared/finder-preview-state'
 import {
   createContextPackDraftFromFinderResult,
-  createFinderCandidateResult,
-  createFinderRecordsFromRunnerPayload,
-  createFinderSearchJob,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
-  type FinderRunnerPayloadPreviewResult,
-  updateFinderSearchJobStatus
+  type FinderRunnerPayloadPreviewResult
 } from '@shared/finder-search-module'
 import {
   AudioLevelMonitor,
@@ -312,43 +308,6 @@ const createTranscriptId = () => {
 
   return `utterance-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
-
-const createLocalId = (prefix: string) => {
-  if (
-    typeof crypto !== 'undefined' &&
-    typeof crypto.randomUUID === 'function'
-  ) {
-    return `${prefix}:${crypto.randomUUID()}`
-  }
-
-  return `${prefix}:${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-const readStoredList = <T,>(key: string): T[] => {
-  if (typeof localStorage === 'undefined') {
-    return []
-  }
-
-  try {
-    const raw = localStorage.getItem(key)
-    const parsed = raw ? JSON.parse(raw) : []
-
-    return Array.isArray(parsed) ? (parsed as T[]) : []
-  } catch {
-    return []
-  }
-}
-
-const writeStoredList = (key: string, value: unknown[]) => {
-  if (typeof localStorage === 'undefined') {
-    return
-  }
-
-  localStorage.setItem(key, JSON.stringify(value))
-}
-
-const finderSearchJobsStorageKey = 'coqpi.finderSearchJobs.v1'
-const finderCandidateResultsStorageKey = 'coqpi.finderCandidateResults.v1'
 
 const formatTranscriptTime = (value: string) => {
   const date = new Date(value)
@@ -717,14 +676,10 @@ export const App = () => {
     string[]
   >([])
   const [isSavingCounterpartyPacks, setIsSavingCounterpartyPacks] = useState(false)
-  const [finderSearchJobs, setFinderSearchJobs] = useState<FinderSearchJob[]>(
-    () => readStoredList<FinderSearchJob>(finderSearchJobsStorageKey)
-  )
+  const [finderSearchJobs, setFinderSearchJobs] = useState<FinderSearchJob[]>([])
   const [finderCandidateResults, setFinderCandidateResults] = useState<
     FinderCandidateResult[]
-  >(() =>
-    readStoredList<FinderCandidateResult>(finderCandidateResultsStorageKey)
-  )
+  >([])
   const [finderSearchDraft, setFinderSearchDraft] = useState(
     emptyFinderSearchJobDraft
   )
@@ -884,7 +839,8 @@ export const App = () => {
           contextSourcePayload,
           settingsPayload,
           keyState,
-          smokeNotePayload
+          smokeNotePayload,
+          finderSearchPayload
         ] =
           await Promise.all([
             window.coqpi.config.getStatus(),
@@ -893,7 +849,8 @@ export const App = () => {
             window.coqpi.contextSources.get(),
             window.coqpi.settings.get(),
             window.coqpi.secrets.getOpenAIKeyStatus(),
-            window.coqpi.smokeNotes.get()
+            window.coqpi.smokeNotes.get(),
+            window.coqpi.finderSearch.get()
           ])
 
         setConfigStatus(status)
@@ -919,6 +876,8 @@ export const App = () => {
         setSettingsForm(settingsPayload.settings)
         setSettingsMeta(settingsPayload.meta)
         setSmokeNotes(smokeNotePayload.notes)
+        setFinderSearchJobs(finderSearchPayload.store.jobs)
+        setFinderCandidateResults(finderSearchPayload.store.results)
         setIncludeProfileContext(
           settingsPayload.settings.includeProfileContextByDefault
         )
@@ -939,6 +898,8 @@ export const App = () => {
         setCounterpartyPackDraftingId(null)
         setCounterpartyPackFinderPayload('')
         setSmokeNotes([])
+        setFinderSearchJobs([])
+        setFinderCandidateResults([])
         setProfileError(
           error instanceof Error
             ? error.message
@@ -1002,14 +963,6 @@ export const App = () => {
 
     void loadAudioDeviceState()
   }, [])
-
-  useEffect(() => {
-    writeStoredList(finderSearchJobsStorageKey, finderSearchJobs)
-  }, [finderSearchJobs])
-
-  useEffect(() => {
-    writeStoredList(finderCandidateResultsStorageKey, finderCandidateResults)
-  }, [finderCandidateResults])
 
   useEffect(() => {
     if (!isAudioInputApiAvailable()) {
@@ -1902,21 +1855,19 @@ export const App = () => {
     }
   }
 
-  const createFinderSearchJobFromDraft = () => {
+  const createFinderSearchJobFromDraft = async () => {
     setFinderSearchError(null)
     setFinderSearchNotice(null)
 
     try {
-      const now = new Date().toISOString()
-      const job = createFinderSearchJob(finderSearchDraft, {
-        id: createLocalId('finder-search'),
-        now
-      })
+      const payload = await window.coqpi.finderSearch.addJob(finderSearchDraft)
+      const job = payload.store.jobs[0]
 
-      setFinderSearchJobs((current) => [job, ...current])
-      setSelectedFinderSearchJobId(job.id)
+      setFinderSearchJobs(payload.store.jobs)
+      setFinderCandidateResults(payload.store.results)
+      setSelectedFinderSearchJobId(job?.id ?? null)
       setFinderSearchDraft(emptyFinderSearchJobDraft)
-      setFinderSearchNotice('Search job saved locally.')
+      setFinderSearchNotice('Search job saved to local source truth.')
     } catch (error) {
       setFinderSearchError(
         error instanceof Error ? error.message : 'Unable to create search job.'
@@ -1924,19 +1875,27 @@ export const App = () => {
     }
   }
 
-  const setFinderSearchJobStatus = (
+  const setFinderSearchJobStatus = async (
     jobId: string,
     status: FinderSearchJob['status']
   ) => {
-    const now = new Date().toISOString()
-    setFinderSearchJobs((current) =>
-      current.map((job) =>
-        job.id === jobId ? updateFinderSearchJobStatus(job, status, now) : job
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const payload = await window.coqpi.finderSearch.setJobStatus(jobId, status)
+      setFinderSearchJobs(payload.store.jobs)
+      setFinderCandidateResults(payload.store.results)
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update finder job status.'
       )
-    )
+    }
   }
 
-  const saveFinderCandidateResult = () => {
+  const saveFinderCandidateResult = async () => {
     setFinderSearchError(null)
     setFinderSearchNotice(null)
 
@@ -1946,22 +1905,18 @@ export const App = () => {
     }
 
     try {
-      const candidate = createFinderCandidateResult(
-        selectedFinderSearchJob,
+      const payload = await window.coqpi.finderSearch.addCandidateResult(
+        selectedFinderSearchJob.id,
         {
           ...finderCandidateDraft,
           links: normalizeLinksText(finderCandidateDraft.linksText)
-        },
-        {
-          id: createLocalId('finder-result'),
-          now: new Date().toISOString()
         }
       )
 
-      setFinderCandidateResults((current) => [candidate, ...current])
-      setFinderSearchJobStatus(selectedFinderSearchJob.id, 'ready')
+      setFinderSearchJobs(payload.store.jobs)
+      setFinderCandidateResults(payload.store.results)
       setFinderCandidateDraft(emptyFinderCandidateDraft)
-      setFinderSearchNotice('Candidate result saved locally.')
+      setFinderSearchNotice('Candidate result saved to local source truth.')
     } catch (error) {
       setFinderSearchError(
         error instanceof Error
@@ -1971,15 +1926,27 @@ export const App = () => {
     }
   }
 
-  const setFinderCandidateStatus = (
+  const setFinderCandidateStatus = async (
     resultId: string,
     status: FinderCandidateResult['status']
   ) => {
-    setFinderCandidateResults((current) =>
-      current.map((result) =>
-        result.id === resultId ? { ...result, status } : result
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const payload = await window.coqpi.finderSearch.setCandidateStatus(
+        resultId,
+        status
       )
-    )
+      setFinderSearchJobs(payload.store.jobs)
+      setFinderCandidateResults(payload.store.results)
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update finder candidate status.'
+      )
+    }
   }
 
   const previewFinderRunnerPayload = () => {
@@ -2002,31 +1969,29 @@ export const App = () => {
     }
   }
 
-  const importFinderRunnerPayload = () => {
+  const importFinderRunnerPayload = async () => {
     setFinderSearchError(null)
     setFinderSearchNotice(null)
 
     try {
-      const now = new Date().toISOString()
-      const records = createFinderRecordsFromRunnerPayload(
-        finderRunnerPayloadText,
-        {
-          jobId: createLocalId('finder-runner-job'),
-          resultId: (index) => createLocalId(`finder-runner-result-${index}`),
-          now
-        }
+      const payload = await window.coqpi.finderSearch.ingestRunnerPayload(
+        finderRunnerPayloadText
       )
+      const job = payload.store.jobs[0]
+      const importedResultCount = payload.store.results.filter(
+        (result) => result.jobId === job?.id
+      ).length
 
-      setFinderSearchJobs((current) => [records.job, ...current])
-      setFinderCandidateResults((current) => [...records.results, ...current])
-      setSelectedFinderSearchJobId(records.job.id)
+      setFinderSearchJobs(payload.store.jobs)
+      setFinderCandidateResults(payload.store.results)
+      setSelectedFinderSearchJobId(job?.id ?? null)
       setFinderRunnerPayloadPreview(null)
       setFinderRunnerPayloadText('')
       setFinderSearchNotice(
-        `Runner payload imported: ${records.results.length} candidate result${
-          records.results.length === 1 ? '' : 's'
-        }. ${records.errors.length} issue${
-          records.errors.length === 1 ? '' : 's'
+        `Runner payload imported: ${importedResultCount} candidate result${
+          importedResultCount === 1 ? '' : 's'
+        }. ${(payload.errors ?? []).length} issue${
+          (payload.errors ?? []).length === 1 ? '' : 's'
         } skipped.`
       )
     } catch (error) {
@@ -2063,8 +2028,12 @@ export const App = () => {
       applyCounterpartyPackManifest(nextPacks, [draft])
       setSessionContext(nextSessionContext)
       setSessionContextDraft(nextSessionContext)
-      setFinderCandidateStatus(result.id, 'imported')
-      setFinderSearchJobStatus(result.jobId, 'imported')
+      const finderPayload = await window.coqpi.finderSearch.setCandidateStatus(
+        result.id,
+        'imported'
+      )
+      setFinderSearchJobs(finderPayload.store.jobs)
+      setFinderCandidateResults(finderPayload.store.results)
 
       try {
         const saved = await window.coqpi.session.saveContext(nextSessionContext)
@@ -4971,7 +4940,7 @@ export const App = () => {
                       !finderRunnerPayloadText.trim() ||
                       finderRunnerPayloadPreview?.validCount === 0
                     }
-                    onClick={() => importFinderRunnerPayload()}
+                    onClick={() => void importFinderRunnerPayload()}
                     type="button"
                   >
                     Import runner results
@@ -5054,7 +5023,7 @@ export const App = () => {
                     </label>
                     <div className="button-row settings-actions">
                       <button
-                        onClick={() => createFinderSearchJobFromDraft()}
+                        onClick={() => void createFinderSearchJobFromDraft()}
                         type="button"
                       >
                         Add search job
@@ -5103,7 +5072,7 @@ export const App = () => {
                           <button
                             className="button-small"
                             onClick={() =>
-                              setFinderSearchJobStatus(
+                              void setFinderSearchJobStatus(
                                 selectedFinderSearchJob.id,
                                 'ready'
                               )
@@ -5115,7 +5084,7 @@ export const App = () => {
                           <button
                             className="button-small"
                             onClick={() =>
-                              setFinderSearchJobStatus(
+                              void setFinderSearchJobStatus(
                                 selectedFinderSearchJob.id,
                                 'rejected'
                               )
@@ -5213,7 +5182,7 @@ export const App = () => {
                         </label>
                         <div className="button-row settings-actions">
                           <button
-                            onClick={() => saveFinderCandidateResult()}
+                            onClick={() => void saveFinderCandidateResult()}
                             type="button"
                           >
                             Add candidate
@@ -5258,7 +5227,7 @@ export const App = () => {
                                   className="button-small"
                                   disabled={result.status === 'imported'}
                                   onClick={() =>
-                                    setFinderCandidateStatus(
+                                    void setFinderCandidateStatus(
                                       result.id,
                                       'rejected'
                                     )

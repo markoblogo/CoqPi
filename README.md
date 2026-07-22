@@ -25,7 +25,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Manual prep preview card summarizing company/role/goal, selected pack quality, assistant payload size, and weak fields.
 - Assistant output quality fixtures for EN/FR interview-style prompts without using the microphone.
 - Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
-- Finder Search foundation: local search jobs, candidate results, statuses (`draft`, `ready`, `imported`, `rejected`), and one-click candidate import into selected context packs.
+- Finder Search foundation: local search jobs, candidate results, statuses (`draft`, `ready`, `imported`, `rejected`), append-only backend history, and one-click candidate import into selected context packs.
 - Finder Runner payload ingress: paste/mock JSON from a future search module, soft-accept valid candidate results, show item errors, and import candidates locally before turning them into context packs.
 - Audio input selection and local level meter
 - Secure local API key storage via Electron `safeStorage` when available
@@ -43,7 +43,7 @@ Additional session-aware behavior:
 - Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis, so disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
 - Assistant quality fixtures inspect the actual provider prompt and verify that selected packs are included while unselected packs stay out of the answer path.
 - Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
-- Finder search jobs are local-only foundation records persisted in renderer `localStorage`; this step does not scrape sites, call search APIs, or run scheduled outbound monitoring.
+- Finder search jobs/results are local-only source-truth records persisted under the Personal Knowledge Core `finder/` directory with append-only events, content hashes, provenance, and status history; this step does not scrape sites, call search APIs, or run scheduled outbound monitoring.
 - Finder runner payload import is manual/mock only. CoqPi accepts JSON results but does not execute searches or browse the web from this path.
 
 Prompt/skill improvement is governed by an optional local skill-quality pipeline in [`docs/SKILL_QUALITY_PIPELINE.md`](docs/SKILL_QUALITY_PIPELINE.md). It is for synthetic or explicitly recorded mock transcript evidence only: bounded candidate edits, held-out validation, rejected-edit memory, and owner acceptance before any `best_skill.md` export.
@@ -276,7 +276,7 @@ docs/
 1. Test the live loop with a microphone and real calls; tune turn segmentation and transcript quality. The app now locally ignores obvious non-EN/FR background speech before auto-analysis, but real noisy-call tuning still needs manual smoke testing.
 2. ✅ Added OpenAI-to-Ollama runtime fallback for text assistant analysis with governance and retry-policy checks; next iteration will refine model-specific routing policies.
 3. ✅ Added batch-friendly finder/context integration: single and batch counterparty pack ingest, preview/import UX, and retrieval-kind gating for interview/founder modes.
-4. ✅ Added Finder Search foundation: local search job/result contracts and UI, with candidate import into selected context packs.
+4. ✅ Added Finder Search foundation: local search job/result contracts, backend source-truth storage, and UI, with candidate import into selected context packs.
 5. ✅ Added Finder Runner contract: manual/mock runner JSON can create local search jobs/results without outbound monitoring.
 6. ✅ Pass 7/8 completion: finder batch import now flows through session context into selected pack IDs used by `analyzeRecentTranscript`/retrieval.
 7. ✅ Pass 9 hardening: timeout/budget/retry UX now has cooldown-aware hints and dedicated regression checks.

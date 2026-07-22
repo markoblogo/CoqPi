@@ -4,6 +4,9 @@ import type {
   AssistantAnalysisRequest,
   ContextSourceDraft,
   CounterpartyContextPackDraft,
+  FinderCandidateResultDraft,
+  FinderSearchJobDraft,
+  FinderSearchJobStatus,
   RealtimeTranscriptionStartRequest,
   SessionContext,
   SmokeTestNoteDraft
@@ -26,6 +29,33 @@ contextBridge.exposeInMainWorld('coqpi', {
     get: () => ipcRenderer.invoke('coqpi:smoke-notes:get'),
     save: (draft: SmokeTestNoteDraft) =>
       ipcRenderer.invoke('coqpi:smoke-notes:save', draft)
+  },
+  finderSearch: {
+    get: () => ipcRenderer.invoke('coqpi:finder-search:get'),
+    addJob: (draft: FinderSearchJobDraft) =>
+      ipcRenderer.invoke('coqpi:finder-search:add-job', draft),
+    setJobStatus: (id: string, status: FinderSearchJobStatus) =>
+      ipcRenderer.invoke('coqpi:finder-search:set-job-status', id, status),
+    addCandidateResult: (jobId: string, draft: FinderCandidateResultDraft) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:add-candidate-result',
+        jobId,
+        draft
+      ),
+    setCandidateStatus: (
+      id: string,
+      status: 'ready' | 'imported' | 'rejected'
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:set-candidate-status',
+        id,
+        status
+      ),
+    ingestRunnerPayload: (payloadText: string) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:ingest-runner-payload',
+        payloadText
+      )
   },
   contextSources: {
     get: () => ipcRenderer.invoke('coqpi:context-sources:get'),
