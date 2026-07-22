@@ -39,6 +39,8 @@ CoqPi is a private local desktop application for stressful interview and profess
 
 - Local profile context plus per-call session fields: company, role, context, goal, notes, selected counterparty packs, and the selected Finder outreach draft.
 - Counterparty packs include source, owner, classification, retention, scope, links, quality diagnostics, and session eligibility.
+- Context Sources now show ingestion readiness: pending classification, hash-only capture, retrieval-ready status, retention expiry, and concrete fixes.
+- The local manifest markdown includes a compact knowledge readiness summary for sources, packs, lifecycle, and future vector candidate-set state.
 - Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis. Disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
 - A selected outreach draft is revalidated against Finder source truth before use. Missing or stale draft IDs are dropped or surfaced in prep quality instead of broadening context.
 - Assistant retrieval uses a strict allowlist: when selected pack IDs are provided, only those packs are candidates.
@@ -49,7 +51,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - No outbound Finder runner, scheduler, scraping, search APIs, or automatic outreach.
 - No email sending or automatic outreach execution; draft export is manual copy-only.
 - No system audio routing, voice output, phone integration, or offline realtime STT.
-- No full vector RAG/ranking layer yet; current retrieval is strict selected-pack context.
+- No full vector RAG/ranking layer yet; current retrieval is strict selected-pack/source context with a `future_vector` readiness contract only.
 - No training mode yet.
 
 Prompt/skill improvement is governed by an optional local skill-quality pipeline in [`docs/SKILL_QUALITY_PIPELINE.md`](docs/SKILL_QUALITY_PIPELINE.md). It is for synthetic or explicitly recorded mock transcript evidence only: bounded candidate edits, held-out validation, rejected-edit memory, and owner acceptance before any `best_skill.md` export.
@@ -175,7 +177,7 @@ Minimal real-test script when ready:
 
 ### Test commands
 
-- `pnpm test:governance` — governance + context pack + failover policy tests (includes assistant retry-policy checks).
+- `pnpm test:governance` — governance + context pack + knowledge readiness + failover policy tests.
 - `pnpm test:session-pack-selection` — selected counterparty pack cleanup and auto-add rules.
 - `pnpm test:live-loop-ui` and `pnpm test:analyze-recent-transcript` — live-loop selected-pack scheduling and assistant routing regressions.
 - `pnpm test:pre-smoke` — one-command non-microphone pre-smoke set: mock scenarios, selected packs, live-loop UI, and assistant routing.
@@ -277,8 +279,8 @@ docs/
 
 ## Next development passes
 
-1. Knowledge ingestion quality: improve source lifecycle, classification, and retrieval readiness for profile/respondent materials before adding vector retrieval.
-2. Finder runner implementation: add a bounded local/manual runner adapter after the current JSON contract is stable.
+1. Finder runner implementation: add a bounded local/manual runner adapter after the current JSON contract is stable.
+2. Knowledge extraction adapters: support more explicit source types without recursive scanning or broad raw-content exposure.
 3. Live microphone tuning: run the short real-call smoke and tune turn segmentation/noise behavior from observed failures.
 4. Training mode foundation: reuse the same selected profile/session/pack/draft context for interview and negotiation rehearsal.
 

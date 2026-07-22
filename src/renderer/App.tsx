@@ -75,6 +75,11 @@ import {
   formatCounterpartyPackQualityFixes
 } from '@shared/context-pack-quality'
 import {
+  buildKnowledgeIngestionSummary,
+  evaluateContextSourceReadiness,
+  formatContextSourceReadinessFixes
+} from '@shared/knowledge-ingestion-quality'
+import {
   buildManualPrepPreview
 } from '@shared/manual-prep-preview'
 import {
@@ -3281,6 +3286,10 @@ export const App = () => {
     includeProfileContext,
     profileChars: profileContext.length
   })
+  const knowledgeIngestionSummary = buildKnowledgeIngestionSummary(
+    contextSources,
+    counterpartyPacks
+  )
   const smokeReadinessPack = buildSmokeReadinessPack({
     apiKeyAvailable: configStatus.effectiveKeyAvailable,
     selectedPackCount: sessionContext.selectedCounterpartyPackIds.length,
@@ -5755,11 +5764,53 @@ export const App = () => {
                 <div>
                   <h2>Context Sources</h2>
                 </div>
-                <span>{contextSources.length} pending</span>
+                <span>
+                  {knowledgeIngestionSummary.sourceReadyCount}/{contextSources.length} ready
+                </span>
               </div>
               <p className="context-sources-description">
                 Shared RAG ingress. Every record stays CoqPi-only and pending classification until an explicit audited promotion.
               </p>
+              <div className="finder-status-strip">
+                <div className="finder-status-card">
+                  <span>Sources</span>
+                  <strong>
+                    {knowledgeIngestionSummary.sourceReadyCount}/
+                    {knowledgeIngestionSummary.sourceCount} ready
+                  </strong>
+                  <span>
+                    pending {knowledgeIngestionSummary.sourcePendingCount} · blocked{' '}
+                    {knowledgeIngestionSummary.sourceBlockedCount}
+                  </span>
+                </div>
+                <div className="finder-status-card">
+                  <span>Packs</span>
+                  <strong>
+                    {knowledgeIngestionSummary.retrievalReadyPackCount}/
+                    {knowledgeIngestionSummary.packCount} usable
+                  </strong>
+                  <span>
+                    weak {knowledgeIngestionSummary.packWeakCount} · blocked{' '}
+                    {knowledgeIngestionSummary.packBlockedCount}
+                  </span>
+                </div>
+                <div className="finder-status-card">
+                  <span>Lifecycle</span>
+                  <strong>{knowledgeIngestionSummary.soonestExpiryLabel}</strong>
+                  <span>
+                    {knowledgeIngestionSummary.selectedSourceCount} selected sources
+                  </span>
+                </div>
+                <div className="finder-status-card">
+                  <span>Future vector</span>
+                  <strong>
+                    {knowledgeIngestionSummary.vectorReady
+                      ? 'candidate set ready'
+                      : 'legacy only'}
+                  </strong>
+                  <span>strict selected IDs remain required</span>
+                </div>
+              </div>
               {(contextSourcesError || contextSourcesNotice) && (
                 <div className="stack">
                   {contextSourcesError ? (
@@ -5847,54 +5898,79 @@ export const App = () => {
                 {contextSources.length === 0 ? (
                   <div className="context-source-empty">No sources recorded.</div>
                 ) : (
-                  contextSources.map((source) => (
-                    <div className="context-source-item" key={source.id}>
-                      <label className="context-source-select">
-                        <input
-                          checked={source.selected}
-                          disabled={isSavingContextSources}
-                          onChange={(event) =>
-                            void setContextSourceSelection(
-                              source.id,
-                              event.target.checked
-                            )
-                          }
-                          type="checkbox"
-                        />
-                        <span>{source.selected ? 'Selected' : 'Not selected'}</span>
-                      </label>
-                      <div className="context-source-details">
-                        <strong>{source.label}</strong>
-                        <span>{source.kind} · {source.status.replaceAll('_', ' ')}</span>
-                        <span>
-                          scope: {source.retrievalScopes[0] ?? 'none'} · content hash{' '}
-                          {source.contentHash ? 'captured' : 'pending'}
-                        </span>
-                        <code>{source.location}</code>
-                      </div>
-                      <div className="context-source-actions">
-                        {source.kind === 'file' &&
-                        source.status === 'pending_classification' ? (
+                  contextSources.map((source) => {
+                    const readiness = evaluateContextSourceReadiness(source)
+
+                    return (
+                      <div className="context-source-item" key={source.id}>
+                        <label className="context-source-select">
+                          <input
+                            checked={source.selected}
+                            disabled={isSavingContextSources}
+                            onChange={(event) =>
+                              void setContextSourceSelection(
+                                source.id,
+                                event.target.checked
+                              )
+                            }
+                            type="checkbox"
+                          />
+                          <span>
+                            {source.selected ? 'Selected' : 'Not selected'}
+                          </span>
+                        </label>
+                        <div className="context-source-details">
+                          <strong>{source.label}</strong>
+                          <span>
+                            {source.kind} · {source.status.replaceAll('_', ' ')}
+                          </span>
+                          <span>
+                            scope: {source.retrievalScopes[0] ?? 'none'} ·
+                            content hash{' '}
+                            {source.contentHash ? 'captured' : 'pending'}
+                          </span>
+                          <span
+                            className={
+                              readiness.retrievalReady
+                                ? 'context-source-status-ready'
+                                : 'context-source-status-blocked'
+                            }
+                          >
+                            readiness: {readiness.label}
+                          </span>
+                          {readiness.issues.length > 0 ? (
+                            <code>
+                              fix: {formatContextSourceReadinessFixes(readiness)}
+                            </code>
+                          ) : null}
+                          <code>{source.location}</code>
+                        </div>
+                        <div className="context-source-actions">
+                          {source.kind === 'file' &&
+                          source.status === 'pending_classification' ? (
+                            <button
+                              disabled={isSavingContextSources}
+                              onClick={() =>
+                                void captureAndClassifySource(source.id)
+                              }
+                              type="button"
+                            >
+                              Capture & classify
+                            </button>
+                          ) : null}
                           <button
                             disabled={isSavingContextSources}
                             onClick={() =>
-                              void captureAndClassifySource(source.id)
+                              void removeStagedContextSource(source.id)
                             }
                             type="button"
                           >
-                            Capture & classify
+                            Remove
                           </button>
-                        ) : null}
-                        <button
-                          disabled={isSavingContextSources}
-                          onClick={() => void removeStagedContextSource(source.id)}
-                          type="button"
-                        >
-                          Remove
-                        </button>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </article>

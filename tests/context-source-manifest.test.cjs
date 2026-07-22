@@ -478,6 +478,9 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
     const manifestMarkdown = await fs.readFile(manifestMarkdownPath, 'utf8')
     assert.match(manifestMarkdown, /private/)
     assert.match(manifestMarkdown, /coqpi_interview_en_fr/)
+    assert.match(manifestMarkdown, /## Knowledge ingestion quality/)
+    assert.match(manifestMarkdown, /Knowledge readiness: 1\/1 sources ready/)
+    assert.match(manifestMarkdown, /Vector contract: legacy-only/)
 
     const retrieval = await service.getPersonalInterviewRetrieval(
       'Tell me about your AI product strategy experience.',

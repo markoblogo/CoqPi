@@ -23,6 +23,10 @@ import {
   type ParsedFinderCounterpartyPayload
 } from '../../shared/finder-ingest-contract'
 import { isSessionEligibleCounterpartyPack } from '../../shared/session-pack-selection'
+import {
+  buildKnowledgeIngestionSummary,
+  evaluateContextSourceReadiness
+} from '../../shared/knowledge-ingestion-quality'
 import { getAppInfo } from './app-state'
 
 type IngressEvent =
@@ -430,6 +434,10 @@ const writeManifestArtifacts = async (
     new Set(manifest.sources.map((source) => source.status))
   ).sort()
   const packKinds = new Set(manifest.counterpartyPacks.map((pack) => pack.kind))
+  const knowledgeSummary = buildKnowledgeIngestionSummary(
+    manifest.sources,
+    manifest.counterpartyPacks
+  )
 
   const packStatusLines = manifest.counterpartyPacks.flatMap((pack) => [
     `### ${pack.title}`,
@@ -456,7 +464,20 @@ const writeManifestArtifacts = async (
     `Pack kinds: ${Array.from(packKinds).sort().join(', ') || 'none'}`,
     `Statuses: ${activeStatuses.join(', ') || 'none'}`,
     `Scopes: ${activeScopes.join(', ') || 'none'}`,
+    `Knowledge readiness: ${knowledgeSummary.label}`,
+    `Lifecycle: ${knowledgeSummary.soonestExpiryLabel}`,
+    `Vector contract: ${knowledgeSummary.vectorReady ? 'candidate-set-ready' : 'legacy-only'}`,
     `Repository: ${getRepositoryHead()}`,
+    '',
+    '## Knowledge ingestion quality',
+    `- selected_sources: ${knowledgeSummary.selectedSourceCount}/${knowledgeSummary.sourceCount}`,
+    `- ready_sources: ${knowledgeSummary.sourceReadyCount}`,
+    `- pending_sources: ${knowledgeSummary.sourcePendingCount}`,
+    `- blocked_sources: ${knowledgeSummary.sourceBlockedCount}`,
+    `- usable_or_strong_packs: ${knowledgeSummary.retrievalReadyPackCount}/${knowledgeSummary.packCount}`,
+    `- weak_packs: ${knowledgeSummary.packWeakCount}`,
+    `- blocked_packs: ${knowledgeSummary.packBlockedCount}`,
+    `- future_vector_candidate_set: ${knowledgeSummary.vectorReady}`,
     '',
     '## Sources',
     ...manifest.sources.flatMap((source) => [
@@ -470,7 +491,8 @@ const writeManifestArtifacts = async (
       `- created: ${formatDateShort(source.createdAt)}`,
       `- classification: ${source.classification}`,
       `- content_hash: ${source.contentHash ?? 'pending'}`,
-      `- retention: ${source.retention.maxAgeDays}d (manual_deletion_required)`
+      `- retention: ${source.retention.maxAgeDays}d (manual_deletion_required)`,
+      `- readiness: ${evaluateContextSourceReadiness(source).label}`
     ]),
     '',
     '## Counterparty context packs',
