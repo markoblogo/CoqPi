@@ -1,4 +1,5 @@
 import type {
+  ContextSourceKind,
   ContextSource,
   CounterpartyContextPack
 } from './app-types'
@@ -46,6 +47,19 @@ export type KnowledgeIngestionSummary = {
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const interviewScope = 'coqpi_interview_en_fr'
+const readableFileSourceKinds = new Set<ContextSourceKind>([
+  'file',
+  'owner_profile_file',
+  'counterparty_material_file'
+])
+const pointerOnlySourceKinds = new Set<ContextSourceKind>([
+  'link',
+  'folder',
+  'path',
+  'public_profile_link',
+  'company_link',
+  'local_folder_manifest'
+])
 
 const daysUntil = (expiresAt: string, nowMs: number) => {
   const expiresMs = Date.parse(expiresAt)
@@ -76,7 +90,9 @@ export const evaluateContextSourceReadiness = (
     issues.push({
       id: 'pending_classification',
       label: 'pending classification',
-      fix: 'Capture and classify an explicitly selected supported text file.'
+      fix: readableFileSourceKinds.has(source.kind)
+        ? 'Capture and classify this explicitly selected readable file source.'
+        : 'This source is pointer-only in this phase; add a readable owner/profile or counterparty file for retrieval.'
     })
   } else if (source.status === 'hash_captured') {
     issues.push({
@@ -105,11 +121,25 @@ export const evaluateContextSourceReadiness = (
     })
   }
 
-  if (source.kind !== 'file' && source.status !== 'pending_classification') {
+  if (
+    !readableFileSourceKinds.has(source.kind) &&
+    source.status !== 'pending_classification'
+  ) {
     issues.push({
       id: 'unsupported_ingress',
       label: 'unsupported ingress',
-      fix: 'Only explicitly selected readable files can become retrieval-ready in this phase.'
+      fix: 'Only explicitly selected readable owner/profile or counterparty files can become retrieval-ready in this phase.'
+    })
+  }
+
+  if (
+    pointerOnlySourceKinds.has(source.kind) &&
+    source.status === 'pending_classification'
+  ) {
+    issues.push({
+      id: 'unsupported_ingress',
+      label: 'pointer-only source',
+      fix: 'Keep this as provenance only; do not fetch, scan, or expose raw content from this source.'
     })
   }
 

@@ -497,3 +497,53 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
     await fs.rm(directory, { recursive: true, force: true })
   }
 })
+
+test('captures explicit owner profile files and keeps pointer sources no-read', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-explicit-source-'))
+  const filePath = path.join(directory, 'owner-profile.md')
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+  await fs.writeFile(filePath, 'Owner profile: AI product and agri ecosystem work.', 'utf8')
+
+  try {
+    const addedFile = await service.addContextSource({
+      kind: 'owner_profile_file',
+      location: filePath
+    })
+    const addedLink = await service.addContextSource({
+      kind: 'public_profile_link',
+      location: 'https://www.linkedin.com/in/example'
+    })
+    const addedFolder = await service.addContextSource({
+      kind: 'local_folder_manifest',
+      location: path.join(directory, 'materials')
+    })
+    const fileSource = addedFile.manifest.sources[0]
+    const linkSource = addedLink.manifest.sources.find(
+      (source) => source.kind === 'public_profile_link'
+    )
+    const folderSource = addedFolder.manifest.sources.find(
+      (source) => source.kind === 'local_folder_manifest'
+    )
+    const captured = await service.captureAndClassifyContextSource(fileSource.id)
+
+    assert.equal(captured.manifest.sources[0].kind, 'owner_profile_file')
+    assert.equal(captured.manifest.sources[0].status, 'retrieval_ready')
+    assert.equal(linkSource.status, 'pending_classification')
+    assert.equal(folderSource.status, 'pending_classification')
+
+    await assert.rejects(
+      service.captureAndClassifyContextSource(folderSource.id),
+      /readable file source/
+    )
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})

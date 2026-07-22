@@ -142,7 +142,19 @@ export interface SessionContextResult {
   context: SessionContext
 }
 
-export type ContextSourceKind = 'link' | 'file' | 'folder' | 'path'
+export const contextSourceKindValues = [
+  'link',
+  'file',
+  'folder',
+  'path',
+  'owner_profile_file',
+  'counterparty_material_file',
+  'public_profile_link',
+  'company_link',
+  'local_folder_manifest'
+] as const
+
+export type ContextSourceKind = (typeof contextSourceKindValues)[number]
 
 export interface ContextSourceDraft {
   kind: ContextSourceKind

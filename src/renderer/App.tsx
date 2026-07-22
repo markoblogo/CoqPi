@@ -187,7 +187,7 @@ const emptyContextSourceDraft: {
   location: string
   label: string
 } = {
-  kind: 'link',
+  kind: 'owner_profile_file',
   location: '',
   label: ''
 }
@@ -226,6 +226,12 @@ type FinderOwnerSourcePreviewItem = {
   duplicate: boolean
   draft: FinderCandidateResultDraft
 }
+
+const fileContextSourceKinds = new Set<ContextSourceKind>([
+  'file',
+  'owner_profile_file',
+  'counterparty_material_file'
+])
 
 const emptyFinderCandidateDraft: FinderCandidateFormDraft = {
   sourceId: '',
@@ -2465,9 +2471,13 @@ export const App = () => {
       }
 
       let latestSources = contextSources
+      const selectedFileKind = fileContextSourceKinds.has(contextSourceDraft.kind)
+        ? contextSourceDraft.kind
+        : 'counterparty_material_file'
+
       for (const location of filePaths) {
         const payload = await window.coqpi.contextSources.add({
-          kind: 'file',
+          kind: selectedFileKind,
           location
         })
         latestSources = payload.manifest.sources
@@ -2503,7 +2513,7 @@ export const App = () => {
       }
 
       const payload = await window.coqpi.contextSources.add({
-        kind: 'folder',
+        kind: 'local_folder_manifest',
         location
       })
       applyContextSourceManifest(payload.manifest.sources)
@@ -6292,8 +6302,18 @@ export const App = () => {
                     }
                     value={contextSourceDraft.kind}
                   >
-                    <option value="link">Public link</option>
-                    <option value="path">Local path</option>
+                    <option value="owner_profile_file">Owner profile/CV file</option>
+                    <option value="counterparty_material_file">
+                      Counterparty material file
+                    </option>
+                    <option value="public_profile_link">Public profile link</option>
+                    <option value="company_link">Company/respondent link</option>
+                    <option value="local_folder_manifest">
+                      Local folder pointer
+                    </option>
+                    <option value="file">Legacy file</option>
+                    <option value="link">Legacy link</option>
+                    <option value="path">Legacy path</option>
                   </select>
                 </label>
                 <label className="settings-row">
@@ -6306,9 +6326,11 @@ export const App = () => {
                       }))
                     }
                     placeholder={
+                      contextSourceDraft.kind === 'public_profile_link' ||
+                      contextSourceDraft.kind === 'company_link' ||
                       contextSourceDraft.kind === 'link'
                         ? 'https://linkedin.com/in/...'
-                        : '/Users/.../materials'
+                        : '/Users/.../materials-or-profile.md'
                     }
                     value={contextSourceDraft.location}
                   />
@@ -6405,7 +6427,7 @@ export const App = () => {
                           <code>{source.location}</code>
                         </div>
                         <div className="context-source-actions">
-                          {source.kind === 'file' &&
+                          {fileContextSourceKinds.has(source.kind) &&
                           source.status === 'pending_classification' ? (
                             <button
                               disabled={isSavingContextSources}

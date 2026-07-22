@@ -16,7 +16,10 @@ import type {
   CounterpartyFinderPayloadPreviewResult,
   CounterpartyPayloadIngestSummary
 } from '../../shared/app-types'
-import { contextPackKindValues } from '../../shared/app-types'
+import {
+  contextPackKindValues,
+  contextSourceKindValues
+} from '../../shared/app-types'
 import {
   normalizeFinderCounterpartyDraft,
   parseFinderCounterpartyPayloadTextPermissive,
@@ -68,7 +71,7 @@ type ManifestHistoryEvent = {
   repositoryHead: string
 }
 
-const sourceKinds: ContextSourceKind[] = ['link', 'file', 'folder', 'path']
+const sourceKinds: ContextSourceKind[] = [...contextSourceKindValues]
 const finderRetrievalScopes = ['coqpi_interview_en_fr']
 const allowedPackKinds = contextPackKindValues
 const RETENTION_DAYS = 30
@@ -159,8 +162,26 @@ const retentionFor = (createdAt: string) => ({
   ).toISOString()
 })
 
+const linkSourceKinds = new Set<ContextSourceKind>([
+  'link',
+  'public_profile_link',
+  'company_link'
+])
+
+const fileCaptureSourceKinds = new Set<ContextSourceKind>([
+  'file',
+  'owner_profile_file',
+  'counterparty_material_file'
+])
+
+const folderPointerSourceKinds = new Set<ContextSourceKind>([
+  'folder',
+  'path',
+  'local_folder_manifest'
+])
+
 const toDefaultLabel = (location: string, kind: ContextSourceKind) => {
-  if (kind === 'link') {
+  if (linkSourceKinds.has(kind)) {
     try {
       return new URL(location).hostname || location
     } catch {
@@ -555,7 +576,7 @@ const validateDraft = (draft: ContextSourceDraft) => {
     throw new Error('A source type and location are required.')
   }
 
-  if (kind === 'link') {
+  if (linkSourceKinds.has(kind)) {
     let parsed: URL
     try {
       parsed = new URL(location)
@@ -566,6 +587,10 @@ const validateDraft = (draft: ContextSourceDraft) => {
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       throw new Error('Only http and https links can be recorded.')
     }
+  }
+
+  if (folderPointerSourceKinds.has(kind) && /^https?:\/\//i.test(location)) {
+    throw new Error('Use a link source type for http or https locations.')
   }
 
   return {
@@ -974,8 +999,10 @@ export const captureAndClassifyContextSource = async (
     throw new Error('The recorded source no longer exists.')
   }
 
-  if (source.kind !== 'file') {
-    throw new Error('Only an explicitly selected file can be captured in this phase.')
+  if (!fileCaptureSourceKinds.has(source.kind)) {
+    throw new Error(
+      'Only an explicitly selected readable file source can be captured in this phase.'
+    )
   }
 
   const stats = await fs.stat(source.location)

@@ -108,6 +108,36 @@ test('context source readiness distinguishes hash-only captures from retrieval-r
   assert.match(ready.label, /expires in/)
 })
 
+test('context source readiness treats explicit source adapters differently', () => {
+  const profileFile = evaluateContextSourceReadiness(
+    makeSource({
+      kind: 'owner_profile_file',
+      status: 'retrieval_ready',
+      contentHash: 'e'.repeat(64),
+      classification: 'private',
+      retrievalScopes: ['coqpi_interview_en_fr']
+    }),
+    now
+  )
+  const profileLink = evaluateContextSourceReadiness(
+    makeSource({
+      kind: 'public_profile_link',
+      location: 'https://linkedin.com/in/example',
+      label: 'LinkedIn profile'
+    }),
+    now
+  )
+
+  assert.equal(profileFile.level, 'ready')
+  assert.equal(profileFile.retrievalReady, true)
+  assert.equal(profileLink.retrievalReady, false)
+  assert.equal(
+    profileLink.issues.some((issue) => issue.id === 'unsupported_ingress'),
+    true
+  )
+  assert.match(formatContextSourceReadinessFixes(profileLink), /pointer-only/)
+})
+
 test('knowledge ingestion summary reports lifecycle and vector candidate-set readiness', () => {
   const readySource = makeSource({
     status: 'retrieval_ready',

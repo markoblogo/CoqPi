@@ -41,7 +41,8 @@ CoqPi is a private local desktop application for stressful interview and profess
 
 - Local profile context plus per-call session fields: company, role, context, goal, notes, selected counterparty packs, and the selected Finder outreach draft.
 - Counterparty packs include source, owner, classification, retention, scope, links, quality diagnostics, and session eligibility.
-- Context Sources now show ingestion readiness: pending classification, hash-only capture, retrieval-ready status, retention expiry, and concrete fixes.
+- Context Sources have explicit local adapter types for owner profile/CV files, counterparty material files, public profile links, company/respondent links, and local folder pointers. Only explicitly selected readable file adapters can be captured for retrieval; links and folders remain provenance-only.
+- Context Sources show ingestion readiness: pending classification, hash-only capture, retrieval-ready status, retention expiry, pointer-only boundaries, and concrete fixes.
 - The local manifest markdown includes a compact knowledge readiness summary for sources, packs, lifecycle, and future vector candidate-set state.
 - Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis. Disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
 - A selected outreach draft is revalidated against Finder source truth before use. Missing or stale draft IDs are dropped or surfaced in prep quality instead of broadening context.
@@ -281,8 +282,8 @@ docs/
 
 ## Next development passes
 
-1. Knowledge extraction adapters: support more explicit source types without recursive scanning or broad raw-content exposure.
-2. Finder candidate lifecycle pass: add clearer review states for enriched / needs-info / ready-for-outreach.
+1. Finder candidate lifecycle pass: add clearer review states for enriched / needs-info / ready-for-outreach.
+2. Knowledge extraction quality pass: add richer per-source extraction labels and owner-facing provenance review without expanding raw-content exposure.
 3. Live microphone tuning: run the short real-call smoke and tune turn segmentation/noise behavior from observed failures.
 4. Training mode foundation: reuse the same selected profile/session/pack/draft context for interview and negotiation rehearsal.
 
