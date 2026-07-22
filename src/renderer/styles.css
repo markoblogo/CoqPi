@@ -1108,6 +1108,64 @@ button:disabled {
   font-size: var(--font-xs);
 }
 
+.finder-outreach-prep {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #3d5367;
+  border-radius: 3px;
+  background: #18222c;
+}
+
+.finder-outreach-header,
+.finder-outreach-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--space-2);
+}
+
+.finder-outreach-header {
+  align-items: start;
+}
+
+.finder-outreach-header > div,
+.finder-outreach-grid > div,
+.finder-outreach-message {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.finder-outreach-prep span {
+  color: #99abbc;
+  font-size: var(--font-xs);
+}
+
+.finder-outreach-prep strong {
+  color: #e5edf4;
+  font-size: var(--font-sm);
+}
+
+.finder-outreach-prep p,
+.finder-outreach-prep li,
+.finder-outreach-prep code {
+  margin: 0;
+  color: #c7d2dc;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.finder-outreach-prep ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding-left: var(--space-3);
+}
+
+.finder-outreach-warnings li {
+  color: #f0d08a;
+}
+
 .finder-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -1142,7 +1200,8 @@ button:disabled {
 }
 
 .finder-row:hover,
-.finder-row-selected {
+.finder-row-selected,
+.finder-result-row-focused {
   border-color: #5d748b;
   background: #202a34;
 }
@@ -1786,7 +1845,9 @@ button:disabled {
 
   .finder-grid,
   .finder-status-strip,
-  .finder-pipeline-controls {
+  .finder-pipeline-controls,
+  .finder-outreach-header,
+  .finder-outreach-grid {
     grid-template-columns: 1fr;
   }
 }

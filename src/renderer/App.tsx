@@ -106,6 +106,7 @@ import {
 } from '@shared/finder-preview-state'
 import {
   createContextPackDraftFromFinderResult,
+  createFinderOutreachPrepPack,
   createFinderPipelineView,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
@@ -712,6 +713,8 @@ export const App = () => {
     finderPipelineRequiresNextAction,
     setFinderPipelineRequiresNextAction
   ] = useState(false)
+  const [focusedFinderCandidateResultId, setFocusedFinderCandidateResultId] =
+    useState<string | null>(null)
   const finderPayloadCandidatesCount = counterpartyFinderPayloadItems.length
   const finderPayloadSelectionStats =
     getFinderPreviewSelectionStats(counterpartyFinderPayloadItems)
@@ -740,6 +743,19 @@ export const App = () => {
       requiresNextAction: finderPipelineRequiresNextAction
     }
   )
+  const focusedFinderCandidateResult =
+    selectedFinderSearchResults.find(
+      (result) => result.id === focusedFinderCandidateResultId
+    ) ??
+    selectedFinderSearchResults[0] ??
+    null
+  const finderOutreachPrepPack =
+    selectedFinderSearchJob && focusedFinderCandidateResult
+      ? createFinderOutreachPrepPack(
+          selectedFinderSearchJob,
+          focusedFinderCandidateResult
+        )
+      : null
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [contextSourceDraft, setContextSourceDraft] = useState(
     emptyContextSourceDraft
@@ -5071,7 +5087,10 @@ export const App = () => {
                               : ''
                           }`}
                           key={job.id}
-                          onClick={() => setSelectedFinderSearchJobId(job.id)}
+                          onClick={() => {
+                            setSelectedFinderSearchJobId(job.id)
+                            setFocusedFinderCandidateResultId(null)
+                          }}
                           type="button"
                         >
                           <span
@@ -5345,6 +5364,63 @@ export const App = () => {
                           <span>Has next action</span>
                         </label>
                       </div>
+                      {finderOutreachPrepPack ? (
+                        <div className="finder-outreach-prep">
+                          <div className="finder-outreach-header">
+                            <div>
+                              <span>Outreach prep</span>
+                              <strong>
+                                {finderOutreachPrepPack.targetName} ·{' '}
+                                {finderOutreachPrepPack.opportunity}
+                              </strong>
+                            </div>
+                            <span>{finderOutreachPrepPack.fitLabel}</span>
+                          </div>
+                          <div className="finder-outreach-grid">
+                            <div>
+                              <span>Why relevant</span>
+                              <p>{finderOutreachPrepPack.whyRelevant}</p>
+                            </div>
+                            <div>
+                              <span>Next action</span>
+                              <p>{finderOutreachPrepPack.nextAction}</p>
+                            </div>
+                          </div>
+                          <div className="finder-outreach-grid">
+                            <div>
+                              <span>Known context</span>
+                              <ul>
+                                {finderOutreachPrepPack.knownContext.map(
+                                  (line) => (
+                                    <li key={line}>{line}</li>
+                                  )
+                                )}
+                              </ul>
+                            </div>
+                            <div>
+                              <span>Questions to ask</span>
+                              <ul>
+                                {finderOutreachPrepPack.questionsToAsk.map(
+                                  (line) => (
+                                    <li key={line}>{line}</li>
+                                  )
+                                )}
+                              </ul>
+                            </div>
+                          </div>
+                          <div className="finder-outreach-message">
+                            <span>Opening message</span>
+                            <code>{finderOutreachPrepPack.openingMessage}</code>
+                          </div>
+                          {finderOutreachPrepPack.warnings.length ? (
+                            <ul className="finder-outreach-warnings">
+                              {finderOutreachPrepPack.warnings.map((warning) => (
+                                <li key={warning}>{warning}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div className="finder-table">
                         {selectedFinderSearchResults.length === 0 ? (
                           <div className="context-source-empty">
@@ -5354,7 +5430,14 @@ export const App = () => {
                           </div>
                         ) : (
                           selectedFinderSearchResults.map((result) => (
-                            <div className="finder-result-row" key={result.id}>
+                            <div
+                              className={`finder-result-row ${
+                                focusedFinderCandidateResult?.id === result.id
+                                  ? 'finder-result-row-focused'
+                                  : ''
+                              }`}
+                              key={result.id}
+                            >
                               <span
                                 className={`finder-status finder-status-${result.status}`}
                               >
@@ -5386,6 +5469,15 @@ export const App = () => {
                                 ) : null}
                               </div>
                               <div className="button-row settings-actions">
+                                <button
+                                  className="button-small"
+                                  onClick={() =>
+                                    setFocusedFinderCandidateResultId(result.id)
+                                  }
+                                  type="button"
+                                >
+                                  Prep
+                                </button>
                                 <button
                                   className="button-small"
                                   disabled={

@@ -5,6 +5,7 @@ const {
   createFinderRecordsFromRunnerPayload,
   createContextPackDraftFromFinderResult,
   createFinderCandidateResult,
+  createFinderOutreachPrepPack,
   createFinderSearchJob,
   createFinderPipelineView,
   getFinderSearchStatusCounts,
@@ -317,4 +318,73 @@ test('finder pipeline view filters by status score and next action', () => {
     }).map((candidate) => candidate.id),
     ['ready-high']
   )
+})
+
+test('finder outreach prep pack summarizes what to say and ask', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech',
+      goal: 'Prepare interview outreach'
+    },
+    { id: 'job-3', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const result = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:job:northfield',
+      partnerName: 'Northfield Labs',
+      title: 'AI Product Lead',
+      summary: 'Product leadership role with AI workflow focus.',
+      context: 'The role mentions partner-facing product discovery.',
+      links: ['https://example.com/northfield'],
+      fitScore: 91,
+      whyRelevant: 'Matches AI product leadership and France search.',
+      missingInfo: 'Salary range; Remote policy',
+      nextAction: 'Prepare a focused intro before applying.'
+    },
+    { id: 'result-3', now: '2026-07-22T10:02:00.000Z' }
+  )
+  const prep = createFinderOutreachPrepPack(job, result)
+
+  assert.equal(prep.targetName, 'Northfield Labs')
+  assert.equal(prep.opportunity, 'AI Product Lead')
+  assert.equal(prep.fitLabel, '91/100 strong')
+  assert.equal(prep.whyRelevant, 'Matches AI product leadership and France search.')
+  assert.deepEqual(prep.questionsToAsk.slice(0, 2), [
+    'Clarify: Salary range',
+    'Clarify: Remote policy'
+  ])
+  assert.match(prep.openingMessage, /I saw the AI Product Lead opportunity/)
+  assert.equal(prep.nextAction, 'Prepare a focused intro before applying.')
+  assert.deepEqual(prep.warnings, [])
+})
+
+test('finder outreach prep pack stays explicit when review fields are weak', () => {
+  const job = createFinderSearchJob(
+    { kind: 'partner', label: 'France partners', query: 'agri logistics france' },
+    { id: 'job-4', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const result = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:partner:partial',
+      partnerName: 'Partial Partner',
+      title: 'Potential logistics partner',
+      summary: 'Possible partner but still underqualified.'
+    },
+    { id: 'result-4', now: '2026-07-22T10:02:00.000Z' }
+  )
+  const prep = createFinderOutreachPrepPack(job, result)
+
+  assert.equal(prep.fitLabel, 'not scored')
+  assert.equal(prep.whyRelevant, 'Possible partner but still underqualified.')
+  assert.match(prep.nextAction, /Review missing info/)
+  assert.deepEqual(prep.warnings, [
+    'Add fitScore before prioritizing outreach.',
+    'Add whyRelevant to make the opening more specific.',
+    'Add nextAction to make follow-up explicit.',
+    'Add at least one source link for provenance.'
+  ])
 })

@@ -24,6 +24,19 @@ export interface FinderPipelineFilters {
   requiresNextAction?: boolean
 }
 
+export interface FinderOutreachPrepPack {
+  targetName: string
+  opportunity: string
+  kind: CounterpartyContextPackKind
+  fitLabel: string
+  whyRelevant: string
+  knownContext: string[]
+  questionsToAsk: string[]
+  openingMessage: string
+  nextAction: string
+  warnings: string[]
+}
+
 const sanitizeText = (value: unknown, maxLength = 1200) =>
   typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
 
@@ -399,4 +412,99 @@ export const createFinderPipelineView = (
         compareByCreatedAtDesc(left, right)
       )
     })
+}
+
+const splitActionableLines = (text: string) =>
+  text
+    .split(/\n|;/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 4)
+
+const getFitLabel = (fitScore: number | undefined) => {
+  if (fitScore === undefined) {
+    return 'not scored'
+  }
+
+  if (fitScore >= 80) {
+    return `${fitScore}/100 strong`
+  }
+
+  if (fitScore >= 60) {
+    return `${fitScore}/100 usable`
+  }
+
+  return `${fitScore}/100 weak`
+}
+
+const buildOpeningMessage = (
+  job: FinderSearchJob,
+  result: FinderCandidateResult,
+  reason: string
+) => {
+  const reasonSentence = reason ? ` ${reason}` : ''
+
+  if (result.kind === 'job') {
+    return `Hi ${result.partnerName}, I saw the ${result.title} opportunity.${reasonSentence} I would be glad to discuss the role and see whether my background fits what you need.`
+  }
+
+  if (result.kind === 'investor') {
+    return `Hi ${result.partnerName}, I saw your work around ${result.title}.${reasonSentence} I would be glad to discuss whether there is a fit for a focused conversation.`
+  }
+
+  if (result.kind === 'accelerator') {
+    return `Hi ${result.partnerName}, I saw the ${result.title} opportunity.${reasonSentence} I would be glad to understand whether this could be a good fit.`
+  }
+
+  if (result.kind === 'partner') {
+    return `Hi ${result.partnerName}, I saw the ${result.title} context.${reasonSentence} I would be glad to discuss a practical collaboration if it is relevant for your team.`
+  }
+
+  return `Hi ${result.partnerName}, I saw ${result.title} in my ${job.label} search.${reasonSentence} I would be glad to discuss whether this is relevant.`
+}
+
+export const createFinderOutreachPrepPack = (
+  job: FinderSearchJob,
+  result: FinderCandidateResult
+): FinderOutreachPrepPack => {
+  const links = result.links ?? []
+  const warnings = [
+    result.fitScore === undefined ? 'Add fitScore before prioritizing outreach.' : '',
+    result.whyRelevant ? '' : 'Add whyRelevant to make the opening more specific.',
+    result.nextAction ? '' : 'Add nextAction to make follow-up explicit.',
+    links.length === 0 ? 'Add at least one source link for provenance.' : ''
+  ].filter(Boolean)
+
+  const whyRelevant = result.whyRelevant || result.summary
+  const knownContext = [
+    result.summary,
+    result.context,
+    links.length ? `Links: ${links.slice(0, 3).join(', ')}` : ''
+  ]
+    .map((line) => line?.trim() ?? '')
+    .filter(Boolean)
+    .slice(0, 4)
+
+  const missingInfoQuestions = splitActionableLines(result.missingInfo ?? '').map(
+    (line) => `Clarify: ${line}`
+  )
+  const questionsToAsk = [
+    ...missingInfoQuestions,
+    result.kind === 'job'
+      ? 'What are the main success criteria for this role?'
+      : 'What would make this conversation useful from your side?'
+  ].slice(0, 4)
+
+  return {
+    targetName: result.partnerName,
+    opportunity: result.title,
+    kind: result.kind,
+    fitLabel: getFitLabel(result.fitScore),
+    whyRelevant,
+    knownContext,
+    questionsToAsk,
+    openingMessage: buildOpeningMessage(job, result, result.whyRelevant ?? ''),
+    nextAction: result.nextAction || 'Review missing info, then decide whether to import this candidate as a session pack.',
+    warnings
+  }
 }
