@@ -154,7 +154,7 @@ const emptyCounterpartyPackDraft: CounterpartyPackFormDraft = {
 }
 
 const coqPiLogoSrc = new URL(
-  '../../assets/coqpi-logo-white-on-dark.png',
+  '../../assets/coqpi-logo-dark-bg-transparent.png',
   import.meta.url
 ).href
 
