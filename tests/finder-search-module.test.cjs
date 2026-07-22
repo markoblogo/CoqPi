@@ -8,6 +8,7 @@ const {
   createFinderOutreachDraft,
   createFinderOutreachPrepPack,
   createFinderSearchJob,
+  createManualFinderRunnerCandidates,
   createFinderPipelineView,
   formatFinderOutreachDraftForExport,
   getFinderSearchStatusCounts,
@@ -218,6 +219,32 @@ test('finder runner payload rejects malformed envelopes before UI import', () =>
       ),
     /requires label and query/
   )
+})
+
+test('manual finder runner creates bounded local placeholder candidates', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'partner',
+      label: 'Agri partners France',
+      query: 'grain logistics partners france',
+      goal: 'Prepare partner conversations',
+      notes: 'Focus on practical pilots'
+    },
+    { id: 'job-local-runner', now: '2026-07-22T12:00:00.000Z' }
+  )
+  const candidates = createManualFinderRunnerCandidates(job)
+
+  assert.equal(candidates.length, 3)
+  assert.equal(
+    candidates[0].sourceId,
+    'coqpi:manual-runner:partner:job-local-runner:1'
+  )
+  assert.equal(candidates[0].partnerName, 'Manual partner target 1')
+  assert.equal(candidates[0].fitScore, 84)
+  assert.match(candidates[0].summary, /Manual\/mock partner candidate/)
+  assert.match(candidates[0].context, /not an internet search result/)
+  assert.match(candidates[0].whyRelevant, /Requires manual evidence/)
+  assert.deepEqual(candidates[0].links, [])
 })
 
 test('finder pipeline view prioritizes high-fit ready candidates', () => {

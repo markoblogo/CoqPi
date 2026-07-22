@@ -7,6 +7,7 @@ import type {
   FinderSearchJob,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
+  FinderRunnerRunSummary,
   FinderSearchStatusCounts
 } from './app-types'
 
@@ -53,6 +54,16 @@ const clampScore = (score: unknown) => {
   }
 
   return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+const slugify = (value: string, fallback: string) => {
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+
+  return slug || fallback
 }
 
 const normalizeJob = (draft: FinderSearchJobDraft): FinderSearchJobDraft => {
@@ -325,6 +336,80 @@ export const createFinderRecordsFromRunnerPayload = (
     errors: preview.errors
   }
 }
+
+const kindLabel: Record<CounterpartyContextPackKind, string> = {
+  job: 'job',
+  partner: 'partner',
+  investor: 'investor',
+  accelerator: 'accelerator',
+  other: 'opportunity'
+}
+
+const defaultNextAction: Record<CounterpartyContextPackKind, string> = {
+  job: 'Review vacancy evidence, then decide whether to import this as an interview pack.',
+  partner: 'Review partner evidence, then decide whether to import this as a negotiation pack.',
+  investor: 'Review thesis and portfolio evidence, then decide whether to import this as an investor pack.',
+  accelerator: 'Review eligibility and deadlines, then decide whether to import this as an accelerator pack.',
+  other: 'Review source evidence, then decide whether to import this as a session pack.'
+}
+
+export const createManualFinderRunnerCandidates = (
+  job: FinderSearchJob,
+  options: { maxResults?: number } = {}
+): FinderCandidateResultDraft[] => {
+  const maxResults = Math.max(1, Math.min(options.maxResults ?? 3, 5))
+  const jobSlug = slugify(job.id, 'job')
+  const label = sanitizeText(job.label, 180)
+  const query = sanitizeText(job.query, 300)
+  const goal = sanitizeText(job.goal, 300)
+  const notes = sanitizeText(job.notes, 300)
+  const baseSummary = [
+    `Manual/mock ${kindLabel[job.kind]} candidate generated from the saved Finder job.`,
+    `Query to review: ${query}.`,
+    goal ? `Goal: ${goal}.` : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return Array.from({ length: maxResults }, (_unused, index) => {
+    const ordinal = index + 1
+    const fitScore = Math.max(52, 84 - index * 11)
+
+    return {
+      sourceId: `coqpi:manual-runner:${job.kind}:${jobSlug}:${ordinal}`,
+      partnerName: `Manual ${kindLabel[job.kind]} target ${ordinal}`,
+      title: `${label} candidate ${ordinal}`,
+      summary: baseSummary,
+      context: [
+        'This is a bounded local placeholder, not an internet search result.',
+        notes ? `Owner notes: ${notes}` : '',
+        'Replace or enrich it with real source evidence before serious outreach.'
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      links: [],
+      score: fitScore,
+      fitScore,
+      whyRelevant: `Matches the local Finder query terms for "${query}". Requires manual evidence before use.`,
+      missingInfo:
+        'Real source link; verified contact or vacancy page; current fit evidence.',
+      nextAction: defaultNextAction[job.kind]
+    }
+  })
+}
+
+export const summarizeManualFinderRunnerRun = (
+  jobId: string,
+  generatedCount: number,
+  skippedDuplicateCount: number
+): FinderRunnerRunSummary => ({
+  jobId,
+  mode: 'manual_mock',
+  generatedCount,
+  skippedDuplicateCount,
+  reason:
+    'Local manual/mock runner generated bounded candidate placeholders only; no web search, scraping, API call, or outbound action was performed.'
+})
 
 export const getFinderSearchStatusCounts = (
   jobs: readonly FinderSearchJob[]

@@ -137,6 +137,54 @@ test('finder search service ingests runner payload with append-only source truth
   })
 })
 
+test('finder search service runs bounded manual mock job idempotently', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'Agri partners France',
+      query: 'grain logistics partners france',
+      goal: 'Prepare partner conversations',
+      notes: 'Focus on practical pilots'
+    })
+    const job = afterJob.store.jobs[0]
+    const firstRun = await service.runManualFinderSearchJob(job.id)
+    const secondRun = await service.runManualFinderSearchJob(job.id)
+
+    assert.equal(firstRun.store.jobs[0].status, 'ready')
+    assert.equal(firstRun.store.results.length, 3)
+    assert.equal(firstRun.finderRunSummary.mode, 'manual_mock')
+    assert.equal(firstRun.finderRunSummary.generatedCount, 3)
+    assert.equal(firstRun.finderRunSummary.skippedDuplicateCount, 0)
+    assert.match(firstRun.finderRunSummary.reason, /no web search/)
+    assert.equal(secondRun.store.results.length, 3)
+    assert.equal(secondRun.finderRunSummary.generatedCount, 0)
+    assert.equal(secondRun.finderRunSummary.skippedDuplicateCount, 3)
+    assert.equal(
+      secondRun.store.results[0].sourceId.startsWith(
+        'coqpi:manual-runner:partner:'
+      ),
+      true
+    )
+  })
+})
+
+test('finder search service refuses to run rejected jobs', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'job',
+      label: 'Rejected job search',
+      query: 'irrelevant'
+    })
+    const job = afterJob.store.jobs[0]
+    await service.setFinderSearchJobStatus(job.id, 'rejected')
+
+    await assert.rejects(
+      service.runManualFinderSearchJob(job.id),
+      /Rejected finder jobs cannot be run/
+    )
+  })
+})
+
 test('finder search service saves outreach draft handoff locally', async () => {
   await withFinderWorkspace(async (service, directory) => {
     const afterJob = await service.addFinderSearchJob({

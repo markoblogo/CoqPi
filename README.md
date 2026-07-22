@@ -28,6 +28,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Local search jobs and candidate results are stored under the Personal Knowledge Core `finder/` directory with provenance, content hashes, append-only events, and status history.
 - Current statuses are `draft`, `ready`, `imported`, and `rejected`.
 - Finder Runner payload ingress accepts manual/mock JSON from a future search module, soft-accepts valid candidates, returns item errors, and does not browse or scrape from this path.
+- The selected Finder job can also run a bounded local `manual_mock` runner that generates deterministic placeholder candidates for review/scoring/import tests. It performs no web search, scraping, API call, scheduler work, or outreach.
 - Candidate review fields (`fitScore`, `whyRelevant`, `missingInfo`, `nextAction`) are stored, shown in the UI, and carried into the imported context pack.
 - Prioritized pipeline view sorts and filters candidates by fit score, status, and next action so the Finder tab works as a review funnel.
 - Outreach prep pack summarizes the focused candidate before action: target, opportunity, fit, why relevant, known context, questions to ask, opening message, next action, and weak-field warnings.
@@ -48,7 +49,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 
 ### Not implemented yet
 
-- No outbound Finder runner, scheduler, scraping, search APIs, or automatic outreach.
+- No outbound Finder runner, scheduler, scraping, search APIs, or automatic outreach. The current runner is local/manual mock only.
 - No email sending or automatic outreach execution; draft export is manual copy-only.
 - No system audio routing, voice output, phone integration, or offline realtime STT.
 - No full vector RAG/ranking layer yet; current retrieval is strict selected-pack/source context with a `future_vector` readiness contract only.
@@ -279,7 +280,7 @@ docs/
 
 ## Next development passes
 
-1. Finder runner implementation: add a bounded local/manual runner adapter after the current JSON contract is stable.
+1. Real Finder source adapters: add one opt-in source adapter at a time, starting with owner-provided URLs or pasted exports before any scheduled search.
 2. Knowledge extraction adapters: support more explicit source types without recursive scanning or broad raw-content exposure.
 3. Live microphone tuning: run the short real-call smoke and tune turn segmentation/noise behavior from observed failures.
 4. Training mode foundation: reuse the same selected profile/session/pack/draft context for interview and negotiation rehearsal.

@@ -53,6 +53,7 @@ import {
   addFinderSearchJob,
   getFinderSearchStore,
   ingestFinderRunnerPayload,
+  runManualFinderSearchJob,
   saveFinderOutreachDraft,
   setFinderCandidateResultStatus,
   setFinderSearchJobStatus
@@ -296,6 +297,12 @@ const registerIpcHandlers = () => {
     'coqpi:finder-search:ingest-runner-payload',
     async (_event, payloadText: string): Promise<FinderSearchStoreResult> =>
       ingestFinderRunnerPayload(payloadText)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:run-job',
+    async (_event, jobId: string): Promise<FinderSearchStoreResult> =>
+      runManualFinderSearchJob(jobId)
   )
 
   ipcMain.handle(

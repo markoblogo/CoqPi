@@ -121,6 +121,7 @@ Stored counterparty packs are also normalized as versioned compact records befor
 - UI state, session save/load, and assistant analysis revalidate `selectedCounterpartyPackIds` against the current manifest.
 - Disabled, removed, duplicate, missing, non-private, non-`retrieval_ready`, wrong-version, or wrong-scope packs are pruned before the assistant prompt is built.
 - Finder outreach drafts are session-linked by draft ID only. The selected draft is resolved from local Finder source truth and compacted for assistant consistency; it is not treated as proof that a message was sent.
+- Finder `manual_mock` runner output is local candidate scaffolding only. It may enter review/scoring/import flows, but it is not evidence of a real external opportunity until the owner adds source links or other reviewed provenance.
 - Knowledge ingestion readiness is a local contract summary, not a retrieval engine. It records source lifecycle, classification state, retention expiry, pack quality, and future vector candidate-set readiness without reading unsupported source contents.
 - The shared eligibility helper exposes stable blocking reasons (`wrong_version`, `not_selected`, `not_retrieval_ready`, `wrong_owner`, `not_private`, `missing_interview_scope`) and the UI surfaces the same session-readiness text before a call.
 - Raw candidate artifacts such as transcripts, HTML, binary contents, credentials, or unreviewed source text are not preserved in compact pack events.

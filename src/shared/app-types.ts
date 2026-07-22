@@ -226,6 +226,16 @@ export interface FinderCandidateResult extends FinderCandidateResultDraft {
   createdAt: string
 }
 
+export type FinderRunnerMode = 'manual_mock'
+
+export interface FinderRunnerRunSummary {
+  jobId: string
+  mode: FinderRunnerMode
+  generatedCount: number
+  skippedDuplicateCount: number
+  reason: string
+}
+
 export interface FinderOutreachDraft {
   version: 1
   id: string
@@ -287,6 +297,7 @@ export interface FinderSearchStore {
 export interface FinderSearchStoreResult {
   store: FinderSearchStore
   errors?: { index?: number; reason: string }[]
+  finderRunSummary?: FinderRunnerRunSummary
 }
 
 export interface FinderSearchStatusCounts {

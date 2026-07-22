@@ -16,6 +16,8 @@ import {
   createFinderOutreachDraft,
   createFinderRecordsFromRunnerPayload,
   createFinderSearchJob,
+  createManualFinderRunnerCandidates,
+  summarizeManualFinderRunnerRun,
   updateFinderSearchJobStatus
 } from '../../shared/finder-search-module'
 import { getAppInfo } from './app-state'
@@ -391,6 +393,67 @@ export const ingestFinderRunnerPayload = async (
   const result = await mutateStore(events)
 
   return { ...result, errors: records.errors }
+}
+
+export const runManualFinderSearchJob = async (
+  jobId: string
+): Promise<FinderSearchStoreResult> => {
+  const store = await getFinderSearchStoreRaw()
+  const job = store.jobs.find((item) => item.id === jobId)
+
+  if (!job) {
+    throw new Error('Finder search job not found.')
+  }
+
+  if (job.status === 'rejected') {
+    throw new Error('Rejected finder jobs cannot be run.')
+  }
+
+  const now = new Date().toISOString()
+  const drafts = createManualFinderRunnerCandidates(job)
+  const existingSourceIds = new Set(
+    store.results
+      .filter((result) => result.jobId === job.id)
+      .map((result) => result.sourceId)
+  )
+  const newDrafts = drafts.filter((draft) => !existingSourceIds.has(draft.sourceId))
+  const events: FinderSearchEvent[] = newDrafts.map((draft) => ({
+    version: 1,
+    type: 'candidate_recorded',
+    result: withResultSourceTruth(
+      createFinderCandidateResult(job, draft, {
+        id: randomUUID(),
+        now
+      }),
+      'manual mock runner generated candidate'
+    )
+  }))
+
+  if (job.status === 'draft' || (newDrafts.length > 0 && job.status !== 'ready')) {
+    events.push({
+      version: 1,
+      type: 'job_status_changed',
+      job: {
+        ...job,
+        ...updateFinderSearchJobStatus(job, 'ready', now),
+        statusHistory: [
+          { status: 'ready', at: now, reason: 'manual mock runner completed' },
+          ...job.statusHistory
+        ]
+      }
+    })
+  }
+
+  const result = events.length > 0 ? await mutateStore(events) : { store }
+
+  return {
+    ...result,
+    finderRunSummary: summarizeManualFinderRunnerRun(
+      job.id,
+      newDrafts.length,
+      drafts.length - newDrafts.length
+    )
+  }
 }
 
 export const saveFinderOutreachDraft = async (

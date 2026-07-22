@@ -714,6 +714,7 @@ export const App = () => {
   const [finderSearchNotice, setFinderSearchNotice] = useState<string | null>(
     null
   )
+  const [isRunningFinderJob, setIsRunningFinderJob] = useState(false)
   const [finderRunnerPayloadText, setFinderRunnerPayloadText] = useState('')
   const [finderRunnerPayloadPreview, setFinderRunnerPayloadPreview] =
     useState<FinderRunnerPayloadPreviewResult | null>(null)
@@ -2109,6 +2110,39 @@ export const App = () => {
           ? error.message
           : 'Unable to import finder runner payload.'
       )
+    }
+  }
+
+  const runSelectedFinderSearchJob = async () => {
+    if (!selectedFinderSearchJob || isRunningFinderJob) {
+      return
+    }
+
+    setIsRunningFinderJob(true)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const payload = await window.coqpi.finderSearch.runJob(
+        selectedFinderSearchJob.id
+      )
+      const summary = payload.finderRunSummary
+
+      applyFinderSearchStore(payload.store)
+      setSelectedFinderSearchJobId(selectedFinderSearchJob.id)
+      setFinderSearchNotice(
+        summary
+          ? `Local runner finished: ${summary.generatedCount} generated, ${summary.skippedDuplicateCount} duplicate skipped.`
+          : 'Local runner finished.'
+      )
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to run local finder job.'
+      )
+    } finally {
+      setIsRunningFinderJob(false)
     }
   }
 
@@ -5272,6 +5306,18 @@ export const App = () => {
                         <div className="button-row settings-actions">
                           <button
                             className="button-small"
+                            disabled={
+                              isRunningFinderJob ||
+                              selectedFinderSearchJob.status === 'rejected'
+                            }
+                            onClick={() => void runSelectedFinderSearchJob()}
+                            type="button"
+                          >
+                            {isRunningFinderJob ? 'Running...' : 'Run local mock'}
+                          </button>
+                          <button
+                            className="button-small"
+                            disabled={isRunningFinderJob}
                             onClick={() =>
                               void setFinderSearchJobStatus(
                                 selectedFinderSearchJob.id,
@@ -5284,6 +5330,7 @@ export const App = () => {
                           </button>
                           <button
                             className="button-small"
+                            disabled={isRunningFinderJob}
                             onClick={() =>
                               void setFinderSearchJobStatus(
                                 selectedFinderSearchJob.id,
