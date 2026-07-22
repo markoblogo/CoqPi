@@ -282,6 +282,77 @@ test('owner pasted source adapter normalizes urls and text blocks', () => {
   assert.match(parsed.candidates[1].missingInfo, /Verify/)
 })
 
+test('owner pasted source adapter extracts structured vacancy fields before preview', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech',
+      goal: 'Prepare interview packs'
+    },
+    { id: 'job-owner-source-fields', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Company: Northfield Labs',
+      'Role: Senior Product Manager',
+      'Location: Paris, France',
+      'Website: https://northfield.example/careers',
+      'Contact: hiring@northfield.example',
+      'Deadline: 2026-08-15',
+      'Why relevant: Agtech product leadership with French market exposure.'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(parsed.requestedCount, 1)
+  assert.equal(parsed.errors.length, 0)
+  assert.equal(candidate.partnerName, 'Northfield Labs')
+  assert.equal(candidate.title, 'Senior Product Manager')
+  assert.deepEqual(candidate.links, ['https://northfield.example/careers'])
+  assert.match(candidate.summary, /Paris, France/)
+  assert.match(candidate.summary, /2026-08-15/)
+  assert.match(candidate.context, /hiring@northfield\.example/)
+  assert.equal(
+    candidate.whyRelevant,
+    'Agtech product leadership with French market exposure.'
+  )
+  assert.match(candidate.missingInfo, /Verify compensation/)
+  assert.match(candidate.nextAction, /hiring@northfield\.example/)
+})
+
+test('owner pasted source adapter extracts partner export fields before preview', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'partner',
+      label: 'Agro partners France',
+      query: 'agri commodity ecosystem implementation partners france'
+    },
+    { id: 'partner-owner-source-fields', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Partner: AgroTrade France',
+      'Opportunity: Pilot distribution partner',
+      'Country: France',
+      'City: Lyon',
+      'URL: https://agrotrade.example',
+      'Contact: Marie Dupont <marie@agrotrade.example>',
+      'Missing info: decision maker and pilot budget'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.partnerName, 'AgroTrade France')
+  assert.equal(candidate.title, 'Pilot distribution partner')
+  assert.match(candidate.summary, /Lyon, France/)
+  assert.match(candidate.context, /Marie Dupont/)
+  assert.match(candidate.missingInfo, /decision maker and pilot budget/)
+  assert.match(candidate.nextAction, /marie@agrotrade\.example/)
+})
+
 test('finder pipeline view prioritizes high-fit ready candidates', () => {
   const job = createFinderSearchJob(
     { kind: 'job', label: 'Jobs', query: 'product manager' },

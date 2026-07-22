@@ -464,6 +464,103 @@ const getFirstUrlFromText = (text: string) =>
     .map(parseMaybeUrl)
     .find((url): url is URL => Boolean(url)) ?? null
 
+const getAllUrlsFromText = (text: string) =>
+  text
+    .split(/\s+/)
+    .map((part) => part.replace(/[),.;]+$/g, ''))
+    .map(parseMaybeUrl)
+    .filter((url): url is URL => Boolean(url))
+    .map((url) => url.toString())
+    .filter((url, index, list) => list.indexOf(url) === index)
+
+const getEmailsFromText = (text: string) =>
+  Array.from(
+    text.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi),
+    (match) => match[0]
+  ).filter((email, index, list) => list.indexOf(email) === index)
+
+const normalizeFieldLabel = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+const extractOwnerSourceFields = (lines: string[]) => {
+  const fields = new Map<string, string>()
+
+  lines.forEach((line) => {
+    const match = line.match(/^([A-Za-z][A-Za-z0-9 /_-]{1,40})\s*:\s*(.+)$/)
+
+    if (!match) {
+      return
+    }
+
+    const key = normalizeFieldLabel(match[1])
+    const value = sanitizeText(match[2], 600)
+
+    if (value && !fields.has(key)) {
+      fields.set(key, value)
+    }
+  })
+
+  const firstOf = (aliases: string[]) =>
+    aliases
+      .map((alias) => fields.get(alias))
+      .find((value): value is string => Boolean(value)) ?? ''
+
+  const company = firstOf([
+    'company',
+    'employer',
+    'organization',
+    'organisation',
+    'partner',
+    'fund',
+    'accelerator',
+    'investor'
+  ])
+  const role = firstOf([
+    'role',
+    'title',
+    'position',
+    'job title',
+    'opportunity',
+    'focus',
+    'program'
+  ])
+  const country = firstOf(['country'])
+  const city = firstOf(['city'])
+  const location =
+    firstOf(['location', 'place', 'region', 'geo']) ||
+    [city, country].filter(Boolean).join(', ')
+  const contact = firstOf(['contact', 'email', 'recruiter', 'contact person'])
+  const deadline = firstOf(['deadline', 'apply by', 'closing date', 'date'])
+  const whyRelevant = firstOf([
+    'why relevant',
+    'relevance',
+    'fit',
+    'why',
+    'match'
+  ])
+  const missingInfo = firstOf([
+    'missing info',
+    'missing',
+    'unknowns',
+    'questions',
+    'to verify'
+  ])
+  const nextAction = firstOf(['next action', 'action', 'todo', 'follow up'])
+  const explicitLink = firstOf(['url', 'link', 'website', 'source'])
+
+  return {
+    company,
+    role,
+    location,
+    contact,
+    deadline,
+    whyRelevant,
+    missingInfo,
+    nextAction,
+    explicitLink
+  }
+}
+
 export const createFinderCandidatesFromOwnerPastedSource = (
   job: FinderSearchJob,
   sourceText: string
@@ -485,32 +582,66 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       .map((line) => line.trim())
       .filter(Boolean)
     const headline = sanitizeText(lines[0] ?? '', 180)
+    const fields = extractOwnerSourceFields(lines)
 
     if (!normalizedEntry || (!headline && !firstUrl)) {
       errors.push({ index, reason: 'Owner pasted source entry is empty.' })
       return
     }
 
+    const allLinks = [
+      ...getAllUrlsFromText(normalizedEntry),
+      fields.explicitLink
+    ].filter(Boolean)
+    const links = sanitizeLinks(allLinks)
+    const contactEmails = getEmailsFromText(
+      [normalizedEntry, fields.contact].filter(Boolean).join('\n')
+    )
+    const contact = fields.contact || contactEmails.join(', ')
     const domain = firstUrl?.hostname.replace(/^www\./, '') ?? ''
-    const partnerName = domain
+    const partnerName = fields.company
+      ? fields.company
+      : domain
       ? domain.split('.')[0]?.replace(/[-_]+/g, ' ') || domain
       : headline.split(/[|,–-]/)[0]?.trim() || `Source candidate ${index + 1}`
-    const title = domain
+    const title = fields.role
+      ? fields.role
+      : domain
       ? headline && !parseMaybeUrl(headline)
         ? headline
         : `${job.label} source ${index + 1}`
       : headline
     const sourceHash = stableTextHash(`${job.id}\n${normalizedEntry}`)
-    const link = firstUrl?.toString()
     const body = lines.slice(1).join(' ').trim()
     const summary = [
       `Owner-provided source for ${job.label}.`,
+      fields.company ? `Company/partner: ${fields.company}.` : '',
+      fields.role ? `Role/opportunity: ${fields.role}.` : '',
+      fields.location ? `Location: ${fields.location}.` : '',
+      contact ? `Contact: ${contact}.` : '',
+      fields.deadline ? `Deadline: ${fields.deadline}.` : '',
       headline && !parseMaybeUrl(headline) ? `Headline: ${headline}.` : '',
       body ? `Excerpt: ${sanitizeText(body, 420)}.` : '',
-      link ? `URL: ${link}` : ''
+      links.length > 0 ? `URL: ${links[0]}` : ''
     ]
       .filter(Boolean)
       .join(' ')
+    const missingInfo = fields.missingInfo
+      ? fields.missingInfo
+      : [
+          links.length > 0 ? '' : 'source URL',
+          contact ? '' : 'contact',
+          fields.deadline ? '' : job.kind === 'job' ? 'application deadline' : '',
+          job.kind === 'job' ? 'compensation' : 'decision maker',
+          'current status'
+        ]
+          .filter(Boolean)
+          .join(', ')
+    const nextAction =
+      fields.nextAction ||
+      (contact
+        ? `Review normalized candidate and prepare outreach to ${contact}.`
+        : 'Review normalized candidate, enrich missing fields, then import as a session pack if useful.')
 
     candidates.push({
       sourceId: `coqpi:source-adapter:${job.kind}:${jobSlug}:${sourceHash}`,
@@ -522,19 +653,23 @@ export const createFinderCandidatesFromOwnerPastedSource = (
         'No web fetch, scraping, search API, scheduler, or outbound action was performed.',
         `Original job query: ${job.query}.`,
         job.goal ? `Job goal: ${job.goal}.` : '',
+        fields.location ? `Extracted location: ${fields.location}.` : '',
+        contact ? `Extracted contact: ${contact}.` : '',
+        fields.deadline ? `Extracted deadline: ${fields.deadline}.` : '',
         body ? `Owner pasted excerpt: ${sanitizeText(body, 900)}` : ''
       ]
         .filter(Boolean)
         .join('\n'),
-      links: link ? [link] : [],
-      score: link ? 72 : 62,
-      fitScore: link ? 70 : 60,
-      whyRelevant: `Owner pasted this source for the "${job.label}" Finder job. Review evidence before outreach.`,
-      missingInfo: link
-        ? 'Verify the page content and contact/current status before outreach.'
-        : 'Add source URL or reviewed provenance before outreach.',
-      nextAction:
-        'Review normalized candidate, enrich missing fields, then import as a session pack if useful.'
+      links,
+      score: links.length > 0 || contact ? 78 : 62,
+      fitScore: fields.whyRelevant ? 76 : links.length > 0 ? 70 : 60,
+      whyRelevant:
+        fields.whyRelevant ||
+        `Owner pasted this source for the "${job.label}" Finder job. Review evidence before outreach.`,
+      missingInfo: missingInfo
+        ? `Verify ${missingInfo} before outreach.`
+        : 'Verify current status before outreach.',
+      nextAction
     })
   })
 

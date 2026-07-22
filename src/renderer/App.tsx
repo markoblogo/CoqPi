@@ -5464,8 +5464,9 @@ export const App = () => {
                           <div>
                             <strong>Source adapter v0</strong>
                             <span>
-                              Paste one URL, a vacancy/export block, or several URL
-                              lines. CoqPi normalizes candidates locally.
+                              Paste one URL, a vacancy/export block, or several URL lines.
+                              CoqPi extracts fields locally, previews candidates, then imports
+                              only what you select.
                             </span>
                           </div>
                           <span>owner_paste_v0</span>
