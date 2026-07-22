@@ -178,6 +178,132 @@ test('ingests selected counterparty packs and uses them in EN/FR retrieval', asy
   }
 })
 
+test('normalizes finder drafts into versioned redacted stored packs', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-counterparty-contract-'))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+
+  try {
+    const added = await service.addCounterpartyContextPacks([
+      {
+        sourceId: ' finder:job:contract-001 ',
+        kind: 'job',
+        partnerName: ' Acme Ventures ',
+        title: ' Senior Product Lead ',
+        summary: ' Role asks for AI product strategy. ',
+        context: ' Keep it scoped to this interview. ',
+        links: [' https://acme.example/job ', '', 'https://acme.example/job'],
+        selected: true,
+        rawHtml: '<html>must not be stored</html>',
+        transcript: 'must not be stored'
+      }
+    ])
+
+    const pack = added.manifest.counterpartyPacks[0]
+    assert.equal(pack.version, 1)
+    assert.equal(pack.sourceId, 'finder:job:contract-001')
+    assert.equal(pack.partnerName, 'Acme Ventures')
+    assert.equal(pack.title, 'Senior Product Lead')
+    assert.equal(pack.summary, 'Role asks for AI product strategy.')
+    assert.equal(pack.context, 'Keep it scoped to this interview.')
+    assert.deepEqual(pack.links, ['https://acme.example/job'])
+    assert.equal(pack.status, 'retrieval_ready')
+    assert.equal(pack.classification, 'private')
+    assert.deepEqual(pack.retrievalScopes, ['coqpi_interview_en_fr'])
+    assert.equal(pack.retention.mode, 'manual_deletion_required')
+    assert.match(pack.retention.expiresAt, /^\d{4}-\d{2}-\d{2}T/)
+    assert.match(pack.contentHash, /^[a-f0-9]{64}$/)
+    assert.equal(pack.provenance.sourceId, 'coqpi:finder:finder:job:contract-001')
+    assert.match(pack.provenance.locatorSha256, /^[a-f0-9]{64}$/)
+    assert.equal(Object.prototype.hasOwnProperty.call(pack, 'rawHtml'), false)
+    assert.equal(Object.prototype.hasOwnProperty.call(pack, 'transcript'), false)
+
+    const events = (await fs.readFile(
+      path.join(directory, 'core', 'coqpi-ingress.events.jsonl'),
+      'utf8'
+    ))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+
+    assert.equal(events.length, 1)
+    assert.equal(events[0].pack.version, 1)
+    assert.equal(Object.prototype.hasOwnProperty.call(events[0].pack, 'rawHtml'), false)
+    assert.equal(Object.prototype.hasOwnProperty.call(events[0].pack, 'transcript'), false)
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('resolves session-selected pack ids only from explicit retrieval-ready packs', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-session-pack-selection-'))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+
+  try {
+    const seeded = await service.addCounterpartyContextPacks([
+      {
+        sourceId: 'finder:job:selected-001',
+        kind: 'job',
+        partnerName: 'Selected Job',
+        title: 'Selected role',
+        summary: 'Selected pack should stay available.'
+      },
+      {
+        sourceId: 'finder:partner:unselected-001',
+        kind: 'partner',
+        partnerName: 'Unselected Partner',
+        title: 'Unselected partner',
+        summary: 'Unselected pack must be blocked.',
+        selected: false
+      },
+      {
+        sourceId: 'finder:investor:selected-002',
+        kind: 'investor',
+        partnerName: 'Selected Investor',
+        title: 'Selected investor',
+        summary: 'Second selected pack should dedupe.'
+      }
+    ])
+
+    const [selectedJob, unselectedPartner, selectedInvestor] = seeded.manifest.counterpartyPacks
+    const resolved = await service.resolveSessionSelectedCounterpartyPackIds([
+      selectedJob.id,
+      selectedJob.id,
+      unselectedPartner.id,
+      selectedInvestor.id,
+      'missing-pack-id',
+      ''
+    ])
+
+    assert.deepEqual(resolved, [selectedJob.id, selectedInvestor.id])
+
+    await service.setCounterpartyContextPackSelected(selectedInvestor.id, false)
+    const afterDeselect = await service.resolveSessionSelectedCounterpartyPackIds([
+      selectedJob.id,
+      selectedInvestor.id
+    ])
+
+    assert.deepEqual(afterDeselect, [selectedJob.id])
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('retrieves only explicitly selected pack ids when provided', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-counterparty-pack-filter-'))
   const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR

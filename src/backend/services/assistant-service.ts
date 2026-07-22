@@ -8,7 +8,10 @@ import type {
 } from '../../shared/app-types'
 import { PROFILE_CONTEXT_CHARS_LIMIT_BY_MODE } from '../../shared/cost-estimator'
 import { getProfileContext } from './profile-service'
-import { getPersonalInterviewRetrieval } from './context-source-service'
+import {
+  getPersonalInterviewRetrieval,
+  resolveSessionSelectedCounterpartyPackIds
+} from './context-source-service'
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
 import { getSessionContext } from './session-context-service'
@@ -500,12 +503,16 @@ export const analyzeRecentTranscript = async (
   }
 
   const fallbackSessionContext = (await getSessionContext()).context
+  const selectedCounterpartyPackIds =
+    await resolveSessionSelectedCounterpartyPackIds(
+      request.selectedCounterpartyPackIds ??
+        fallbackSessionContext.selectedCounterpartyPackIds
+    )
+
   const resolvedRequest: AssistantAnalysisRequest = {
     ...request,
     sessionContext: request.sessionContext ?? fallbackSessionContext,
-    selectedCounterpartyPackIds:
-      request.selectedCounterpartyPackIds ??
-      fallbackSessionContext.selectedCounterpartyPackIds
+    selectedCounterpartyPackIds
   }
 
   const input = await buildUserPrompt(resolvedRequest)

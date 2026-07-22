@@ -28,6 +28,7 @@ Additional session-aware behavior:
 - EN/FR assistant retrieval can be restricted to selected counterparty pack kinds (`job`, `partner`, `investor`, `accelerator`, `other`) based on session context.
 - Session prep now lets you pin specific counterparty/job/investor packs to the active call session (`selectedCounterpartyPackIds`) so assistant retrieval can target only those packs.
 - Retrieval filtering has an explicit strict allowlist contract: when pack IDs are provided, only those packs are candidates.
+- Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis, so disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
 - Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
 
 Prompt/skill improvement is governed by an optional local skill-quality pipeline in [`docs/SKILL_QUALITY_PIPELINE.md`](docs/SKILL_QUALITY_PIPELINE.md). It is for synthetic or explicitly recorded mock transcript evidence only: bounded candidate edits, held-out validation, rejected-edit memory, and owner acceptance before any `best_skill.md` export.
@@ -139,6 +140,8 @@ Use it from the `Prepare` tab to populate transcript state and test manual assis
 ### Test commands
 
 - `pnpm test:governance` — governance + context pack + failover policy tests (includes assistant retry-policy checks).
+- `pnpm test:session-pack-selection` — selected counterparty pack cleanup and auto-add rules.
+- `pnpm test:live-loop-ui` and `pnpm test:analyze-recent-transcript` — live-loop selected-pack scheduling and assistant routing regressions.
 
 ### Verified local flow
 
@@ -245,7 +248,8 @@ docs/
 6. ✅ Pass 9 hardening: timeout/budget/retry UX now has cooldown-aware hints and dedicated regression checks.
 7. ✅ Pass 10 hardening: provider retryability is policy-driven (`isRetryableProviderError`), non-retryable errors are surfaced as `provider_not_retryable`, and UI distinguishes retry-blocked state.
 8. ✅ Pass 11 communication slice: assistant status now includes explicit blocked/recovery diagnostics and manual-recovery checks for retry-blocked flow.
-9. Add training mode using the same profile, session-context, and assistant-provider layers.
+9. ✅ Selected pack source-of-truth pass: counterparty packs are versioned/redacted at storage, selected pack IDs are cleaned through UI/session/analyze paths, and stale packs are blocked before assistant retrieval.
+10. Add training mode using the same profile, session-context, and assistant-provider layers.
 
 The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).
 

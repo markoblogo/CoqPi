@@ -59,6 +59,10 @@ import {
   normalizeLinksText
 } from '@shared/counterparty-pack-import'
 import {
+  getSessionContextWithCounterpartyPacks,
+  getSessionSelectedCounterpartyPackIds
+} from '@shared/session-pack-selection'
+import {
   createFinderPreviewItems,
   getFinderPreviewSelectionStats,
   type CounterpartyFinderPreviewItem,
@@ -422,80 +426,16 @@ const getSessionContextLabel = (context: SessionContext) => {
   return company || role || 'No session'
 }
 
-const getSortedCounterpartyPackIds = (packs: CounterpartyContextPack[]) =>
-  [...packs.map((pack) => pack.id)].sort()
-
-const buildCounterpartySourceKey = (
-  sourceId: string,
-  kind: CounterpartyContextPackKind
-) => `${sourceId}::${kind}`
-
-const getSessionSelectedCounterpartyPackIds = (
-  context: SessionContext,
-  availablePacks: CounterpartyContextPack[]
-) => {
-  const availableIds = new Set(getSortedCounterpartyPackIds(availablePacks))
-  const unique: string[] = []
-  const seen = new Set<string>()
-
-  for (const id of context.selectedCounterpartyPackIds) {
-    if (!id || seen.has(id) || !availableIds.has(id)) {
-      continue
-    }
-
-    seen.add(id)
-    unique.push(id)
-  }
-
-  return unique
-}
-
-const getSessionSelectedCounterpartyPackIdsWithImported = (
-  context: SessionContext,
-  availablePacks: CounterpartyContextPack[],
-  importedCandidates: CounterpartyContextPackDraft[] = []
-) => {
-  const nextIds = getSessionSelectedCounterpartyPackIds(context, availablePacks)
-  const selectedSet = new Set(nextIds)
-
-  if (importedCandidates.length === 0) {
-    return [...selectedSet]
-  }
-
-  const importKeys = new Set(
-    importedCandidates.map((candidate) =>
-      buildCounterpartySourceKey(candidate.sourceId, candidate.kind)
-    )
-  )
-  const packIdBySourceKey = new Map(
-    availablePacks.map((pack) => [
-      buildCounterpartySourceKey(pack.sourceId, pack.kind),
-      pack.id
-    ])
-  )
-
-  for (const key of importKeys) {
-    const packId = packIdBySourceKey.get(key)
-    if (packId) {
-      selectedSet.add(packId)
-    }
-  }
-
-  return [...selectedSet]
-}
-
 const getSessionContextWithImportedCandidates = (
   context: SessionContext,
   availablePacks: CounterpartyContextPack[],
   importedCandidates: CounterpartyContextPackDraft[] = []
-) => ({
-  ...context,
-  selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIdsWithImported(
+) =>
+  getSessionContextWithCounterpartyPacks(
     context,
     availablePacks,
     importedCandidates
   )
-})
 
 const getSessionContextRetrievalKinds = (
   context: SessionContext
@@ -1359,22 +1299,12 @@ export const App = () => {
   ) => {
     setCounterpartyPacks(packs)
     setCounterpartyPackDraftError(null)
-    setSessionContext((current) => ({
-      ...current,
-      selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIdsWithImported(
-        current,
-        packs,
-        importedCandidates
-      )
-    }))
-    setSessionContextDraft((current) => ({
-      ...current,
-      selectedCounterpartyPackIds: getSessionSelectedCounterpartyPackIdsWithImported(
-        current,
-        packs,
-        importedCandidates
-      )
-    }))
+    setSessionContext((current) =>
+      getSessionContextWithImportedCandidates(current, packs, importedCandidates)
+    )
+    setSessionContextDraft((current) =>
+      getSessionContextWithImportedCandidates(current, packs, importedCandidates)
+    )
   }
 
   const getContextSourceErrorMessage = (error: unknown) => {

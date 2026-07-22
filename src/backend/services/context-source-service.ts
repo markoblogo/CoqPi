@@ -104,6 +104,9 @@ const canonicalPackText = (pack: CounterpartyContextPackDraft) =>
     2
   )
 
+const counterpartyPackContentHash = (pack: CounterpartyContextPackDraft) =>
+  createHash('sha256').update(canonicalPackText(pack)).digest('hex')
+
 const getCoreDirectory = () => getAppInfo().personalKnowledgeCoreDirectory
 const getLedgerPath = () =>
   path.join(getCoreDirectory(), 'coqpi-ingress.events.jsonl')
@@ -218,6 +221,7 @@ const sanitizeCounterpartyPack = (
   }
 
   return {
+    version: 1,
     sourceId,
     kind,
     partnerName,
@@ -232,9 +236,9 @@ const sanitizeCounterpartyPack = (
     ownerId: 'owner',
     provenance: {
       sourceId: `coqpi:finder:${sourceId}`,
-      locatorSha256: locateSourceHash(sourceId)
+      locatorSha256: locateSourceHash(`${kind}:${sourceId}`)
     },
-    contentHash: createHash('sha256').update(canonicalPackText(candidate as CounterpartyContextPackDraft)).digest('hex'),
+    contentHash: counterpartyPackContentHash(candidate as CounterpartyContextPackDraft),
     classification: 'private',
     retention: retentionFor(new Date().toISOString()),
     retrievalScopes: finderRetrievalScopes,
@@ -309,6 +313,7 @@ const deriveManifest = (
           createdAt,
           selected: event.pack.selected !== false,
           status: event.pack.status || 'retrieval_ready',
+          retention: retentionFor(createdAt),
           retrievalScopes:
             retrievalScopes.length > 0 ? retrievalScopes : finderRetrievalScopes,
           context: sanitizeText(event.pack.context)
@@ -568,6 +573,14 @@ const validateCounterpartyDraft = (draft: CounterpartyContextPackDraft) => {
   }
 }
 
+const isRetrievalReadyCounterpartyPack = (pack: CounterpartyContextPack) =>
+  pack.version === 1 &&
+  pack.selected === true &&
+  pack.status === 'retrieval_ready' &&
+  pack.ownerId === 'owner' &&
+  pack.classification === 'private' &&
+  pack.retrievalScopes.includes('coqpi_interview_en_fr')
+
 export const createContextPackFromFinder = (
   payloadText: string
 ): ParsedFinderCounterpartyPayload => {
@@ -731,6 +744,7 @@ export const addCounterpartyContextPacks = async (
     const id = randomUUID()
     const createdAt = new Date().toISOString()
     const pack: CounterpartyContextPack = {
+      version: 1,
       id,
       sourceId: sanitized.sourceId,
       kind: sanitized.kind,
@@ -744,12 +758,10 @@ export const addCounterpartyContextPacks = async (
       createdAt,
       ownerId: 'owner',
       provenance: {
-        sourceId: `coqpi:finder:${id}`,
-        locatorSha256: locateSourceHash(`finder:${sanitized.sourceId}:${createdAt}`)
+        sourceId: `coqpi:finder:${sanitized.sourceId}`,
+        locatorSha256: locateSourceHash(`${sanitized.kind}:${sanitized.sourceId}`)
       },
-      contentHash: createHash('sha256')
-        .update(canonicalPackText(sanitized))
-        .digest('hex'),
+      contentHash: counterpartyPackContentHash(sanitized),
       classification: 'private',
       retention: retentionFor(createdAt),
       retrievalScopes: finderRetrievalScopes,
@@ -771,6 +783,25 @@ export const addCounterpartyContextPacks = async (
     nextManifest,
     'ingest counterparty context packs'
   )
+}
+
+export const resolveSessionSelectedCounterpartyPackIds = async (
+  selectedPackIds?: string[]
+): Promise<string[]> => {
+  const requestedIds = sanitizePackIds(selectedPackIds)
+  if (requestedIds.length === 0) {
+    return []
+  }
+
+  const manifest = await readManifest()
+  const packById = new Map(
+    (manifest.counterpartyPacks ?? []).map((pack) => [pack.id, pack])
+  )
+
+  return requestedIds.filter((id) => {
+    const pack = packById.get(id)
+    return pack ? isRetrievalReadyCounterpartyPack(pack) : false
+  })
 }
 
 export const ingestCounterpartyFinderPayload = async (

@@ -185,6 +185,7 @@ export interface CounterpartyContextPackDraft {
 }
 
 export interface CounterpartyContextPack {
+  version: 1
   id: string
   sourceId: string
   kind: CounterpartyContextPackKind

@@ -5,6 +5,7 @@ import type {
   SessionContextResult
 } from '../../shared/app-types'
 import { getAppInfo } from './app-state'
+import { resolveSessionSelectedCounterpartyPackIds } from './context-source-service'
 
 const emptySessionContext: SessionContext = {
   company: '',
@@ -59,12 +60,24 @@ const sanitizeSessionContext = (value: unknown): SessionContext => {
   }
 }
 
+const normalizeSessionContextForActivePacks = async (
+  context: SessionContext
+): Promise<SessionContext> => ({
+  ...context,
+  selectedCounterpartyPackIds: await resolveSessionSelectedCounterpartyPackIds(
+    context.selectedCounterpartyPackIds
+  )
+})
+
 export const getSessionContext = async (): Promise<SessionContextResult> => {
   try {
     const raw = await fs.readFile(getSessionContextPath(), 'utf8')
+    const context = await normalizeSessionContextForActivePacks(
+      sanitizeSessionContext(JSON.parse(raw))
+    )
 
     return {
-      context: sanitizeSessionContext(JSON.parse(raw))
+      context
     }
   } catch {
     return {
@@ -76,7 +89,9 @@ export const getSessionContext = async (): Promise<SessionContextResult> => {
 export const saveSessionContext = async (
   context: SessionContext
 ): Promise<SessionContextResult> => {
-  const sanitized = sanitizeSessionContext(context)
+  const sanitized = await normalizeSessionContextForActivePacks(
+    sanitizeSessionContext(context)
+  )
   const filePath = getSessionContextPath()
 
   await fs.mkdir(path.dirname(filePath), { recursive: true })

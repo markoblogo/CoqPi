@@ -377,32 +377,57 @@ test('analyzeRecentTranscript passes retrieval kinds to context source service',
 
 test('analyzeRecentTranscript passes selected counterparty pack ids to context source service', async () => {
   const observed = { selectedCounterpartyPackIds: undefined }
+  let selectedCounterpartyPackIds = []
 
-  await withStubbedProviderRoute({
-    profileCount: 1,
-    requestOverrides: {
-      selectedCounterpartyPackIds: ['pack-1', 'pack-2']
-    },
-    onSelectedPackIds: (selectedCounterpartyPackIds) => {
-      observed.selectedCounterpartyPackIds = selectedCounterpartyPackIds
-    },
-    fetchHandler: async () =>
-      makeOllamaResponse({
-        message: {
-          content: JSON.stringify({
-            meaningRu: 'кратко',
-            detectedQuestion: 'What experience do you have?',
-            intent: 'understand fit',
-            risk: 'low',
-            suggestedAnswers: [],
-            keywordsToRemember: ['fit', 'role'],
-            openingPhrase: 'Great.'
-          })
-        }
-      })
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const imported = await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+          {
+            kind: 'job',
+            sourceId: 'finder:job:selected-pass-001',
+            partnerName: 'Selected Pass One',
+            title: 'Selected role one',
+            summary: 'First selected pack for assistant path.'
+          },
+          {
+            kind: 'partner',
+            sourceId: 'finder:partner:selected-pass-002',
+            partnerName: 'Selected Pass Two',
+            title: 'Selected partner two',
+            summary: 'Second selected pack for assistant path.'
+          }
+        ])
+
+        selectedCounterpartyPackIds = imported.manifest.counterpartyPacks.map(
+          (pack) => pack.id
+        )
+      },
+      requestOverrides: () => ({
+        selectedCounterpartyPackIds
+      }),
+      onSelectedPackIds: (selectedPackIds) => {
+        observed.selectedCounterpartyPackIds = selectedPackIds
+      },
+      fetchHandler: async () =>
+        makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'кратко',
+              detectedQuestion: 'What experience do you have?',
+              intent: 'understand fit',
+              risk: 'low',
+              suggestedAnswers: [],
+              keywordsToRemember: ['fit', 'role'],
+              openingPhrase: 'Great.'
+            })
+          }
+        })
+    })
   })
 
-  assert.deepEqual(observed.selectedCounterpartyPackIds, ['pack-1', 'pack-2'])
+  assert.deepEqual(observed.selectedCounterpartyPackIds, selectedCounterpartyPackIds)
 })
 
 test('finder-imported pack selection persists through session reload and is sent with analyze', async () => {
@@ -703,6 +728,161 @@ test('analyzeRecentTranscript resolves selected pack ids from persisted session 
   assert.deepEqual(
     observed.retrievalSelectedCounterpartyPackIds,
     selectedPackIds
+  )
+})
+
+test('analyzeRecentTranscript filters persisted selected pack ids through retrieval-ready contract', async () => {
+  const observed = {
+    retrievalSelectedCounterpartyPackIds: undefined
+  }
+  let expectedSelectedPackIds = []
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:contract-route-001',
+              partnerName: 'Allowed Job',
+              title: 'Allowed session route',
+              summary: 'Only this pack should route into assistant retrieval.'
+            },
+            {
+              kind: 'partner',
+              sourceId: 'finder:partner:contract-route-002',
+              partnerName: 'Blocked Partner',
+              title: 'Blocked session route',
+              summary: 'This pack is stored but not explicitly selected.',
+              selected: false
+            }
+          ])
+
+        const packs = importResult.manifest.counterpartyPacks ?? []
+        const allowedPack = packs.find(
+          (pack) => pack.sourceId === 'finder:job:contract-route-001'
+        )
+        const blockedPack = packs.find(
+          (pack) => pack.sourceId === 'finder:partner:contract-route-002'
+        )
+
+        expectedSelectedPackIds = allowedPack ? [allowedPack.id] : []
+
+        await services.sessionContextService.saveSessionContext({
+          company: 'Acme Holdings',
+          role: 'Founder',
+          context: 'Routing contract session',
+          goal: 'Do not leak unselected packs into analysis.',
+          notes: 'Session stores duplicate, missing, and unselected IDs.',
+          selectedCounterpartyPackIds: [
+            allowedPack?.id,
+            allowedPack?.id,
+            blockedPack?.id,
+            'missing-pack-id'
+          ].filter(Boolean)
+        })
+      },
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      onSelectedPackIds: (selectedPackIdsFromRetrieval) => {
+        observed.retrievalSelectedCounterpartyPackIds = [
+          ...(selectedPackIdsFromRetrieval ?? [])
+        ]
+      },
+      fetchHandler: async () =>
+        makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Маршрутизация контекста ограничена выбранным пакетом.',
+              detectedQuestion: 'Which pack is active?',
+              intent: 'routing check',
+              risk: 'low',
+              suggestedAnswers: [],
+              keywordsToRemember: ['selected', 'context'],
+              openingPhrase: 'Understood.'
+            })
+          }
+        })
+    })
+  })
+
+  assert.deepEqual(
+    observed.retrievalSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+})
+
+test('session context save and reload prune stale selected counterparty pack ids', async () => {
+  const observed = {
+    savedSelectedCounterpartyPackIds: undefined,
+    reloadedSelectedCounterpartyPackIds: undefined
+  }
+  let expectedSelectedPackIds = []
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withElectronMock(async (services) => {
+      const importResult =
+        await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+          {
+            kind: 'job',
+            sourceId: 'finder:job:session-prune-001',
+            partnerName: 'Allowed Session Pack',
+            title: 'Allowed session pack',
+            summary: 'This selected pack should remain in saved session.'
+          },
+          {
+            kind: 'investor',
+            sourceId: 'finder:investor:session-prune-002',
+            partnerName: 'Blocked Session Pack',
+            title: 'Blocked session pack',
+            summary: 'This unselected pack should be removed from session.',
+            selected: false
+          }
+        ])
+
+      const allowedPack = importResult.manifest.counterpartyPacks.find(
+        (pack) => pack.sourceId === 'finder:job:session-prune-001'
+      )
+      const blockedPack = importResult.manifest.counterpartyPacks.find(
+        (pack) => pack.sourceId === 'finder:investor:session-prune-002'
+      )
+
+      expectedSelectedPackIds = allowedPack ? [allowedPack.id] : []
+
+      const saved = await services.sessionContextService.saveSessionContext({
+        company: 'Acme Holdings',
+        role: 'Founder',
+        context: 'Session pruning contract',
+        goal: 'Keep only active selected packs.',
+        notes: 'Duplicate, missing and unselected IDs must not persist.',
+        selectedCounterpartyPackIds: [
+          allowedPack?.id,
+          allowedPack?.id,
+          blockedPack?.id,
+          'missing-pack-id',
+          ''
+        ].filter(Boolean)
+      })
+
+      const reloaded = await services.sessionContextService.getSessionContext()
+      observed.savedSelectedCounterpartyPackIds =
+        saved.context.selectedCounterpartyPackIds
+      observed.reloadedSelectedCounterpartyPackIds =
+        reloaded.context.selectedCounterpartyPackIds
+    })
+  })
+
+  assert.deepEqual(
+    observed.savedSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.deepEqual(
+    observed.reloadedSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
   )
 })
 
