@@ -84,7 +84,11 @@ import {
   requestAudioInputPermission,
   storeSelectedAudioInputId
 } from '@renderer/audio-device-service'
-import { getNextMockTranscriptLine } from '@renderer/mock/mock-transcript-lines'
+import {
+  getNextMockTranscriptLine,
+  mockTranscriptScenarios,
+  type MockTranscriptScenarioId
+} from '@renderer/mock/mock-transcript-lines'
 import { RealtimeTranscriptionClient } from '@renderer/realtime/realtime-transcription-client'
 
 const missingConfigStatus: ConfigStatus = {
@@ -625,6 +629,8 @@ export const App = () => {
     useState(false)
   const [isMockModeEnabled, setIsMockModeEnabled] = useState(false)
   const [isMockRunning, setIsMockRunning] = useState(false)
+  const [mockTranscriptScenarioId, setMockTranscriptScenarioId] =
+    useState<MockTranscriptScenarioId>('default')
   const [mockError, setMockError] = useState<string | null>(null)
   const [transcriptUtterances, setTranscriptUtterances] = useState<
     TranscriptUtterance[]
@@ -907,7 +913,10 @@ export const App = () => {
       }
 
       try {
-        const nextLine = getNextMockTranscriptLine(controls.callLanguage)
+        const nextLine = getNextMockTranscriptLine(
+          controls.callLanguage,
+          mockTranscriptScenarioId
+        )
         const timestamp = new Date().toISOString()
 
         setTranscriptUtterances((currentUtterances) =>
@@ -946,7 +955,12 @@ export const App = () => {
         window.clearTimeout(timeoutId)
       }
     }
-  }, [controls.callLanguage, isMockModeEnabled, isMockRunning])
+  }, [
+    controls.callLanguage,
+    isMockModeEnabled,
+    isMockRunning,
+    mockTranscriptScenarioId
+  ])
 
   useEffect(() => {
     const needsTick =
@@ -2000,7 +2014,10 @@ export const App = () => {
 
   const addOneMockLine = () => {
     try {
-      const nextLine = getNextMockTranscriptLine(controls.callLanguage)
+      const nextLine = getNextMockTranscriptLine(
+        controls.callLanguage,
+        mockTranscriptScenarioId
+      )
       const timestamp = new Date().toISOString()
 
       setTranscriptUtterances((currentUtterances) =>
@@ -3134,6 +3151,32 @@ export const App = () => {
             />
             Mock Transcript Mode
           </label>
+          <label className="settings-row">
+            <span className="settings-row-label">Scenario</span>
+            <select
+              disabled={isMockRunning}
+              onChange={(event) => {
+                setMockTranscriptScenarioId(
+                  event.target.value as MockTranscriptScenarioId
+                )
+                setMockError(null)
+              }}
+              value={mockTranscriptScenarioId}
+            >
+              {mockTranscriptScenarios.map((scenario) => (
+                <option key={scenario.id} value={scenario.id}>
+                  {scenario.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="privacy-note">
+            {
+              mockTranscriptScenarios.find(
+                (scenario) => scenario.id === mockTranscriptScenarioId
+              )?.description
+            }
+          </p>
           <div className="button-row">
             <button
               disabled={!isMockModeEnabled || isMockRunning}

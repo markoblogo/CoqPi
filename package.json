@@ -19,6 +19,7 @@
     "test:session-pack-selection": "pnpm build:electron && node --test tests/session-pack-selection.test.cjs",
     "test:analyze-recent-transcript": "pnpm build:electron && node --test --test-concurrency=1 tests/analyze-recent-transcript.test.cjs",
     "test:live-loop-ui": "pnpm build:electron && node --test tests/live-loop-ui.test.cjs",
+    "test:pre-smoke": "pnpm build:electron && node --test --test-concurrency=1 tests/mock-transcript-scenarios.test.cjs tests/session-pack-selection.test.cjs tests/live-loop-ui.test.cjs tests/analyze-recent-transcript.test.cjs",
     "pack:mac": "pnpm build && electron-builder --mac dir",
     "dist:mac": "pnpm build && electron-builder --mac dmg",
     "typecheck": "tsc --noEmit -p tsconfig.renderer.json && tsc --noEmit -p tsconfig.electron.json",

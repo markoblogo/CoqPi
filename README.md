@@ -17,7 +17,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Automatic assistant analysis after each completed utterance, with manual override
 - Local auto-analysis guard for EN/FR live-loop input: explicit Russian/Cyrillic background speech and too-short noise are ignored before provider analysis and excluded from the automatic transcript window.
 - Live test cockpit showing what is being listened to, what was ignored, what can be sent to assistant, active pack context, and answer freshness.
-- Mock Transcript Mode for local UI testing
+- Mock Transcript Mode for local UI testing, with job interview, investor call, partner call, French interview, and mixed EN/FR scenarios.
 - Local profile and per-call session context
 - Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
 - Audio input selection and local level meter
@@ -138,6 +138,7 @@ Mock mode is for UI testing only.
 - It does not use the microphone.
 - It does not send audio.
 - It follows the same transcript-to-analysis path as a live completed utterance. Analysis therefore calls the configured assistant provider when auto-analysis or a manual action is enabled.
+- The scenario selector covers default EN/FR, job interview, investor call, partner call, French interview, and mixed EN/FR prompts.
 
 Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.
 
@@ -146,6 +147,7 @@ Use it from the `Prepare` tab to populate transcript state and test manual assis
 - `pnpm test:governance` — governance + context pack + failover policy tests (includes assistant retry-policy checks).
 - `pnpm test:session-pack-selection` — selected counterparty pack cleanup and auto-add rules.
 - `pnpm test:live-loop-ui` and `pnpm test:analyze-recent-transcript` — live-loop selected-pack scheduling and assistant routing regressions.
+- `pnpm test:pre-smoke` — one-command non-microphone pre-smoke set: mock scenarios, selected packs, live-loop UI, and assistant routing.
 
 ### Verified local flow
 
