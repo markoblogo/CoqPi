@@ -54,8 +54,8 @@ test('auto analyze fingerprint includes selected counterparty pack ids', () => {
   assert.equal(withSelection.fingerprint.includes('::packs:pack-A,pack-B'), true)
   assert.equal(withoutSelection.shouldRun, true)
   assert.equal(withoutSelection.fingerprint.includes('::packs:'), true)
-  assert.equal(withSelection.fingerprint, 'u-4::other::I have experience with product management and leadership.::packs:pack-A,pack-B')
-  assert.equal(withoutSelection.fingerprint, 'u-4::other::I have experience with product management and leadership.::packs:')
+  assert.equal(withSelection.fingerprint, 'u-4::other::I have experience with product management and leadership.::packs:pack-A,pack-B::draft:')
+  assert.equal(withoutSelection.fingerprint, 'u-4::other::I have experience with product management and leadership.::packs:::draft:')
 })
 
 test('auto analyze re-schedules when selected pack set changes while transcript is same', () => {
@@ -82,6 +82,34 @@ test('auto analyze re-schedules when selected pack set changes while transcript 
   assert.equal(withPackB.shouldRun, true)
   assert.equal(withPackB.reason, 'schedule')
   assert.equal(withPackB.fingerprint.includes('::packs:pack-B'), true)
+})
+
+test('auto analyze re-schedules when selected outreach draft changes while transcript is same', () => {
+  const latestFinal = makeUtterance({ id: 'u-5-draft' })
+  const withDraftA = decideAutoAnalysis({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    selectedCounterpartyPackIds: ['pack-A'],
+    selectedFinderOutreachDraftId: 'draft-A'
+  })
+  assert.equal(withDraftA.shouldRun, true)
+
+  const withDraftB = decideAutoAnalysis({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: withDraftA.fingerprint,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    selectedCounterpartyPackIds: ['pack-A'],
+    selectedFinderOutreachDraftId: 'draft-B'
+  })
+
+  assert.equal(withDraftB.shouldRun, true)
+  assert.equal(withDraftB.reason, 'schedule')
+  assert.equal(withDraftB.fingerprint.includes('::draft:draft-B'), true)
 })
 
 test('buildAutoAnalysisSchedule extends delay by remaining cooldown window', () => {

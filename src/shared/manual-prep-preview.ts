@@ -1,5 +1,6 @@
 import type {
   CounterpartyContextPack,
+  FinderOutreachDraft,
   SessionContext
 } from './app-types'
 import {
@@ -17,6 +18,7 @@ export type ManualPrepWeakField = {
     | 'missing_pack'
     | 'weak_pack'
     | 'blocked_pack'
+    | 'missing_outreach_draft'
   label: string
   fix: string
 }
@@ -27,6 +29,7 @@ export type ManualPrepPreview = {
   contextLabel: string
   selectedPackCount: number
   selectedPackLabel: string
+  selectedOutreachDraftLabel: string
   selectedPackQualityLabel: string
   selectedPackQualityLevel: CounterpartyPackQualityLevel | 'none'
   assistantPayloadLabel: string
@@ -69,11 +72,13 @@ const levelRank: Record<CounterpartyPackQualityLevel, number> = {
 export const buildManualPrepPreview = ({
   context,
   availablePacks,
+  availableOutreachDrafts = [],
   includeProfileContext,
   profileChars
 }: {
   context: SessionContext
   availablePacks: CounterpartyContextPack[]
+  availableOutreachDrafts?: FinderOutreachDraft[]
   includeProfileContext: boolean
   profileChars: number
 }): ManualPrepPreview => {
@@ -85,6 +90,11 @@ export const buildManualPrepPreview = ({
     pack,
     quality: evaluateCounterpartyPackQuality(pack)
   }))
+  const selectedOutreachDraft = context.selectedFinderOutreachDraftId
+    ? availableOutreachDrafts.find(
+        (draft) => draft.id === context.selectedFinderOutreachDraftId
+      )
+    : null
   const worstQuality = selectedPackQualities
     .map(({ quality }) => quality)
     .sort((left, right) => levelRank[left.level] - levelRank[right.level])[0]
@@ -137,6 +147,14 @@ export const buildManualPrepPreview = ({
     })
   }
 
+  if (context.selectedFinderOutreachDraftId && !selectedOutreachDraft) {
+    weakFields.push({
+      id: 'missing_outreach_draft',
+      label: 'draft missing',
+      fix: 'Select an existing outreach draft or clear the stale draft link.'
+    })
+  }
+
   for (const { pack, quality } of selectedPackQualities) {
     if (quality.level === 'blocked') {
       weakFields.push({
@@ -172,6 +190,11 @@ export const buildManualPrepPreview = ({
     contextLabel: context.context.trim() || 'No context',
     selectedPackCount: selectedPacks.length,
     selectedPackLabel,
+    selectedOutreachDraftLabel: selectedOutreachDraft
+      ? `${selectedOutreachDraft.targetName} · ${selectedOutreachDraft.opportunity}`
+      : context.selectedFinderOutreachDraftId
+        ? 'Missing selected draft'
+        : 'No selected outreach draft',
     selectedPackQualityLabel,
     selectedPackQualityLevel,
     assistantPayloadLabel: `session ${sessionChars} chars · packs ${selectedPacks.length} · profile ${

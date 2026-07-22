@@ -171,7 +171,8 @@ const emptySessionContext: SessionContext = {
   context: '',
   goal: '',
   notes: '',
-  selectedCounterpartyPackIds: []
+  selectedCounterpartyPackIds: [],
+  selectedFinderOutreachDraftId: ''
 }
 
 const emptyContextSourceDraft: {
@@ -510,7 +511,8 @@ const getSessionContextText = (context: SessionContext) => {
     context.role,
     context.context,
     context.goal,
-    context.notes
+    context.notes,
+    context.selectedFinderOutreachDraftId
   ]
     .map((value) => value.trim())
     .filter(Boolean)
@@ -2197,6 +2199,43 @@ export const App = () => {
     })
   }
 
+  const setSessionOutreachDraftSelection = (id: string, selected: boolean) => {
+    setSessionContextDraft((current) => ({
+      ...current,
+      selectedFinderOutreachDraftId: selected ? id : ''
+    }))
+  }
+
+  const attachFinderOutreachDraftToSession = async (draft: FinderOutreachDraft) => {
+    setIsSavingSessionContext(true)
+    setSessionContextError(null)
+    setSessionContextNotice(null)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const nextContext = {
+        ...sessionContext,
+        selectedFinderOutreachDraftId: draft.id
+      }
+      const payload = await window.coqpi.session.saveContext(nextContext)
+
+      setSessionContext(payload.context)
+      setSessionContextDraft(payload.context)
+      setSessionContextNotice('Outreach draft attached to session prep.')
+      setFinderSearchNotice('Outreach draft attached to session prep.')
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to attach outreach draft to session.'
+      setSessionContextError(message)
+      setFinderSearchError(message)
+    } finally {
+      setIsSavingSessionContext(false)
+    }
+  }
+
   const removeCounterpartyPack = async (id: string) => {
     if (contextSourceMutationRef.current) {
       return
@@ -3034,7 +3073,8 @@ export const App = () => {
       scheduledAutoAnalysisFingerprint: scheduledAutoAnalysisFingerprintRef.current,
       assistantState,
       analysisCooldownUntil,
-      selectedCounterpartyPackIds: sessionContext.selectedCounterpartyPackIds
+      selectedCounterpartyPackIds: sessionContext.selectedCounterpartyPackIds,
+      selectedFinderOutreachDraftId: sessionContext.selectedFinderOutreachDraftId
     })
 
     if (!plan.shouldRun || plan.fingerprint === null) {
@@ -3083,7 +3123,8 @@ export const App = () => {
     assistantState,
     controls.callLanguage,
     transcriptUtterances,
-    sessionContext.selectedCounterpartyPackIds
+    sessionContext.selectedCounterpartyPackIds,
+    sessionContext.selectedFinderOutreachDraftId
   ])
 
   const realtimeMinutes =
@@ -3229,12 +3270,14 @@ export const App = () => {
   const activeSessionPrepPreview = buildManualPrepPreview({
     context: sessionContext,
     availablePacks: counterpartyPacks,
+    availableOutreachDrafts: finderOutreachDrafts,
     includeProfileContext,
     profileChars: profileContext.length
   })
   const manualPrepPreview = buildManualPrepPreview({
     context: sessionContextDraft,
     availablePacks: counterpartyPacks,
+    availableOutreachDrafts: finderOutreachDrafts,
     includeProfileContext,
     profileChars: profileContext.length
   })
@@ -4791,6 +4834,10 @@ export const App = () => {
                       <strong>{manualPrepPreview.selectedPackLabel}</strong>
                     </div>
                     <div>
+                      <span>Outreach draft</span>
+                      <strong>{manualPrepPreview.selectedOutreachDraftLabel}</strong>
+                    </div>
+                    <div>
                       <span>Assistant payload</span>
                       <strong>{manualPrepPreview.assistantPayloadLabel}</strong>
                     </div>
@@ -4807,6 +4854,47 @@ export const App = () => {
                     <div className="manual-prep-fixes manual-prep-fixes-ready">
                       Ready for a focused call.
                     </div>
+                  )}
+                </div>
+                <div className="context-source-list">
+                  <div className="settings-row-label">Outreach draft for this call</div>
+                  {finderOutreachDrafts.length === 0 ? (
+                    <div className="context-source-empty">
+                      Save an outreach draft in Finder first.
+                    </div>
+                  ) : (
+                    finderOutreachDrafts.map((draft) => {
+                      const isChecked =
+                        sessionContextDraft.selectedFinderOutreachDraftId ===
+                        draft.id
+
+                      return (
+                        <div className="context-source-item" key={`session-draft-${draft.id}`}>
+                          <label className="context-source-select">
+                            <input
+                              checked={isChecked}
+                              disabled={isSavingSessionContext}
+                              onChange={(event) =>
+                                setSessionOutreachDraftSelection(
+                                  draft.id,
+                                  event.target.checked
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            <span>{isChecked ? 'In session' : 'Not in session'}</span>
+                          </label>
+                          <div className="context-source-details">
+                            <strong>{draft.targetName}</strong>
+                            <span>
+                              {draft.kind} · {draft.opportunity}
+                            </span>
+                            <span>fit: {draft.fitLabel}</span>
+                            <code>{draft.openingMessage}</code>
+                          </div>
+                        </div>
+                      )
+                    })
                   )}
                 </div>
                 <label className="settings-row">
@@ -5528,17 +5616,31 @@ export const App = () => {
                                   </span>
                                   <code>{draft.openingMessage}</code>
                                 </div>
-                                <button
-                                  className="button-small"
-                                  onClick={() =>
-                                    void copyFinderOutreachDraft(draft)
-                                  }
-                                  type="button"
-                                >
-                                  {copiedFinderOutreachDraftId === draft.id
-                                    ? 'Copied'
-                                    : 'Copy draft'}
-                                </button>
+                                <div className="button-row settings-actions">
+                                  <button
+                                    className="button-small"
+                                    onClick={() =>
+                                      void attachFinderOutreachDraftToSession(draft)
+                                    }
+                                    type="button"
+                                  >
+                                    {sessionContext.selectedFinderOutreachDraftId ===
+                                    draft.id
+                                      ? 'In session'
+                                      : 'Use in session'}
+                                  </button>
+                                  <button
+                                    className="button-small"
+                                    onClick={() =>
+                                      void copyFinderOutreachDraft(draft)
+                                    }
+                                    type="button"
+                                  >
+                                    {copiedFinderOutreachDraftId === draft.id
+                                      ? 'Copied'
+                                      : 'Copy draft'}
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>

@@ -27,7 +27,8 @@ export type LiveTestCockpitItem = {
 export const getAutoAnalysisFingerprint = (
   latestFinalUtterance: TranscriptUtterance,
   transcriptText: string,
-  selectedCounterpartyPackIds: string[] = []
+  selectedCounterpartyPackIds: string[] = [],
+  selectedFinderOutreachDraftId = ''
 ) =>
   `${latestFinalUtterance.id}::${latestFinalUtterance.speaker}::${transcriptText
     .slice(-500)
@@ -35,7 +36,7 @@ export const getAutoAnalysisFingerprint = (
     ...new Set(selectedCounterpartyPackIds.filter(Boolean))
   ]
     .sort()
-    .join(',')}`
+    .join(',')}::draft:${selectedFinderOutreachDraftId.trim()}`
 
 export const getAssistantStatusLabel = (
   assistantState: AssistantState,
@@ -337,6 +338,7 @@ export type LiveLoopScheduleInput = {
   analysisCooldownUntil: number
   nowMs?: number
   selectedCounterpartyPackIds?: string[]
+  selectedFinderOutreachDraftId?: string
 }
 
 export type LiveLoopSchedulePlan = {
@@ -584,7 +586,8 @@ export const decideAutoAnalysis = ({
   lastAutoAnalyzedFingerprint,
   scheduledAutoAnalysisFingerprint,
   assistantState,
-  selectedCounterpartyPackIds = []
+  selectedCounterpartyPackIds = [],
+  selectedFinderOutreachDraftId = ''
 }: {
   latestFinalUtterance: TranscriptUtterance | undefined
   transcriptText: string
@@ -593,6 +596,7 @@ export const decideAutoAnalysis = ({
   scheduledAutoAnalysisFingerprint: string | null
   assistantState: AssistantState
   selectedCounterpartyPackIds?: string[]
+  selectedFinderOutreachDraftId?: string
 }): LiveLoopDecision => {
   if (!latestFinalUtterance) {
     return {
@@ -618,7 +622,8 @@ export const decideAutoAnalysis = ({
   const fingerprint = getAutoAnalysisFingerprint(
     latestFinalUtterance,
     transcriptText,
-    selectedCounterpartyPackIds
+    selectedCounterpartyPackIds,
+    selectedFinderOutreachDraftId
   )
 
   if (fingerprint === lastAutoAnalyzedFingerprint) {
@@ -661,7 +666,8 @@ export const buildAutoAnalysisSchedule = ({
   assistantState,
   analysisCooldownUntil,
   nowMs,
-  selectedCounterpartyPackIds
+  selectedCounterpartyPackIds,
+  selectedFinderOutreachDraftId
 }: LiveLoopScheduleInput): LiveLoopSchedulePlan => {
   const decision = decideAutoAnalysis({
     latestFinalUtterance,
@@ -670,7 +676,8 @@ export const buildAutoAnalysisSchedule = ({
     lastAutoAnalyzedFingerprint,
     scheduledAutoAnalysisFingerprint,
     assistantState,
-    selectedCounterpartyPackIds
+    selectedCounterpartyPackIds,
+    selectedFinderOutreachDraftId
   })
 
   if (!decision.shouldRun || decision.fingerprint === null) {

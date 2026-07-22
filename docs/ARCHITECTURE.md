@@ -77,6 +77,7 @@ Shared cost constants live in:
 - **Shared-RAG ingress manifest**: `data/context-sources/manifest.json` (canonical),
   plus `coqpi-context-pack.manifest.md` and `coqpi-context-pack.history.jsonl` in the same directory for review and change audit.
 - **Counterparty/context packs**: compact partner and role-specific records from Finder or manually curated intake are stored in the same local manifest under `manifest.counterpartyPacks` with explicit provenance, selection flag, retention, and a compact hash.
+- **Finder outreach drafts**: local append-only Finder drafts can be attached to `current-session.json` by draft ID. The assistant receives only the compact selected draft summary, never an outbound send action.
 - **User settings**: JSON under `app.getPath("userData")`
 - **Stored encrypted API key**: file under `app.getPath("userData")/secrets/`
 - **Governance receipts**: `data/governance/receipts.jsonl`

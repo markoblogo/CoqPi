@@ -135,6 +135,7 @@ export interface SessionContext {
   goal: string
   notes: string
   selectedCounterpartyPackIds: string[]
+  selectedFinderOutreachDraftId: string
 }
 
 export interface SessionContextResult {

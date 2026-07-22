@@ -216,6 +216,34 @@ export const getFinderSearchStore =
     store: await getFinderSearchStoreRaw()
   })
 
+export const resolveSessionSelectedFinderOutreachDraftId = async (
+  id: string
+) => {
+  const trimmed = typeof id === 'string' ? id.trim() : ''
+
+  if (!trimmed) {
+    return ''
+  }
+
+  const store = await getFinderSearchStoreRaw()
+
+  return store.outreachDrafts.some((draft) => draft.id === trimmed)
+    ? trimmed
+    : ''
+}
+
+export const getFinderOutreachDraftById = async (id: string) => {
+  const trimmed = typeof id === 'string' ? id.trim() : ''
+
+  if (!trimmed) {
+    return null
+  }
+
+  const store = await getFinderSearchStoreRaw()
+
+  return store.outreachDrafts.find((draft) => draft.id === trimmed) ?? null
+}
+
 export const addFinderSearchJob = async (
   draft: FinderSearchJobDraft
 ): Promise<FinderSearchStoreResult> => {

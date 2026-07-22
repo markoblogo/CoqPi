@@ -12,6 +12,7 @@ const makeContext = (overrides = {}) => ({
   goal: 'Explain fit and clarify the hiring process.',
   notes: 'Mention product leadership, AI transformation, and agro-commodities workflow experience.',
   selectedCounterpartyPackIds: ['pack-A'],
+  selectedFinderOutreachDraftId: '',
   ...overrides
 })
 
@@ -47,6 +48,27 @@ const makePack = (overrides = {}) => ({
   ...overrides
 })
 
+const makeDraft = (overrides = {}) => ({
+  version: 1,
+  id: 'draft-A',
+  jobId: 'job-A',
+  candidateResultId: 'result-A',
+  sourceId: 'finder:job:a',
+  kind: 'job',
+  targetName: 'Acme',
+  opportunity: 'Senior Product Manager',
+  fitLabel: '91/100 strong',
+  whyRelevant: 'Strong match.',
+  knownContext: ['Role context.'],
+  questionsToAsk: ['What is success?'],
+  openingMessage: 'Hi Acme, I saw the role.',
+  nextAction: 'Use this context before the call.',
+  warnings: [],
+  status: 'draft',
+  createdAt: '2026-07-22T00:00:00.000Z',
+  ...overrides
+})
+
 test('manual prep preview summarizes focused session and assistant payload', () => {
   const preview = buildManualPrepPreview({
     context: makeContext(),
@@ -59,9 +81,39 @@ test('manual prep preview summarizes focused session and assistant payload', () 
   assert.equal(preview.selectedPackCount, 1)
   assert.equal(preview.selectedPackQualityLevel, 'strong')
   assert.equal(preview.selectedPackQualityLabel, 'strong 100/100')
+  assert.equal(preview.selectedOutreachDraftLabel, 'No selected outreach draft')
   assert.match(preview.assistantPayloadLabel, /packs 1/)
   assert.match(preview.assistantPayloadLabel, /profile 1234 chars/)
   assert.deepEqual(preview.weakFields, [])
+})
+
+test('manual prep preview shows selected outreach draft label', () => {
+  const preview = buildManualPrepPreview({
+    context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
+    availablePacks: [makePack()],
+    availableOutreachDrafts: [makeDraft()],
+    includeProfileContext: true,
+    profileChars: 1234
+  })
+
+  assert.equal(preview.selectedOutreachDraftLabel, 'Acme · Senior Product Manager')
+  assert.deepEqual(preview.weakFields, [])
+})
+
+test('manual prep preview flags stale selected outreach draft', () => {
+  const preview = buildManualPrepPreview({
+    context: makeContext({ selectedFinderOutreachDraftId: 'draft-missing' }),
+    availablePacks: [makePack()],
+    availableOutreachDrafts: [makeDraft()],
+    includeProfileContext: true,
+    profileChars: 1234
+  })
+
+  assert.equal(preview.selectedOutreachDraftLabel, 'Missing selected draft')
+  assert.equal(
+    preview.weakFields.some((field) => field.id === 'missing_outreach_draft'),
+    true
+  )
 })
 
 test('manual prep preview reports weak fields and missing pack', () => {

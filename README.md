@@ -32,14 +32,15 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Prioritized pipeline view sorts and filters candidates by fit score, status, and next action so the Finder tab works as a review funnel.
 - Outreach prep pack summarizes the focused candidate before action: target, opportunity, fit, why relevant, known context, questions to ask, opening message, next action, and weak-field warnings.
 - Outreach draft handoff saves the focused prep card as a local append-only draft in Finder source truth; nothing is sent externally.
-- Saved outreach drafts can be reviewed per search job and copied as a source-bound markdown export for manual use.
+- Saved outreach drafts can be reviewed per search job, copied as a source-bound markdown export, and attached to the active session prep.
 - Importing a candidate creates a selected counterparty pack for the active session.
 
 ### 3. Personal knowledge and session context
 
-- Local profile context plus per-call session fields: company, role, context, goal, notes, and selected counterparty packs.
+- Local profile context plus per-call session fields: company, role, context, goal, notes, selected counterparty packs, and the selected Finder outreach draft.
 - Counterparty packs include source, owner, classification, retention, scope, links, quality diagnostics, and session eligibility.
 - Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis. Disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
+- A selected outreach draft is revalidated against Finder source truth before use. Missing or stale draft IDs are dropped or surfaced in prep quality instead of broadening context.
 - Assistant retrieval uses a strict allowlist: when selected pack IDs are provided, only those packs are candidates.
 - Assistant quality fixtures inspect the provider prompt and verify that selected packs are included while unselected packs stay out of the answer path.
 
@@ -276,10 +277,10 @@ docs/
 
 ## Next development passes
 
-1. Finder Draft To Session Prep: attach a reviewed local draft to the candidate/session preparation flow before a call.
-2. Knowledge ingestion quality: improve source lifecycle, classification, and retrieval readiness for profile/respondent materials before adding vector retrieval.
+1. Knowledge ingestion quality: improve source lifecycle, classification, and retrieval readiness for profile/respondent materials before adding vector retrieval.
+2. Finder runner implementation: add a bounded local/manual runner adapter after the current JSON contract is stable.
 3. Live microphone tuning: run the short real-call smoke and tune turn segmentation/noise behavior from observed failures.
-4. Finder runner implementation: add a bounded local/manual runner adapter after the current JSON contract is stable.
+4. Training mode foundation: reuse the same selected profile/session/pack/draft context for interview and negotiation rehearsal.
 
 The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).
 

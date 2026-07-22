@@ -15,6 +15,7 @@ import {
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
 import { getSessionContext } from './session-context-service'
+import { getFinderOutreachDraftById } from './finder-search-service'
 import {
   DEFAULT_OPENAI_ASSISTANT_MODEL,
   interviewAssistantSystemPrompt
@@ -349,6 +350,39 @@ const compactSessionContext = (
   return lines.join('\n').slice(0, limit)
 }
 
+const compactSelectedOutreachDraft = async (
+  sessionContext: SessionContext | undefined,
+  costMode: AssistantCostMode
+) => {
+  const draftId = sessionContext?.selectedFinderOutreachDraftId?.trim()
+
+  if (!draftId) {
+    return ''
+  }
+
+  const draft = await getFinderOutreachDraftById(draftId)
+
+  if (!draft) {
+    return ''
+  }
+
+  const lines = [
+    `Target: ${draft.targetName}`,
+    `Opportunity: ${draft.opportunity}`,
+    `Fit: ${draft.fitLabel}`,
+    `Why relevant: ${draft.whyRelevant}`,
+    `Opening message already drafted: ${draft.openingMessage}`,
+    `Next action: ${draft.nextAction}`,
+    draft.questionsToAsk.length
+      ? `Questions to ask: ${draft.questionsToAsk.join('; ')}`
+      : ''
+  ].filter(Boolean)
+  const limit =
+    costMode === 'quality' ? 2400 : costMode === 'balanced' ? 1600 : 900
+
+  return lines.join('\n').slice(0, limit)
+}
+
 const validateSuggestedAnswer = (value: unknown): value is SuggestedAnswer => {
   if (!value || typeof value !== 'object') {
     return false
@@ -416,6 +450,20 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
 
   if (sessionContext) {
     sections.push('', 'Current session context:', sessionContext)
+  }
+
+  const selectedOutreachDraft = await compactSelectedOutreachDraft(
+    request.sessionContext,
+    request.costMode
+  )
+
+  if (selectedOutreachDraft) {
+    sections.push(
+      '',
+      'Selected outreach draft for this counterpart (private local source, already used or planned by owner):',
+      selectedOutreachDraft,
+      'Use this to stay consistent with what was already sent or prepared. Do not claim it was sent unless the draft itself says so.'
+    )
   }
 
   const personalKnowledgeContext = await getPersonalInterviewRetrieval(

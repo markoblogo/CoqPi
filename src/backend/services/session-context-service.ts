@@ -6,6 +6,7 @@ import type {
 } from '../../shared/app-types'
 import { getAppInfo } from './app-state'
 import { resolveSessionSelectedCounterpartyPackIds } from './context-source-service'
+import { resolveSessionSelectedFinderOutreachDraftId } from './finder-search-service'
 
 const emptySessionContext: SessionContext = {
   company: '',
@@ -13,7 +14,8 @@ const emptySessionContext: SessionContext = {
   context: '',
   goal: '',
   notes: '',
-  selectedCounterpartyPackIds: []
+  selectedCounterpartyPackIds: [],
+  selectedFinderOutreachDraftId: ''
 }
 
 const getSessionContextPath = () => {
@@ -56,18 +58,32 @@ const sanitizeSessionContext = (value: unknown): SessionContext => {
     context: sanitizeText(candidate.context),
     goal: sanitizeText(candidate.goal),
     notes: sanitizeText(candidate.notes),
-    selectedCounterpartyPackIds: sanitizeStringArray(candidate.selectedCounterpartyPackIds)
+    selectedCounterpartyPackIds: sanitizeStringArray(candidate.selectedCounterpartyPackIds),
+    selectedFinderOutreachDraftId: sanitizeText(
+      candidate.selectedFinderOutreachDraftId
+    )
   }
 }
 
 const normalizeSessionContextForActivePacks = async (
   context: SessionContext
-): Promise<SessionContext> => ({
-  ...context,
-  selectedCounterpartyPackIds: await resolveSessionSelectedCounterpartyPackIds(
-    context.selectedCounterpartyPackIds
-  )
-})
+): Promise<SessionContext> => {
+  const [selectedCounterpartyPackIds, selectedFinderOutreachDraftId] =
+    await Promise.all([
+      resolveSessionSelectedCounterpartyPackIds(
+        context.selectedCounterpartyPackIds
+      ),
+      resolveSessionSelectedFinderOutreachDraftId(
+        context.selectedFinderOutreachDraftId
+      )
+    ])
+
+  return {
+    ...context,
+    selectedCounterpartyPackIds,
+    selectedFinderOutreachDraftId
+  }
+}
 
 export const getSessionContext = async (): Promise<SessionContextResult> => {
   try {

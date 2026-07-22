@@ -35,6 +35,7 @@ const withElectronMock = async (run) => {
     const assistantProviderProfile = require('../dist-electron/backend/services/assistant-provider-profile.js')
     const contextSourceService = require('../dist-electron/backend/services/context-source-service.js')
     const sessionContextService = require('../dist-electron/backend/services/session-context-service.js')
+    const finderSearchService = require('../dist-electron/backend/services/finder-search-service.js')
     const profileService = require('../dist-electron/backend/services/profile-service.js')
     const secretStorageService = require('../dist-electron/backend/services/secret-storage-service.js')
     const governanceService = require('../dist-electron/backend/services/governance-service.js')
@@ -44,6 +45,7 @@ const withElectronMock = async (run) => {
       assistantProviderProfile,
       contextSourceService,
       sessionContextService,
+      finderSearchService,
       profileService,
       secretStorageService,
       governanceService
@@ -729,6 +731,86 @@ test('analyzeRecentTranscript resolves selected pack ids from persisted session 
     observed.retrievalSelectedCounterpartyPackIds,
     selectedPackIds
   )
+})
+
+test('analyzeRecentTranscript includes selected outreach draft from persisted session', async () => {
+  let capturedPrompt = ''
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'job',
+          label: 'France product roles',
+          query: 'senior product manager france agtech'
+        })
+        const job = afterJob.store.jobs[0]
+        const afterCandidate =
+          await services.finderSearchService.addFinderCandidateResult(job.id, {
+            sourceId: 'finder:job:selected-draft-001',
+            partnerName: 'Northfield Labs',
+            title: 'AI Product Lead',
+            summary: 'Product leadership role with AI workflow focus.',
+            fitScore: 91,
+            whyRelevant: 'Matches AI product leadership and France search.',
+            missingInfo: 'Salary range',
+            nextAction: 'Use this outreach version before the call.'
+          })
+        const candidate = afterCandidate.store.results[0]
+        const afterDraft =
+          await services.finderSearchService.saveFinderOutreachDraft(candidate.id)
+        const draft = afterDraft.store.outreachDrafts[0]
+
+        await services.sessionContextService.saveSessionContext({
+          company: 'Northfield Labs',
+          role: 'AI Product Lead',
+          context: 'Interview after outreach.',
+          goal: 'Stay consistent with the prepared outreach.',
+          notes: 'Do not invent details.',
+          selectedCounterpartyPackIds: [],
+          selectedFinderOutreachDraftId: draft.id
+        })
+      },
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      fetchHandler: async (_url, init) => {
+        const body = JSON.parse(init.body)
+        capturedPrompt = body.messages[1].content
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Выбранный outreach draft добавлен в контекст.',
+              detectedQuestion: 'What outreach context is active?',
+              intent: 'draft context check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I prepared a focused intro for this role and can stay consistent with it.',
+                  answerMeaningRu: 'Я подготовил точное вступление под эту роль и могу держать его линию.'
+                }
+              ],
+              keywordsToRemember: ['prepared intro', 'consistent'],
+              openingPhrase: 'Thanks.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.match(capturedPrompt, /Selected outreach draft for this counterpart/)
+  assert.match(capturedPrompt, /Northfield Labs/)
+  assert.match(capturedPrompt, /AI Product Lead/)
+  assert.match(
+    capturedPrompt,
+    /Opening message already drafted: Hi Northfield Labs/
+  )
+  assert.match(capturedPrompt, /Use this outreach version before the call/)
 })
 
 test('analyzeRecentTranscript filters persisted selected pack ids through retrieval-ready contract', async () => {
