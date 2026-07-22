@@ -32,6 +32,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Prioritized pipeline view sorts and filters candidates by fit score, status, and next action so the Finder tab works as a review funnel.
 - Outreach prep pack summarizes the focused candidate before action: target, opportunity, fit, why relevant, known context, questions to ask, opening message, next action, and weak-field warnings.
 - Outreach draft handoff saves the focused prep card as a local append-only draft in Finder source truth; nothing is sent externally.
+- Saved outreach drafts can be reviewed per search job and copied as a source-bound markdown export for manual use.
 - Importing a candidate creates a selected counterparty pack for the active session.
 
 ### 3. Personal knowledge and session context
@@ -45,7 +46,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 ### Not implemented yet
 
 - No outbound Finder runner, scheduler, scraping, search APIs, or automatic outreach.
-- No email sending or automatic outreach execution; prep messages remain local drafts.
+- No email sending or automatic outreach execution; draft export is manual copy-only.
 - No system audio routing, voice output, phone integration, or offline realtime STT.
 - No full vector RAG/ranking layer yet; current retrieval is strict selected-pack context.
 - No training mode yet.
@@ -275,7 +276,7 @@ docs/
 
 ## Next development passes
 
-1. Finder Draft Review/Export: inspect saved local drafts, copy/export them manually, and keep external sending out of scope.
+1. Finder Draft To Session Prep: attach a reviewed local draft to the candidate/session preparation flow before a call.
 2. Knowledge ingestion quality: improve source lifecycle, classification, and retrieval readiness for profile/respondent materials before adding vector retrieval.
 3. Live microphone tuning: run the short real-call smoke and tune turn segmentation/noise behavior from observed failures.
 4. Finder runner implementation: add a bounded local/manual runner adapter after the current JSON contract is stable.

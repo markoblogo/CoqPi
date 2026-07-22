@@ -537,3 +537,37 @@ export const createFinderOutreachDraft = (
     createdAt: options.now
   }
 }
+
+export const formatFinderOutreachDraftForExport = (
+  draft: FinderOutreachDraft
+) =>
+  [
+    '# CoqPi Finder Outreach Draft',
+    '',
+    'Local draft only. Nothing has been sent externally.',
+    '',
+    `Target: ${draft.targetName}`,
+    `Opportunity: ${draft.opportunity}`,
+    `Kind: ${draft.kind}`,
+    `Fit: ${draft.fitLabel}`,
+    `Source: ${draft.sourceId}`,
+    `Created: ${draft.createdAt}`,
+    '',
+    '## Why Relevant',
+    draft.whyRelevant,
+    '',
+    '## Opening Message',
+    draft.openingMessage,
+    '',
+    '## Known Context',
+    ...draft.knownContext.map((line) => `- ${line}`),
+    '',
+    '## Questions To Ask',
+    ...draft.questionsToAsk.map((line) => `- ${line}`),
+    '',
+    '## Next Action',
+    draft.nextAction,
+    ...(draft.warnings.length
+      ? ['', '## Warnings', ...draft.warnings.map((line) => `- ${line}`)]
+      : [])
+  ].join('\n')

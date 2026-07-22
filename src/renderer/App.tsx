@@ -110,6 +110,7 @@ import {
   createContextPackDraftFromFinderResult,
   createFinderOutreachPrepPack,
   createFinderPipelineView,
+  formatFinderOutreachDraftForExport,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
   type FinderPipelineSortMode,
@@ -709,6 +710,8 @@ export const App = () => {
   const [finderRunnerPayloadText, setFinderRunnerPayloadText] = useState('')
   const [finderRunnerPayloadPreview, setFinderRunnerPayloadPreview] =
     useState<FinderRunnerPayloadPreviewResult | null>(null)
+  const [copiedFinderOutreachDraftId, setCopiedFinderOutreachDraftId] =
+    useState<string | null>(null)
   const [finderPipelineStatusFilter, setFinderPipelineStatusFilter] =
     useState<FinderPipelineStatusFilter>('all')
   const [finderPipelineSortMode, setFinderPipelineSortMode] =
@@ -764,6 +767,11 @@ export const App = () => {
   const focusedFinderOutreachDrafts = focusedFinderCandidateResult
     ? finderOutreachDrafts.filter(
         (draft) => draft.candidateResultId === focusedFinderCandidateResult.id
+      )
+    : []
+  const selectedFinderOutreachDrafts = selectedFinderSearchJob
+    ? finderOutreachDrafts.filter(
+        (draft) => draft.jobId === selectedFinderSearchJob.id
       )
     : []
   const applyFinderSearchStore = (store: FinderSearchStore) => {
@@ -2020,6 +2028,27 @@ export const App = () => {
           ? error.message
           : 'Unable to save local outreach draft.'
       )
+    }
+  }
+
+  const copyFinderOutreachDraft = async (draft: FinderOutreachDraft) => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      await navigator.clipboard.writeText(
+        formatFinderOutreachDraftForExport(draft)
+      )
+      setCopiedFinderOutreachDraftId(draft.id)
+      setFinderSearchNotice('Outreach draft copied for manual export.')
+      window.setTimeout(() => {
+        setCopiedFinderOutreachDraftId((current) =>
+          current === draft.id ? null : current
+        )
+      }, 1400)
+    } catch {
+      setCopiedFinderOutreachDraftId(null)
+      setFinderSearchError('Unable to copy local outreach draft.')
     }
   }
 
@@ -5468,6 +5497,53 @@ export const App = () => {
                           ) : null}
                         </div>
                       ) : null}
+                      <div className="finder-draft-review">
+                        <div className="finder-draft-review-header">
+                          <div>
+                            <strong>Saved drafts</strong>
+                            <span>
+                              {selectedFinderOutreachDrafts.length} local draft
+                              {selectedFinderOutreachDrafts.length === 1
+                                ? ''
+                                : 's'}{' '}
+                              for this search job
+                            </span>
+                          </div>
+                          <span>Manual copy/export only</span>
+                        </div>
+                        {selectedFinderOutreachDrafts.length === 0 ? (
+                          <div className="context-source-empty">
+                            No saved outreach drafts for this job yet.
+                          </div>
+                        ) : (
+                          <div className="finder-draft-list">
+                            {selectedFinderOutreachDrafts.map((draft) => (
+                              <div className="finder-draft-row" key={draft.id}>
+                                <div>
+                                  <strong>
+                                    {draft.targetName} · {draft.opportunity}
+                                  </strong>
+                                  <span>
+                                    {draft.fitLabel} · {draft.createdAt}
+                                  </span>
+                                  <code>{draft.openingMessage}</code>
+                                </div>
+                                <button
+                                  className="button-small"
+                                  onClick={() =>
+                                    void copyFinderOutreachDraft(draft)
+                                  }
+                                  type="button"
+                                >
+                                  {copiedFinderOutreachDraftId === draft.id
+                                    ? 'Copied'
+                                    : 'Copy draft'}
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <div className="finder-table">
                         {selectedFinderSearchResults.length === 0 ? (
                           <div className="context-source-empty">

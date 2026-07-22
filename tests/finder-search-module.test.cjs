@@ -9,6 +9,7 @@ const {
   createFinderOutreachPrepPack,
   createFinderSearchJob,
   createFinderPipelineView,
+  formatFinderOutreachDraftForExport,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
   updateFinderSearchJobStatus
@@ -422,4 +423,40 @@ test('finder outreach draft handoff stores prep content as a local draft', () =>
   assert.equal(draft.targetName, 'Green Seed Capital')
   assert.match(draft.openingMessage, /I saw your work around/)
   assert.equal(draft.nextAction, 'Prepare a warm intro draft.')
+})
+
+test('finder outreach draft export is manual and source-bound', () => {
+  const job = createFinderSearchJob(
+    { kind: 'job', label: 'Jobs', query: 'product manager' },
+    { id: 'job-6', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const result = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:job:export',
+      partnerName: 'Export Target',
+      title: 'Senior PM',
+      summary: 'Relevant role.',
+      context: 'Company works on AI workflows.',
+      links: ['https://example.com/export'],
+      fitScore: 84,
+      whyRelevant: 'Good product leadership fit.',
+      missingInfo: 'Hiring manager',
+      nextAction: 'Send only after manual review.'
+    },
+    { id: 'result-6', now: '2026-07-22T10:02:00.000Z' }
+  )
+  const draft = createFinderOutreachDraft(job, result, {
+    id: 'draft-6',
+    now: '2026-07-22T10:04:00.000Z'
+  })
+  const exportText = formatFinderOutreachDraftForExport(draft)
+
+  assert.match(exportText, /^# CoqPi Finder Outreach Draft/)
+  assert.match(exportText, /Local draft only\. Nothing has been sent externally\./)
+  assert.match(exportText, /Target: Export Target/)
+  assert.match(exportText, /Source: finder:job:export/)
+  assert.match(exportText, /## Opening Message/)
+  assert.match(exportText, /- Clarify: Hiring manager/)
+  assert.doesNotMatch(exportText, /send email|smtp|api/i)
 })
