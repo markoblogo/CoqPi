@@ -32,6 +32,8 @@ Additional session-aware behavior:
 
 Prompt/skill improvement is governed by an optional local skill-quality pipeline in [`docs/SKILL_QUALITY_PIPELINE.md`](docs/SKILL_QUALITY_PIPELINE.md). It is for synthetic or explicitly recorded mock transcript evidence only: bounded candidate edits, held-out validation, rejected-edit memory, and owner acceptance before any `best_skill.md` export.
 
+External AI-engineering examples are tracked in [`docs/AI_ENGINEERING_REFERENCE_INDEX.md`](docs/AI_ENGINEERING_REFERENCE_INDEX.md) as references only. They do not install code, change realtime behavior, add providers, or authorize use on live calls.
+
 No phone system integration, voice output, system audio routing, vector DB, or new AI capabilities are implemented in this step.
 
 ## Local installation
