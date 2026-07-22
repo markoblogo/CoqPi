@@ -27,6 +27,7 @@ Additional session-aware behavior:
 
 - EN/FR assistant retrieval can be restricted to selected counterparty pack kinds (`job`, `partner`, `investor`, `accelerator`, `other`) based on session context.
 - Session prep now lets you pin specific counterparty/job/investor packs to the active call session (`selectedCounterpartyPackIds`) so assistant retrieval can target only those packs.
+- Counterparty packs show the same session eligibility diagnostics used by the assistant route, so blocked context is visible before a call.
 - Retrieval filtering has an explicit strict allowlist contract: when pack IDs are provided, only those packs are candidates.
 - Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis, so disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
 - Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).

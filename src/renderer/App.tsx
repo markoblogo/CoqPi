@@ -59,6 +59,8 @@ import {
   normalizeLinksText
 } from '@shared/counterparty-pack-import'
 import {
+  formatCounterpartyPackSessionEligibility,
+  getCounterpartyPackSessionEligibility,
   getSessionContextWithCounterpartyPacks,
   getSessionSelectedCounterpartyPackIds
 } from '@shared/session-pack-selection'
@@ -3904,6 +3906,7 @@ export const App = () => {
                     </div>
                   ) : (
                     counterpartyPacks.map((pack) => {
+                      const eligibility = getCounterpartyPackSessionEligibility(pack)
                       const isChecked = sessionContextDraft.selectedCounterpartyPackIds.includes(
                         pack.id
                       )
@@ -3928,6 +3931,15 @@ export const App = () => {
                             <strong>{pack.partnerName}</strong>
                             <span>
                               {pack.kind} · {pack.title}
+                            </span>
+                            <span
+                              className={
+                                eligibility.eligible
+                                  ? 'context-source-status-ready'
+                                  : 'context-source-status-blocked'
+                              }
+                            >
+                              session: {formatCounterpartyPackSessionEligibility(eligibility)}
                             </span>
                             <code>{pack.sourceId}</code>
                           </div>
@@ -4405,51 +4417,64 @@ export const App = () => {
                     No compact packs recorded.
                   </div>
                 ) : (
-                  counterpartyPacks.map((pack) => (
-                    <div className="context-source-item" key={pack.id}>
-                      <label className="context-source-select">
-                        <input
-                          checked={pack.selected}
-                          disabled={isSavingCounterpartyPacks}
-                          onChange={(event) =>
-                            void setCounterpartyPackSelection(
-                              pack.id,
-                              event.target.checked
-                            )
-                          }
-                          type="checkbox"
-                        />
-                        <span>{pack.selected ? 'Selected' : 'Not selected'}</span>
-                      </label>
-                      <div className="context-source-details">
-                        <strong>{pack.partnerName}</strong>
-                        <span>
-                          {pack.kind} · {pack.title}
-                        </span>
-                        <span>
-                          source: {pack.sourceId} · {pack.classification} · scope:{' '}
-                          {pack.retrievalScopes[0] ?? 'none'}
-                        </span>
-                        <code>{pack.summary}</code>
+                  counterpartyPacks.map((pack) => {
+                    const eligibility = getCounterpartyPackSessionEligibility(pack)
+
+                    return (
+                      <div className="context-source-item" key={pack.id}>
+                        <label className="context-source-select">
+                          <input
+                            checked={pack.selected}
+                            disabled={isSavingCounterpartyPacks}
+                            onChange={(event) =>
+                              void setCounterpartyPackSelection(
+                                pack.id,
+                                event.target.checked
+                              )
+                            }
+                            type="checkbox"
+                          />
+                          <span>{pack.selected ? 'Selected' : 'Not selected'}</span>
+                        </label>
+                        <div className="context-source-details">
+                          <strong>{pack.partnerName}</strong>
+                          <span>
+                            {pack.kind} · {pack.title}
+                          </span>
+                          <span>
+                            source: {pack.sourceId} · {pack.classification} · scope:{' '}
+                            {pack.retrievalScopes[0] ?? 'none'}
+                          </span>
+                          <span
+                            className={
+                              eligibility.eligible
+                                ? 'context-source-status-ready'
+                                : 'context-source-status-blocked'
+                            }
+                          >
+                            session: {formatCounterpartyPackSessionEligibility(eligibility)}
+                          </span>
+                          <code>{pack.summary}</code>
+                        </div>
+                        <div className="context-source-actions">
+                          <button
+                            disabled={isSavingCounterpartyPacks}
+                            onClick={() => editCounterpartyPack(pack)}
+                            type="button"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            disabled={isSavingCounterpartyPacks}
+                            onClick={() => void removeCounterpartyPack(pack.id)}
+                            type="button"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                      <div className="context-source-actions">
-                        <button
-                          disabled={isSavingCounterpartyPacks}
-                          onClick={() => editCounterpartyPack(pack)}
-                          type="button"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          disabled={isSavingCounterpartyPacks}
-                          onClick={() => void removeCounterpartyPack(pack.id)}
-                          type="button"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </article>

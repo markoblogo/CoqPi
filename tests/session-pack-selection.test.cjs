@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
+  formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
   getSessionContextWithCounterpartyPacks,
   getSessionSelectedCounterpartyPackIds
@@ -107,6 +108,15 @@ test('session pack eligibility reports stable blocking reasons', () => {
     'not_private',
     'missing_interview_scope'
   ])
+
+  assert.equal(
+    formatCounterpartyPackSessionEligibility(eligible),
+    'ready for session'
+  )
+  assert.equal(
+    formatCounterpartyPackSessionEligibility(blocked),
+    'blocked: wrong version, not selected, not retrieval-ready, wrong owner, not private, missing EN/FR interview scope'
+  )
 })
 
 test('session pack selection auto-adds only imported packs that remain eligible', () => {

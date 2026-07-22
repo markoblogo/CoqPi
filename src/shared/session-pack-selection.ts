@@ -19,6 +19,18 @@ export type CounterpartyPackSessionEligibility = {
 
 export const sessionCounterpartyPackRetrievalScope = 'coqpi_interview_en_fr'
 
+export const counterpartyPackSessionIneligibilityReasonLabels: Record<
+  CounterpartyPackSessionIneligibilityReason,
+  string
+> = {
+  wrong_version: 'wrong version',
+  not_selected: 'not selected',
+  not_retrieval_ready: 'not retrieval-ready',
+  wrong_owner: 'wrong owner',
+  not_private: 'not private',
+  missing_interview_scope: 'missing EN/FR interview scope'
+}
+
 const buildCounterpartySourceKey = (
   sourceId: string,
   kind: CounterpartyContextPack['kind']
@@ -65,6 +77,15 @@ export const getCounterpartyPackSessionEligibility = (
 export const isSessionEligibleCounterpartyPack = (
   pack: CounterpartyContextPack
 ) => getCounterpartyPackSessionEligibility(pack).eligible
+
+export const formatCounterpartyPackSessionEligibility = (
+  eligibility: CounterpartyPackSessionEligibility
+) =>
+  eligibility.eligible
+    ? 'ready for session'
+    : `blocked: ${eligibility.reasons
+        .map((reason) => counterpartyPackSessionIneligibilityReasonLabels[reason])
+        .join(', ')}`
 
 export const getSessionSelectedCounterpartyPackIds = (
   context: SessionContext,

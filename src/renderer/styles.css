@@ -860,6 +860,14 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.context-source-details .context-source-status-ready {
+  color: #8fd9ac;
+}
+
+.context-source-details .context-source-status-blocked {
+  color: #f0b37e;
+}
+
 .settings-shell {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
