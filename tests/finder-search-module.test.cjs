@@ -6,6 +6,7 @@ const {
   createContextPackDraftFromFinderResult,
   createFinderCandidateResult,
   createFinderSearchJob,
+  createFinderPipelineView,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
   updateFinderSearchJobStatus
@@ -213,5 +214,107 @@ test('finder runner payload rejects malformed envelopes before UI import', () =>
         }
       ),
     /requires label and query/
+  )
+})
+
+test('finder pipeline view prioritizes high-fit ready candidates', () => {
+  const job = createFinderSearchJob(
+    { kind: 'job', label: 'Jobs', query: 'product manager' },
+    { id: 'job-1', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const candidates = [
+    createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:job:low',
+        partnerName: 'Low Fit',
+        title: 'Product role',
+        summary: 'Relevant but weaker.',
+        fitScore: 42
+      },
+      { id: 'result-low', now: '2026-07-22T10:01:00.000Z' }
+    ),
+    createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:job:missing-score',
+        partnerName: 'Missing Score',
+        title: 'Product role',
+        summary: 'Needs review.'
+      },
+      { id: 'result-missing', now: '2026-07-22T10:03:00.000Z' }
+    ),
+    createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:job:high',
+        partnerName: 'High Fit',
+        title: 'AI Product Lead',
+        summary: 'Strong fit.',
+        fitScore: 91,
+        nextAction: 'Prepare tailored intro.'
+      },
+      { id: 'result-high', now: '2026-07-22T10:02:00.000Z' }
+    )
+  ]
+
+  assert.deepEqual(
+    createFinderPipelineView(candidates).map((candidate) => candidate.id),
+    ['result-high', 'result-low', 'result-missing']
+  )
+})
+
+test('finder pipeline view filters by status score and next action', () => {
+  const job = createFinderSearchJob(
+    { kind: 'investor', label: 'Funds', query: 'agri seed funds' },
+    { id: 'job-2', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const readyHigh = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:investor:ready-high',
+      partnerName: 'Ready High',
+      title: 'Seed fund',
+      summary: 'Strong investor fit.',
+      fitScore: 86,
+      nextAction: 'Check ticket size.'
+    },
+    { id: 'ready-high', now: '2026-07-22T10:01:00.000Z' }
+  )
+  const readyLow = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:investor:ready-low',
+      partnerName: 'Ready Low',
+      title: 'Seed fund',
+      summary: 'Lower fit.',
+      fitScore: 58,
+      nextAction: 'Keep for later.'
+    },
+    { id: 'ready-low', now: '2026-07-22T10:02:00.000Z' }
+  )
+  const importedHigh = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:investor:imported-high',
+        partnerName: 'Imported High',
+        title: 'Climate fund',
+        summary: 'Already imported.',
+        fitScore: 93
+      },
+      { id: 'imported-high', now: '2026-07-22T10:03:00.000Z' }
+    ),
+    status: 'imported'
+  }
+
+  assert.deepEqual(
+    createFinderPipelineView([readyLow, importedHigh, readyHigh], {
+      status: 'ready',
+      minFitScore: 80,
+      requiresNextAction: true,
+      sortMode: 'next_action'
+    }).map((candidate) => candidate.id),
+    ['ready-high']
   )
 })

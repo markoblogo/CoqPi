@@ -11,48 +11,45 @@
 
 CoqPi is a private local desktop application for stressful interview and professional call situations in English and French. It runs as an Electron + React + TypeScript app, keeps API access in the Electron backend, and is designed to stay readable under pressure.
 
-## Current scope
+## Current product blocks
 
-- Realtime transcription v0 over OpenAI Realtime
-- Automatic assistant analysis after each completed utterance, with manual override
-- Local auto-analysis guard for EN/FR live-loop input: explicit Russian/Cyrillic background speech and too-short noise are ignored before provider analysis and excluded from the automatic transcript window.
-- Live test cockpit showing what is being listened to, what was ignored, what can be sent to assistant, active pack context, and answer freshness.
-- Live smoke checklist in the Test panel for one-step-at-a-time manual readiness checks.
-- Live smoke readiness pack summarizing setup, selected context, mock path, assistant freshness, and pending real mic smoke.
-- Mock Transcript Mode for local UI testing, with job interview, investor call, partner call, French interview, and mixed EN/FR scenarios.
-- Local profile and per-call session context
-- Counterparty pack quality diagnostics showing strong/usable/weak/blocked context and concrete fixes before a call.
-- Manual prep preview card summarizing company/role/goal, selected pack quality, assistant payload size, and weak fields.
-- Assistant output quality fixtures for EN/FR interview-style prompts without using the microphone.
-- Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
-- Finder Search foundation: local search jobs, candidate results, statuses (`draft`, `ready`, `imported`, `rejected`), append-only backend history, and one-click candidate import into selected context packs.
-- Finder Runner payload ingress: paste/mock JSON from a future search module, soft-accept valid candidate results, show item errors, and import candidates locally before turning them into context packs.
-- Finder candidate review fields: `fitScore`, `whyRelevant`, `missingInfo`, and `nextAction` help filter candidates before outreach and are carried into the context pack on import.
-- Audio input selection and local level meter
-- Secure local API key storage via Electron `safeStorage` when available
-- Cost guardrails and session counters
-- Local append-only receipts for external provider decisions and latency
+### 1. Live assistant and translator
 
-Additional session-aware behavior:
+- OpenAI Realtime microphone transcription for English/French calls.
+- Automatic assistant analysis after completed utterances, with manual override.
+- Russian explanations: short meaning, detected question, answer options in EN/FR, answer meaning, and keywords to remember.
+- Local EN/FR guard ignores obvious Russian/Cyrillic background speech and too-short noise before auto-analysis.
+- Live cockpit shows listening status, ignored transcript count, assistant freshness, active pack context, timeout/budget/retry diagnostics, and recovery actions.
+- Mock Transcript Mode covers job interview, investor call, partner call, French interview, and mixed EN/FR scenarios without using the microphone.
+- OpenAI remains the primary assistant provider; Ollama can be used as text-analysis fallback only for operational/provider errors.
 
-- EN/FR assistant retrieval can be restricted to selected counterparty pack kinds (`job`, `partner`, `investor`, `accelerator`, `other`) based on session context.
-- Session prep now lets you pin specific counterparty/job/investor packs to the active call session (`selectedCounterpartyPackIds`) so assistant retrieval can target only those packs.
-- Counterparty packs show the same session eligibility diagnostics used by the assistant route, so blocked context is visible before a call.
-- Counterparty packs also show quality score and fix hints for summary/context/link completeness.
-- Prepare view summarizes the current draft before saving, so missing fields and weak selected packs are visible before a call.
-- Retrieval filtering has an explicit strict allowlist contract: when pack IDs are provided, only those packs are candidates.
-- Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis, so disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
-- Assistant quality fixtures inspect the actual provider prompt and verify that selected packs are included while unselected packs stay out of the answer path.
-- Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
-- Finder search jobs/results are local-only source-truth records persisted under the Personal Knowledge Core `finder/` directory with append-only events, content hashes, provenance, and status history; this step does not scrape sites, call search APIs, or run scheduled outbound monitoring.
-- Finder runner payload import is manual/mock only. CoqPi accepts JSON results but does not execute searches or browse the web from this path.
-- Finder candidate review is evidence/curation metadata, not an automatic outreach decision; imported review context remains private and session-scoped through selected packs.
+### 2. Finder for jobs, partners, investors, and accelerators
+
+- Local search jobs and candidate results are stored under the Personal Knowledge Core `finder/` directory with provenance, content hashes, append-only events, and status history.
+- Current statuses are `draft`, `ready`, `imported`, and `rejected`.
+- Finder Runner payload ingress accepts manual/mock JSON from a future search module, soft-accepts valid candidates, returns item errors, and does not browse or scrape from this path.
+- Candidate review fields (`fitScore`, `whyRelevant`, `missingInfo`, `nextAction`) are stored, shown in the UI, and carried into the imported context pack.
+- Prioritized pipeline view sorts and filters candidates by fit score, status, and next action so the Finder tab works as a review funnel.
+- Importing a candidate creates a selected counterparty pack for the active session.
+
+### 3. Personal knowledge and session context
+
+- Local profile context plus per-call session fields: company, role, context, goal, notes, and selected counterparty packs.
+- Counterparty packs include source, owner, classification, retention, scope, links, quality diagnostics, and session eligibility.
+- Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis. Disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
+- Assistant retrieval uses a strict allowlist: when selected pack IDs are provided, only those packs are candidates.
+- Assistant quality fixtures inspect the provider prompt and verify that selected packs are included while unselected packs stay out of the answer path.
+
+### Not implemented yet
+
+- No outbound Finder runner, scheduler, scraping, search APIs, or automatic outreach.
+- No system audio routing, voice output, phone integration, or offline realtime STT.
+- No full vector RAG/ranking layer yet; current retrieval is strict selected-pack context.
+- No training mode yet.
 
 Prompt/skill improvement is governed by an optional local skill-quality pipeline in [`docs/SKILL_QUALITY_PIPELINE.md`](docs/SKILL_QUALITY_PIPELINE.md). It is for synthetic or explicitly recorded mock transcript evidence only: bounded candidate edits, held-out validation, rejected-edit memory, and owner acceptance before any `best_skill.md` export.
 
 External AI-engineering examples are tracked in [`docs/AI_ENGINEERING_REFERENCE_INDEX.md`](docs/AI_ENGINEERING_REFERENCE_INDEX.md) as references only. They do not install code, change realtime behavior, add providers, or authorize use on live calls.
-
-No phone system integration, voice output, system audio routing, vector DB, or new AI capabilities are implemented in this step.
 
 ## Local installation
 
@@ -273,21 +270,12 @@ docs/
   UX_PRINCIPLES.md
 ```
 
-## Next planned steps
+## Next development passes
 
-1. Test the live loop with a microphone and real calls; tune turn segmentation and transcript quality. The app now locally ignores obvious non-EN/FR background speech before auto-analysis, but real noisy-call tuning still needs manual smoke testing.
-2. ✅ Added OpenAI-to-Ollama runtime fallback for text assistant analysis with governance and retry-policy checks; next iteration will refine model-specific routing policies.
-3. ✅ Added batch-friendly finder/context integration: single and batch counterparty pack ingest, preview/import UX, and retrieval-kind gating for interview/founder modes.
-4. ✅ Added Finder Search foundation: local search job/result contracts, backend source-truth storage, and UI, with candidate import into selected context packs.
-5. ✅ Added Finder Runner contract: manual/mock runner JSON can create local search jobs/results without outbound monitoring.
-6. ✅ Added Finder candidate review/scoring: fit score, relevance reason, missing info, and next action are stored and carried into imported packs.
-7. ✅ Pass 7/8 completion: finder batch import now flows through session context into selected pack IDs used by `analyzeRecentTranscript`/retrieval.
-8. ✅ Pass 9 hardening: timeout/budget/retry UX now has cooldown-aware hints and dedicated regression checks.
-9. ✅ Pass 10 hardening: provider retryability is policy-driven (`isRetryableProviderError`), non-retryable errors are surfaced as `provider_not_retryable`, and UI distinguishes retry-blocked state.
-10. ✅ Pass 11 communication slice: assistant status now includes explicit blocked/recovery diagnostics and manual-recovery checks for retry-blocked flow.
-11. ✅ Selected pack source-of-truth pass: counterparty packs are versioned/redacted at storage, selected pack IDs are cleaned through UI/session/analyze paths, and stale packs are blocked before assistant retrieval.
-12. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
-13. Add training mode using the same profile, session-context, and assistant-provider layers.
+1. Finder Outreach Prep Pack: turn a reviewed candidate into a compact outreach/interview preparation card before importing it into Live.
+2. Knowledge ingestion quality: improve source lifecycle, classification, and retrieval readiness for profile/respondent materials before adding vector retrieval.
+3. Live microphone tuning: run the short real-call smoke and tune turn segmentation/noise behavior from observed failures.
+4. Finder runner implementation: add a bounded local/manual runner adapter after the current JSON contract is stable.
 
 The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).
 

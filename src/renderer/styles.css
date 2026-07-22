@@ -1082,6 +1082,32 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.finder-pipeline-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #171d24;
+}
+
+.finder-pipeline-header {
+  display: grid;
+  gap: 2px;
+}
+
+.finder-pipeline-header strong {
+  color: #e5edf4;
+  font-size: var(--font-sm);
+}
+
+.finder-pipeline-header span {
+  color: #99abbc;
+  font-size: var(--font-xs);
+}
+
 .finder-grid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -1759,7 +1785,8 @@ button:disabled {
   }
 
   .finder-grid,
-  .finder-status-strip {
+  .finder-status-strip,
+  .finder-pipeline-controls {
     grid-template-columns: 1fr;
   }
 }

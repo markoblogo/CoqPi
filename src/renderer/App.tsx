@@ -106,8 +106,11 @@ import {
 } from '@shared/finder-preview-state'
 import {
   createContextPackDraftFromFinderResult,
+  createFinderPipelineView,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
+  type FinderPipelineSortMode,
+  type FinderPipelineStatusFilter,
   type FinderRunnerPayloadPreviewResult
 } from '@shared/finder-search-module'
 import {
@@ -700,6 +703,15 @@ export const App = () => {
   const [finderRunnerPayloadText, setFinderRunnerPayloadText] = useState('')
   const [finderRunnerPayloadPreview, setFinderRunnerPayloadPreview] =
     useState<FinderRunnerPayloadPreviewResult | null>(null)
+  const [finderPipelineStatusFilter, setFinderPipelineStatusFilter] =
+    useState<FinderPipelineStatusFilter>('all')
+  const [finderPipelineSortMode, setFinderPipelineSortMode] =
+    useState<FinderPipelineSortMode>('fit_desc')
+  const [finderPipelineMinFitScore, setFinderPipelineMinFitScore] = useState('')
+  const [
+    finderPipelineRequiresNextAction,
+    setFinderPipelineRequiresNextAction
+  ] = useState(false)
   const finderPayloadCandidatesCount = counterpartyFinderPayloadItems.length
   const finderPayloadSelectionStats =
     getFinderPreviewSelectionStats(counterpartyFinderPayloadItems)
@@ -712,11 +724,22 @@ export const App = () => {
     getFinderSearchStatusCounts(finderSearchJobs)
   const selectedFinderSearchJob =
     finderSearchJobs.find((job) => job.id === selectedFinderSearchJobId) ?? null
-  const selectedFinderSearchResults = selectedFinderSearchJob
+  const selectedFinderSearchResultsRaw = selectedFinderSearchJob
     ? finderCandidateResults.filter(
         (result) => result.jobId === selectedFinderSearchJob.id
       )
     : []
+  const selectedFinderSearchResults = createFinderPipelineView(
+    selectedFinderSearchResultsRaw,
+    {
+      status: finderPipelineStatusFilter,
+      sortMode: finderPipelineSortMode,
+      minFitScore: finderPipelineMinFitScore.trim()
+        ? Number(finderPipelineMinFitScore)
+        : undefined,
+      requiresNextAction: finderPipelineRequiresNextAction
+    }
+  )
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [contextSourceDraft, setContextSourceDraft] = useState(
     emptyContextSourceDraft
@@ -5256,10 +5279,78 @@ export const App = () => {
                           </button>
                         </div>
                       </div>
+                      <div className="finder-pipeline-controls">
+                        <div className="finder-pipeline-header">
+                          <strong>Pipeline view</strong>
+                          <span>
+                            Showing {selectedFinderSearchResults.length} of{' '}
+                            {selectedFinderSearchResultsRaw.length}
+                          </span>
+                        </div>
+                        <label className="settings-row">
+                          <span className="settings-row-label">Status</span>
+                          <select
+                            onChange={(event) =>
+                              setFinderPipelineStatusFilter(
+                                event.target.value as FinderPipelineStatusFilter
+                              )
+                            }
+                            value={finderPipelineStatusFilter}
+                          >
+                            <option value="all">all</option>
+                            <option value="ready">ready</option>
+                            <option value="imported">imported</option>
+                            <option value="rejected">rejected</option>
+                          </select>
+                        </label>
+                        <label className="settings-row">
+                          <span className="settings-row-label">Sort</span>
+                          <select
+                            onChange={(event) =>
+                              setFinderPipelineSortMode(
+                                event.target.value as FinderPipelineSortMode
+                              )
+                            }
+                            value={finderPipelineSortMode}
+                          >
+                            <option value="fit_desc">fit high first</option>
+                            <option value="fit_asc">fit low first</option>
+                            <option value="status">status priority</option>
+                            <option value="next_action">next action first</option>
+                          </select>
+                        </label>
+                        <label className="settings-row">
+                          <span className="settings-row-label">Min fit</span>
+                          <input
+                            max={100}
+                            min={0}
+                            onChange={(event) =>
+                              setFinderPipelineMinFitScore(event.target.value)
+                            }
+                            placeholder="any"
+                            type="number"
+                            value={finderPipelineMinFitScore}
+                          />
+                        </label>
+                        <label className="settings-row-checkbox">
+                          <input
+                            checked={finderPipelineRequiresNextAction}
+                            onChange={(event) =>
+                              setFinderPipelineRequiresNextAction(
+                                event.target.checked
+                              )
+                            }
+                            type="checkbox"
+                          />
+                          <span>Has next action</span>
+                        </label>
+                      </div>
                       <div className="finder-table">
                         {selectedFinderSearchResults.length === 0 ? (
                           <div className="context-source-empty">
-                            No candidates for this job yet.
+                            {selectedFinderSearchResultsRaw.length === 0
+                              ? 'No candidates for this job yet.'
+                              : 'No candidates match the current pipeline filters.'}
                           </div>
                         ) : (
                           selectedFinderSearchResults.map((result) => (

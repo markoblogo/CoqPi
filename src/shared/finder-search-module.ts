@@ -9,6 +9,21 @@ import type {
   FinderSearchStatusCounts
 } from './app-types'
 
+export type FinderPipelineStatusFilter = 'all' | FinderCandidateResult['status']
+
+export type FinderPipelineSortMode =
+  | 'fit_desc'
+  | 'fit_asc'
+  | 'status'
+  | 'next_action'
+
+export interface FinderPipelineFilters {
+  status?: FinderPipelineStatusFilter
+  sortMode?: FinderPipelineSortMode
+  minFitScore?: number
+  requiresNextAction?: boolean
+}
+
 const sanitizeText = (value: unknown, maxLength = 1200) =>
   typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
 
@@ -307,3 +322,81 @@ export const getFinderSearchStatusCounts = (
     }),
     { draft: 0, ready: 0, imported: 0, rejected: 0 }
   )
+
+const candidateStatusPriority: Record<FinderCandidateResult['status'], number> = {
+  ready: 0,
+  imported: 1,
+  rejected: 2
+}
+
+const getFitScoreForDesc = (result: FinderCandidateResult) =>
+  result.fitScore ?? -1
+
+const getFitScoreForAsc = (result: FinderCandidateResult) =>
+  result.fitScore ?? 101
+
+const compareByCreatedAtDesc = (
+  left: FinderCandidateResult,
+  right: FinderCandidateResult
+) => right.createdAt.localeCompare(left.createdAt)
+
+const compareByStatusPriority = (
+  left: FinderCandidateResult,
+  right: FinderCandidateResult
+) =>
+  candidateStatusPriority[left.status] - candidateStatusPriority[right.status]
+
+export const createFinderPipelineView = (
+  results: readonly FinderCandidateResult[],
+  filters: FinderPipelineFilters = {}
+): FinderCandidateResult[] => {
+  const status = filters.status ?? 'all'
+  const sortMode = filters.sortMode ?? 'fit_desc'
+  const minFitScore =
+    typeof filters.minFitScore === 'number' && !Number.isNaN(filters.minFitScore)
+      ? Math.max(0, Math.min(100, filters.minFitScore))
+      : undefined
+
+  return results
+    .filter((result) => status === 'all' || result.status === status)
+    .filter((result) =>
+      minFitScore === undefined ? true : (result.fitScore ?? -1) >= minFitScore
+    )
+    .filter((result) =>
+      filters.requiresNextAction ? Boolean(result.nextAction?.trim()) : true
+    )
+    .slice()
+    .sort((left, right) => {
+      if (sortMode === 'fit_asc') {
+        return (
+          getFitScoreForAsc(left) - getFitScoreForAsc(right) ||
+          compareByStatusPriority(left, right) ||
+          compareByCreatedAtDesc(left, right)
+        )
+      }
+
+      if (sortMode === 'status') {
+        return (
+          compareByStatusPriority(left, right) ||
+          getFitScoreForDesc(right) - getFitScoreForDesc(left) ||
+          compareByCreatedAtDesc(left, right)
+        )
+      }
+
+      if (sortMode === 'next_action') {
+        return (
+          Number(!left.nextAction?.trim()) -
+            Number(!right.nextAction?.trim()) ||
+          getFitScoreForDesc(right) - getFitScoreForDesc(left) ||
+          compareByStatusPriority(left, right) ||
+          compareByCreatedAtDesc(left, right)
+        )
+      }
+
+      return (
+        getFitScoreForDesc(right) - getFitScoreForDesc(left) ||
+        compareByStatusPriority(left, right) ||
+        compareByCreatedAtDesc(left, right)
+      )
+    })
+}
