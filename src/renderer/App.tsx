@@ -63,6 +63,10 @@ import {
   normalizeLinksText
 } from '@shared/counterparty-pack-import'
 import {
+  evaluateCounterpartyPackQuality,
+  formatCounterpartyPackQualityFixes
+} from '@shared/context-pack-quality'
+import {
   formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
   getSessionContextWithCounterpartyPacks,
@@ -4105,6 +4109,7 @@ export const App = () => {
                   ) : (
                     counterpartyPacks.map((pack) => {
                       const eligibility = getCounterpartyPackSessionEligibility(pack)
+                      const quality = evaluateCounterpartyPackQuality(pack)
                       const isChecked = sessionContextDraft.selectedCounterpartyPackIds.includes(
                         pack.id
                       )
@@ -4139,6 +4144,17 @@ export const App = () => {
                             >
                               session: {formatCounterpartyPackSessionEligibility(eligibility)}
                             </span>
+                            <span
+                              className={`context-pack-quality context-pack-quality-${quality.level}`}
+                              title={formatCounterpartyPackQualityFixes(quality)}
+                            >
+                              quality: {quality.label}
+                            </span>
+                            {quality.issues.length > 0 ? (
+                              <code>
+                                fix: {formatCounterpartyPackQualityFixes(quality)}
+                              </code>
+                            ) : null}
                             <code>{pack.sourceId}</code>
                           </div>
                         </div>
@@ -4617,6 +4633,7 @@ export const App = () => {
                 ) : (
                   counterpartyPacks.map((pack) => {
                     const eligibility = getCounterpartyPackSessionEligibility(pack)
+                    const quality = evaluateCounterpartyPackQuality(pack)
 
                     return (
                       <div className="context-source-item" key={pack.id}>
@@ -4652,6 +4669,17 @@ export const App = () => {
                           >
                             session: {formatCounterpartyPackSessionEligibility(eligibility)}
                           </span>
+                          <span
+                            className={`context-pack-quality context-pack-quality-${quality.level}`}
+                            title={formatCounterpartyPackQualityFixes(quality)}
+                          >
+                            quality: {quality.label}
+                          </span>
+                          {quality.issues.length > 0 ? (
+                            <code>
+                              fix: {formatCounterpartyPackQualityFixes(quality)}
+                            </code>
+                          ) : null}
                           <code>{pack.summary}</code>
                         </div>
                         <div className="context-source-actions">

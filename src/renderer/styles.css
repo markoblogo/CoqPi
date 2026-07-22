@@ -925,6 +925,26 @@ button:disabled {
   color: #f0b37e;
 }
 
+.context-source-details .context-pack-quality {
+  font-weight: 700;
+}
+
+.context-source-details .context-pack-quality-strong {
+  color: #8fd9ac;
+}
+
+.context-source-details .context-pack-quality-usable {
+  color: #cce4fb;
+}
+
+.context-source-details .context-pack-quality-weak {
+  color: #f0d08a;
+}
+
+.context-source-details .context-pack-quality-blocked {
+  color: #f0a7a7;
+}
+
 .settings-shell {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
