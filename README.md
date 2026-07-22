@@ -30,6 +30,8 @@ Additional session-aware behavior:
 - Retrieval filtering has an explicit strict allowlist contract: when pack IDs are provided, only those packs are candidates.
 - Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
 
+Prompt/skill improvement is governed by an optional local skill-quality pipeline in [`docs/SKILL_QUALITY_PIPELINE.md`](docs/SKILL_QUALITY_PIPELINE.md). It is for synthetic or explicitly recorded mock transcript evidence only: bounded candidate edits, held-out validation, rejected-edit memory, and owner acceptance before any `best_skill.md` export.
+
 No phone system integration, voice output, system audio routing, vector DB, or new AI capabilities are implemented in this step.
 
 ## Local installation
