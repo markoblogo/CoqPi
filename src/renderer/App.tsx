@@ -81,6 +81,9 @@ import {
   type SmokeChecklistStepId
 } from '@shared/smoke-checklist'
 import {
+  buildSmokeReadinessPack
+} from '@shared/smoke-readiness-pack'
+import {
   createFinderPreviewItems,
   getFinderPreviewSelectionStats,
   type CounterpartyFinderPreviewItem,
@@ -2745,11 +2748,34 @@ export const App = () => {
       [stepId]: mark
     }))
   }
+  const activeSessionPrepPreview = buildManualPrepPreview({
+    context: sessionContext,
+    availablePacks: counterpartyPacks,
+    includeProfileContext,
+    profileChars: profileContext.length
+  })
   const manualPrepPreview = buildManualPrepPreview({
     context: sessionContextDraft,
     availablePacks: counterpartyPacks,
     includeProfileContext,
     profileChars: profileContext.length
+  })
+  const smokeReadinessPack = buildSmokeReadinessPack({
+    apiKeyAvailable: configStatus.effectiveKeyAvailable,
+    selectedPackCount: sessionContext.selectedCounterpartyPackIds.length,
+    selectedPackLabel: selectedCounterpartyPackNamesLabel,
+    selectedPackQualityLevel:
+      activeSessionPrepPreview.selectedPackQualityLevel,
+    weakFieldCount: activeSessionPrepPreview.weakFields.length,
+    mockModeEnabled: isMockModeEnabled,
+    transcriptCount: transcriptUtterances.length,
+    autoWindowChars: autoAnalysisTranscriptText.trim().length,
+    assistantFreshness: assistantRelevantLastUtterance?.id
+      ? lastAnalyzedUtteranceId === assistantRelevantLastUtterance.id
+        ? 'fresh'
+        : 'stale'
+      : 'waiting',
+    realtimeReady: isRealtimeReady
   })
   const requestCostPreview = estimateAssistantRequestCost(
     lastUtterance?.text.length ?? 0,
@@ -3224,6 +3250,37 @@ export const App = () => {
               )?.description
             }
           </p>
+          <div className={`smoke-readiness smoke-readiness-${smokeReadinessPack.status}`}>
+            <div className="smoke-readiness-header">
+              <div>
+                <strong>{smokeReadinessPack.headline}</strong>
+                <span>{smokeReadinessPack.nextAction}</span>
+              </div>
+              <span>{smokeReadinessPack.status.replaceAll('_', ' ')}</span>
+            </div>
+            <div className="smoke-readiness-gates">
+              {smokeReadinessPack.gates.map((gate) => (
+                <div
+                  className={`smoke-readiness-gate smoke-readiness-gate-${gate.status}`}
+                  key={gate.id}
+                >
+                  <span>{gate.label}</span>
+                  <strong>{gate.detail}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="smoke-readiness-scenario">
+              {smokeReadinessPack.scenario.map((step) => (
+                <div
+                  className={`smoke-readiness-step smoke-readiness-step-${step.status}`}
+                  key={step.id}
+                >
+                  <span>{step.title}</span>
+                  <strong>{step.action}</strong>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="smoke-checklist">
             <div className="smoke-checklist-header">
               <div>

@@ -18,6 +18,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Local auto-analysis guard for EN/FR live-loop input: explicit Russian/Cyrillic background speech and too-short noise are ignored before provider analysis and excluded from the automatic transcript window.
 - Live test cockpit showing what is being listened to, what was ignored, what can be sent to assistant, active pack context, and answer freshness.
 - Live smoke checklist in the Test panel for one-step-at-a-time manual readiness checks.
+- Live smoke readiness pack summarizing setup, selected context, mock path, assistant freshness, and pending real mic smoke.
 - Mock Transcript Mode for local UI testing, with job interview, investor call, partner call, French interview, and mixed EN/FR scenarios.
 - Local profile and per-call session context
 - Counterparty pack quality diagnostics showing strong/usable/weak/blocked context and concrete fixes before a call.
@@ -146,6 +147,7 @@ Mock mode is for UI testing only.
 - It does not send audio.
 - It follows the same transcript-to-analysis path as a live completed utterance. Analysis therefore calls the configured assistant provider when auto-analysis or a manual action is enabled.
 - The scenario selector covers default EN/FR, job interview, investor call, partner call, French interview, and mixed EN/FR prompts.
+- The live smoke readiness pack gives one compact status before a call: setup, selected context, mock transcript path, assistant freshness, and real mic readiness.
 - The live smoke checklist keeps local Done/Blocker marks and shows the next active step from current app readiness.
 
 Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.

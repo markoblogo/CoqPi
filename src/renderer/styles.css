@@ -1208,6 +1208,98 @@ button:disabled {
   line-height: 1.35;
 }
 
+.smoke-readiness {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #151b22;
+}
+
+.smoke-readiness-header,
+.smoke-readiness-gates,
+.smoke-readiness-scenario {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.smoke-readiness-header {
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.smoke-readiness-header > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.smoke-readiness-header strong,
+.smoke-readiness-gate strong,
+.smoke-readiness-step strong {
+  color: #eef3f8;
+  font-size: var(--font-sm);
+  overflow-wrap: anywhere;
+}
+
+.smoke-readiness-header span,
+.smoke-readiness-gate span,
+.smoke-readiness-step span {
+  color: #a9b8c6;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.smoke-readiness-header > span {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border: 1px solid #425063;
+  border-radius: 999px;
+  background: #1d2630;
+}
+
+.smoke-readiness-gates {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.smoke-readiness-scenario {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.smoke-readiness-gate,
+.smoke-readiness-step {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 5px 6px;
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #1a212a;
+}
+
+.smoke-readiness-gate-ready,
+.smoke-readiness-step-ready {
+  border-color: #355848;
+  background: #14221b;
+}
+
+.smoke-readiness-gate-blocked,
+.smoke-readiness-step-blocked {
+  border-color: #7c4747;
+  background: #261616;
+}
+
+.smoke-readiness-ready_for_mock {
+  border-color: #385470;
+}
+
+.smoke-readiness-ready_for_real_mic {
+  border-color: #355848;
+}
+
 .smoke-checklist {
   display: grid;
   gap: var(--space-2);
@@ -1297,6 +1389,11 @@ button:disabled {
   .test-cockpit {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .smoke-readiness-gates,
+  .smoke-readiness-scenario {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
@@ -1328,6 +1425,11 @@ button:disabled {
   }
 
   .manual-prep-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .smoke-readiness-gates,
+  .smoke-readiness-scenario {
     grid-template-columns: 1fr;
   }
 
