@@ -67,6 +67,9 @@ import {
   formatCounterpartyPackQualityFixes
 } from '@shared/context-pack-quality'
 import {
+  buildManualPrepPreview
+} from '@shared/manual-prep-preview'
+import {
   formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
   getSessionContextWithCounterpartyPacks,
@@ -2742,6 +2745,12 @@ export const App = () => {
       [stepId]: mark
     }))
   }
+  const manualPrepPreview = buildManualPrepPreview({
+    context: sessionContextDraft,
+    availablePacks: counterpartyPacks,
+    includeProfileContext,
+    profileChars: profileContext.length
+  })
   const requestCostPreview = estimateAssistantRequestCost(
     lastUtterance?.text.length ?? 0,
     (includeProfileContext ? profileContext.length : 0) +
@@ -4034,6 +4043,46 @@ export const App = () => {
                 </div>
               )}
               <div className="prepare-placeholder compact-form-grid">
+                <div className="manual-prep-preview">
+                  <div className="manual-prep-preview-header">
+                    <div>
+                      <strong>{manualPrepPreview.sessionLabel}</strong>
+                      <span>{manualPrepPreview.goalLabel}</span>
+                    </div>
+                    <span
+                      className={`context-pack-quality context-pack-quality-${manualPrepPreview.selectedPackQualityLevel}`}
+                    >
+                      {manualPrepPreview.selectedPackQualityLabel}
+                    </span>
+                  </div>
+                  <div className="manual-prep-preview-grid">
+                    <div>
+                      <span>Context</span>
+                      <strong>{manualPrepPreview.contextLabel}</strong>
+                    </div>
+                    <div>
+                      <span>Selected pack</span>
+                      <strong>{manualPrepPreview.selectedPackLabel}</strong>
+                    </div>
+                    <div>
+                      <span>Assistant payload</span>
+                      <strong>{manualPrepPreview.assistantPayloadLabel}</strong>
+                    </div>
+                  </div>
+                  {manualPrepPreview.weakFields.length > 0 ? (
+                    <div className="manual-prep-fixes">
+                      {manualPrepPreview.weakFields.slice(0, 4).map((field) => (
+                        <span key={field.id} title={field.fix}>
+                          {field.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="manual-prep-fixes manual-prep-fixes-ready">
+                      Ready for a focused call.
+                    </div>
+                  )}
+                </div>
                 <label className="settings-row">
                   <span className="settings-row-label">Company</span>
                   <input

@@ -21,6 +21,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Mock Transcript Mode for local UI testing, with job interview, investor call, partner call, French interview, and mixed EN/FR scenarios.
 - Local profile and per-call session context
 - Counterparty pack quality diagnostics showing strong/usable/weak/blocked context and concrete fixes before a call.
+- Manual prep preview card summarizing company/role/goal, selected pack quality, assistant payload size, and weak fields.
 - Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
 - Audio input selection and local level meter
 - Secure local API key storage via Electron `safeStorage` when available
@@ -33,6 +34,7 @@ Additional session-aware behavior:
 - Session prep now lets you pin specific counterparty/job/investor packs to the active call session (`selectedCounterpartyPackIds`) so assistant retrieval can target only those packs.
 - Counterparty packs show the same session eligibility diagnostics used by the assistant route, so blocked context is visible before a call.
 - Counterparty packs also show quality score and fix hints for summary/context/link completeness.
+- Prepare view summarizes the current draft before saving, so missing fields and weak selected packs are visible before a call.
 - Retrieval filtering has an explicit strict allowlist contract: when pack IDs are provided, only those packs are candidates.
 - Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis, so disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
 - Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
