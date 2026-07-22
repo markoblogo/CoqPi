@@ -116,6 +116,7 @@ import {
   createContextPackDraftFromFinderResult,
   createFinderOutreachPrepPack,
   createFinderPipelineView,
+  explainFinderCandidateScore,
   formatFinderOutreachDraftForExport,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
@@ -5535,7 +5536,13 @@ export const App = () => {
                                   ))}
                               </ul>
                             ) : null}
-                            {finderOwnerSourcePreviewItems.map((item) => (
+                            {finderOwnerSourcePreviewItems.map((item) => {
+                              const scoreExplanation = explainFinderCandidateScore({
+                                ...item.draft,
+                                kind: selectedFinderSearchJob.kind
+                              })
+
+                              return (
                               <div className="finder-preview-item" key={item.draft.sourceId}>
                                 <label className="settings-row settings-row-inline">
                                   <input
@@ -5562,6 +5569,20 @@ export const App = () => {
                                       : `Candidate ${item.index + 1}`}
                                   </span>
                                 </label>
+                                <div className="finder-score-explanation">
+                                  <strong>{scoreExplanation.fitLabel}</strong>
+                                  <span>{scoreExplanation.scoreReason}</span>
+                                  {scoreExplanation.positiveSignals.length > 0 ? (
+                                    <span>
+                                      Signals: {scoreExplanation.positiveSignals.join(', ')}
+                                    </span>
+                                  ) : null}
+                                  {scoreExplanation.improvements.length > 0 ? (
+                                    <span>
+                                      Improve: {scoreExplanation.improvements.join(', ')}
+                                    </span>
+                                  ) : null}
+                                </div>
                                 <div className="compact-form-grid">
                                   <label className="settings-row">
                                     <span className="settings-row-label">
@@ -5663,7 +5684,8 @@ export const App = () => {
                                   </label>
                                 </div>
                               </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         ) : null}
                         <div className="button-row settings-actions">
@@ -6081,7 +6103,11 @@ export const App = () => {
                               : 'No candidates match the current pipeline filters.'}
                           </div>
                         ) : (
-                          selectedFinderSearchResults.map((result) => (
+                          selectedFinderSearchResults.map((result) => {
+                            const scoreExplanation =
+                              explainFinderCandidateScore(result)
+
+                            return (
                             <div
                               className={`finder-result-row ${
                                 focusedFinderCandidateResult?.id === result.id
@@ -6110,6 +6136,20 @@ export const App = () => {
                                     : ` · runner: ${result.score}/100`}
                                 </span>
                                 <code>{result.summary}</code>
+                                <div className="finder-score-explanation">
+                                  <strong>{scoreExplanation.fitLabel}</strong>
+                                  <span>{scoreExplanation.scoreReason}</span>
+                                  {scoreExplanation.positiveSignals.length > 0 ? (
+                                    <span>
+                                      Signals: {scoreExplanation.positiveSignals.join(', ')}
+                                    </span>
+                                  ) : null}
+                                  {scoreExplanation.improvements.length > 0 ? (
+                                    <span>
+                                      Improve: {scoreExplanation.improvements.join(', ')}
+                                    </span>
+                                  ) : null}
+                                </div>
                                 {result.whyRelevant ? (
                                   <code>why: {result.whyRelevant}</code>
                                 ) : null}
@@ -6158,7 +6198,8 @@ export const App = () => {
                                 </button>
                               </div>
                             </div>
-                          ))
+                            )
+                          })
                         )}
                       </div>
                     </>

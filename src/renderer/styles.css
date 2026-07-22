@@ -1096,6 +1096,25 @@ button:disabled {
   background: #171e26;
 }
 
+.finder-score-explanation {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border-left: 2px solid #6f8aa3;
+  background: #151b22;
+}
+
+.finder-score-explanation strong {
+  color: #e5edf4;
+  font-size: var(--font-xs);
+}
+
+.finder-score-explanation span {
+  color: #9fb1c1;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
 .finder-pipeline-controls {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

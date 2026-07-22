@@ -1044,6 +1044,71 @@ export const createFinderPipelineView = (
     })
 }
 
+const normalizeImprovement = (value: string) =>
+  value
+    .replace(/^verify\s+/i, '')
+    .replace(/\s+before outreach\.?$/i, '')
+    .replace(/\.$/, '')
+    .trim()
+
+const splitScoreImprovements = (text: string) =>
+  text
+    .split(/\n|;|,/)
+    .map(normalizeImprovement)
+    .filter(Boolean)
+    .slice(0, 5)
+
+export interface FinderCandidateScoreExplanation {
+  fitLabel: string
+  scoreReason: string
+  positiveSignals: string[]
+  improvements: string[]
+}
+
+export const explainFinderCandidateScore = (
+  result: FinderCandidateResult | (FinderCandidateResultDraft & { kind: CounterpartyContextPackKind })
+): FinderCandidateScoreExplanation => {
+  const evidenceText = [
+    result.summary,
+    result.context,
+    result.whyRelevant,
+    result.nextAction
+  ]
+    .filter(Boolean)
+    .join('\n')
+  const positiveSignals = [
+    result.partnerName ? 'named target' : '',
+    result.title ? 'clear opportunity' : '',
+    (result.links ?? []).length > 0 ? 'source link' : '',
+    getEmailsFromText(evidenceText).length > 0 ? 'contact' : '',
+    /(?:location|paris|france|europe|remote|lyon|london|berlin)/i.test(evidenceText)
+      ? 'location'
+      : '',
+    /(?:deadline|applications? close|apply by|\d{4}-\d{2}-\d{2})/i.test(evidenceText)
+      ? 'deadline'
+      : '',
+    result.whyRelevant ? 'relevance rationale' : '',
+    result.nextAction ? 'next action' : ''
+  ].filter(Boolean)
+  const improvements = splitScoreImprovements(result.missingInfo ?? '')
+  const score = result.fitScore
+  const scoreReason =
+    score === undefined
+      ? 'No fit score yet; add evidence before prioritizing this candidate.'
+      : score >= 80
+      ? 'Strong fit: enough evidence exists to prepare outreach or session context.'
+      : score >= 60
+      ? 'Usable fit: review missing fields before prioritizing outreach.'
+      : 'Weak fit: important evidence is missing; enrich before using this in a session.'
+
+  return {
+    fitLabel: getFitLabel(score),
+    scoreReason,
+    positiveSignals,
+    improvements
+  }
+}
+
 const splitActionableLines = (text: string) =>
   text
     .split(/\n|;/)

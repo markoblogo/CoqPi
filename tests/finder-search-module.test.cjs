@@ -11,6 +11,7 @@ const {
   createFinderSearchJob,
   createManualFinderRunnerCandidates,
   createFinderPipelineView,
+  explainFinderCandidateScore,
   formatFinderOutreachDraftForExport,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
@@ -637,6 +638,55 @@ test('finder pipeline view filters by status score and next action', () => {
     }).map((candidate) => candidate.id),
     ['ready-high']
   )
+})
+
+test('finder candidate score explanation surfaces reasons and improvements', () => {
+  const job = createFinderSearchJob(
+    { kind: 'job', label: 'Jobs', query: 'product manager france' },
+    { id: 'job-score-explain', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const strong = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:job:strong-explained',
+      partnerName: 'Northfield Labs',
+      title: 'Senior Product Manager',
+      summary:
+        'Owner source. Location: Paris, France. Contact: hiring@northfield.example. Deadline: 2026-08-15.',
+      links: ['https://northfield.example/careers'],
+      fitScore: 90,
+      whyRelevant: 'Product management role in French agtech market.',
+      missingInfo: 'Verify salary range, remote policy before outreach.',
+      nextAction: 'Prepare tailored CV/interview pack.'
+    },
+    { id: 'strong-explained', now: '2026-07-22T10:01:00.000Z' }
+  )
+  const weak = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:job:weak-explained',
+      partnerName: 'Unknown Role',
+      title: 'Product role',
+      summary: 'Sparse source.',
+      fitScore: 55,
+      missingInfo:
+        'Verify source URL, contact, salary range, interview process before outreach.'
+    },
+    { id: 'weak-explained', now: '2026-07-22T10:02:00.000Z' }
+  )
+  const strongExplanation = explainFinderCandidateScore(strong)
+  const weakExplanation = explainFinderCandidateScore(weak)
+
+  assert.equal(strongExplanation.fitLabel, '90/100 strong')
+  assert.match(strongExplanation.scoreReason, /Strong/)
+  assert.ok(strongExplanation.positiveSignals.includes('source link'))
+  assert.ok(strongExplanation.positiveSignals.includes('contact'))
+  assert.ok(strongExplanation.positiveSignals.includes('deadline'))
+  assert.ok(strongExplanation.improvements.includes('salary range'))
+  assert.equal(weakExplanation.fitLabel, '55/100 weak')
+  assert.match(weakExplanation.scoreReason, /Weak/)
+  assert.ok(weakExplanation.improvements.includes('source URL'))
+  assert.ok(weakExplanation.improvements.includes('interview process'))
 })
 
 test('finder outreach prep pack summarizes what to say and ask', () => {
