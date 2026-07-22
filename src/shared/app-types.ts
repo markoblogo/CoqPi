@@ -431,6 +431,15 @@ export interface SmokeTestNotesResult {
   notes: SmokeTestNote[]
 }
 
+export interface SmokeFixQueueItem {
+  id: string
+  title: string
+  sourceNoteId: string
+  createdAt: string
+  sessionLabel?: string
+  selectedPackLabel?: string
+}
+
 export interface OpenAIKeyStatus {
   hasStoredKey: boolean
   hasEnvKey: boolean

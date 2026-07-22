@@ -86,6 +86,9 @@ import {
   buildSmokeReadinessPack
 } from '@shared/smoke-readiness-pack'
 import {
+  buildSmokeFixQueue
+} from '@shared/smoke-fix-queue'
+import {
   preTestResetPlan
 } from '@shared/pre-test-reset'
 import {
@@ -2854,6 +2857,7 @@ export const App = () => {
       : 'waiting',
     realtimeReady: isRealtimeReady
   })
+  const smokeFixQueue = buildSmokeFixQueue(smokeNotes)
   const canResetForTest =
     realtimeStatus === 'idle' ||
     realtimeStatus === 'stopped' ||
@@ -3606,6 +3610,35 @@ export const App = () => {
                 <p>{smokeNotes[0].nextFix || smokeNotes[0].broken || smokeNotes[0].worked}</p>
               </div>
             ) : null}
+            <div className="smoke-fix-queue">
+              <div className="smoke-fix-queue-header">
+                <strong>Post-smoke fix queue</strong>
+                <span>{smokeFixQueue.length} pending from saved notes</span>
+              </div>
+              {smokeFixQueue.length === 0 ? (
+                <div className="smoke-fix-queue-empty">
+                  Save a smoke note with Next fix to start the queue.
+                </div>
+              ) : (
+                <div className="smoke-fix-queue-list">
+                  {smokeFixQueue.map((item, index) => (
+                    <div className="smoke-fix-queue-item" key={item.id}>
+                      <span>{index === 0 ? 'Next' : `#${index + 1}`}</span>
+                      <strong>{item.title}</strong>
+                      <code>
+                        {[
+                          item.sessionLabel,
+                          item.selectedPackLabel,
+                          new Date(item.createdAt).toLocaleString()
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </code>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           {mockError ? <div className="error-box">{mockError}</div> : null}
         </div>

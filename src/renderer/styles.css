@@ -1394,6 +1394,59 @@ button:disabled {
   margin: 0;
 }
 
+.smoke-fix-queue {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #151b22;
+}
+
+.smoke-fix-queue-header,
+.smoke-fix-queue-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.smoke-fix-queue-header {
+  justify-content: space-between;
+}
+
+.smoke-fix-queue-header strong,
+.smoke-fix-queue-item strong {
+  color: #eef3f8;
+  font-size: var(--font-sm);
+}
+
+.smoke-fix-queue-header span,
+.smoke-fix-queue-empty,
+.smoke-fix-queue-item span,
+.smoke-fix-queue-item code {
+  color: #a9b8c6;
+  font-size: var(--font-xs);
+}
+
+.smoke-fix-queue-list {
+  display: grid;
+  gap: 5px;
+}
+
+.smoke-fix-queue-item {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  padding: 5px 6px;
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #1a212a;
+}
+
+.smoke-fix-queue-item code {
+  grid-column: 2;
+  overflow-wrap: anywhere;
+}
+
 .smoke-checklist {
   display: grid;
   gap: var(--space-2);
