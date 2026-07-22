@@ -1013,6 +1013,131 @@ button:disabled {
   color: #f0a7a7;
 }
 
+.finder-status-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.finder-status-card,
+.finder-selected-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #171d24;
+}
+
+.finder-status-card {
+  display: grid;
+  gap: 2px;
+}
+
+.finder-status-card span,
+.finder-selected-card span,
+.finder-selected-card code,
+.finder-result-row span,
+.finder-result-row code {
+  color: #99abbc;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.finder-status-card strong,
+.finder-selected-card strong,
+.finder-result-row strong {
+  color: #e5edf4;
+  font-size: var(--font-sm);
+}
+
+.finder-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: var(--space-2);
+}
+
+.finder-column,
+.finder-table {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.finder-row,
+.finder-result-row {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #1a212a;
+  color: inherit;
+  text-align: left;
+}
+
+.finder-row {
+  grid-template-columns: 78px minmax(0, 1fr);
+}
+
+.finder-row:hover,
+.finder-row-selected {
+  border-color: #5d748b;
+  background: #202a34;
+}
+
+.finder-row strong,
+.finder-row code {
+  overflow-wrap: anywhere;
+}
+
+.finder-row code {
+  grid-column: 2;
+  color: #99abbc;
+  font-size: var(--font-xs);
+}
+
+.finder-status {
+  justify-self: start;
+  padding: 2px 6px;
+  border: 1px solid #4a5a68;
+  border-radius: 999px;
+  color: #c7d2dc;
+  font-size: var(--font-xs);
+}
+
+.finder-status-draft {
+  border-color: #5a6570;
+  color: #c7d2dc;
+}
+
+.finder-status-ready {
+  border-color: #4f755f;
+  color: #8fd9ac;
+}
+
+.finder-status-imported {
+  border-color: #5b7390;
+  color: #a8d6ff;
+}
+
+.finder-status-rejected {
+  border-color: #7a5555;
+  color: #f0a7a7;
+}
+
+.finder-result-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .settings-shell {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
@@ -1603,6 +1728,11 @@ button:disabled {
   .settings-nav {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+
+  .finder-grid,
+  .finder-status-strip {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 560px) {
@@ -1622,6 +1752,11 @@ button:disabled {
 
   .context-source-item {
     grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .finder-row,
+  .finder-result-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .context-source-select {

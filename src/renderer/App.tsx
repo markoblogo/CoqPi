@@ -23,6 +23,10 @@ import {
   type CounterpartyFinderPayloadPreviewResult,
   type ContextSourceKind,
   type ControlState,
+  type FinderCandidateResult,
+  type FinderCandidateResultDraft,
+  type FinderSearchJob,
+  type FinderSearchJobDraft,
   type OpenAIKeyStatus,
   type RealtimeConnectionStatus,
   type SettingsMeta,
@@ -100,6 +104,13 @@ import {
   type CounterpartyFinderPreviewItem,
   toggleSelectAllFinderCandidates as toggleSelectAllFinderCandidatesModel
 } from '@shared/finder-preview-state'
+import {
+  createContextPackDraftFromFinderResult,
+  createFinderCandidateResult,
+  createFinderSearchJob,
+  getFinderSearchStatusCounts,
+  updateFinderSearchJobStatus
+} from '@shared/finder-search-module'
 import {
   AudioLevelMonitor,
   defaultAudioLevelReading,
@@ -181,6 +192,29 @@ const emptyCounterpartyPackDraft: CounterpartyPackFormDraft = {
   context: '',
   linksText: '',
   selected: true
+}
+
+const emptyFinderSearchJobDraft: FinderSearchJobDraft = {
+  kind: 'job',
+  label: '',
+  query: '',
+  goal: '',
+  notes: ''
+}
+
+type FinderCandidateFormDraft = FinderCandidateResultDraft & {
+  linksText: string
+}
+
+const emptyFinderCandidateDraft: FinderCandidateFormDraft = {
+  sourceId: '',
+  partnerName: '',
+  title: '',
+  summary: '',
+  context: '',
+  links: [],
+  linksText: '',
+  score: undefined
 }
 
 const emptySmokeNoteDraft: SmokeTestNoteDraft = {
@@ -275,6 +309,43 @@ const createTranscriptId = () => {
 
   return `utterance-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
+
+const createLocalId = (prefix: string) => {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof crypto.randomUUID === 'function'
+  ) {
+    return `${prefix}:${crypto.randomUUID()}`
+  }
+
+  return `${prefix}:${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+const readStoredList = <T,>(key: string): T[] => {
+  if (typeof localStorage === 'undefined') {
+    return []
+  }
+
+  try {
+    const raw = localStorage.getItem(key)
+    const parsed = raw ? JSON.parse(raw) : []
+
+    return Array.isArray(parsed) ? (parsed as T[]) : []
+  } catch {
+    return []
+  }
+}
+
+const writeStoredList = (key: string, value: unknown[]) => {
+  if (typeof localStorage === 'undefined') {
+    return
+  }
+
+  localStorage.setItem(key, JSON.stringify(value))
+}
+
+const finderSearchJobsStorageKey = 'coqpi.finderSearchJobs.v1'
+const finderCandidateResultsStorageKey = 'coqpi.finderCandidateResults.v1'
 
 const formatTranscriptTime = (value: string) => {
   const date = new Date(value)
@@ -594,7 +665,7 @@ export const App = () => {
   }
 
   const [activeTab, setActiveTab] = useState<
-    'live' | 'prepare' | 'context' | 'settings'
+    'live' | 'prepare' | 'finder' | 'context' | 'settings'
   >('live')
   const [controls, setControls] = useState<ControlState>(defaultControlState)
   const [configStatus, setConfigStatus] =
@@ -643,6 +714,27 @@ export const App = () => {
     string[]
   >([])
   const [isSavingCounterpartyPacks, setIsSavingCounterpartyPacks] = useState(false)
+  const [finderSearchJobs, setFinderSearchJobs] = useState<FinderSearchJob[]>(
+    () => readStoredList<FinderSearchJob>(finderSearchJobsStorageKey)
+  )
+  const [finderCandidateResults, setFinderCandidateResults] = useState<
+    FinderCandidateResult[]
+  >(() =>
+    readStoredList<FinderCandidateResult>(finderCandidateResultsStorageKey)
+  )
+  const [finderSearchDraft, setFinderSearchDraft] = useState(
+    emptyFinderSearchJobDraft
+  )
+  const [finderCandidateDraft, setFinderCandidateDraft] = useState(
+    emptyFinderCandidateDraft
+  )
+  const [selectedFinderSearchJobId, setSelectedFinderSearchJobId] = useState<
+    string | null
+  >(null)
+  const [finderSearchError, setFinderSearchError] = useState<string | null>(null)
+  const [finderSearchNotice, setFinderSearchNotice] = useState<string | null>(
+    null
+  )
   const finderPayloadCandidatesCount = counterpartyFinderPayloadItems.length
   const finderPayloadSelectionStats =
     getFinderPreviewSelectionStats(counterpartyFinderPayloadItems)
@@ -651,6 +743,15 @@ export const App = () => {
   const selectedFinderCandidatesCount = finderPayloadSelectionStats.selected
   const areAllFinderCandidatesSelected =
     finderPayloadSelectionStats.areAllSelected
+  const finderSearchStatusCounts =
+    getFinderSearchStatusCounts(finderSearchJobs)
+  const selectedFinderSearchJob =
+    finderSearchJobs.find((job) => job.id === selectedFinderSearchJobId) ?? null
+  const selectedFinderSearchResults = selectedFinderSearchJob
+    ? finderCandidateResults.filter(
+        (result) => result.jobId === selectedFinderSearchJob.id
+      )
+    : []
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [contextSourceDraft, setContextSourceDraft] = useState(
     emptyContextSourceDraft
@@ -895,6 +996,14 @@ export const App = () => {
 
     void loadAudioDeviceState()
   }, [])
+
+  useEffect(() => {
+    writeStoredList(finderSearchJobsStorageKey, finderSearchJobs)
+  }, [finderSearchJobs])
+
+  useEffect(() => {
+    writeStoredList(finderCandidateResultsStorageKey, finderCandidateResults)
+  }, [finderCandidateResults])
 
   useEffect(() => {
     if (!isAudioInputApiAvailable()) {
@@ -1781,6 +1890,135 @@ export const App = () => {
       setCounterpartyFinderPayloadPreview(null)
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
+    }
+  }
+
+  const createFinderSearchJobFromDraft = () => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const now = new Date().toISOString()
+      const job = createFinderSearchJob(finderSearchDraft, {
+        id: createLocalId('finder-search'),
+        now
+      })
+
+      setFinderSearchJobs((current) => [job, ...current])
+      setSelectedFinderSearchJobId(job.id)
+      setFinderSearchDraft(emptyFinderSearchJobDraft)
+      setFinderSearchNotice('Search job saved locally.')
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error ? error.message : 'Unable to create search job.'
+      )
+    }
+  }
+
+  const setFinderSearchJobStatus = (
+    jobId: string,
+    status: FinderSearchJob['status']
+  ) => {
+    const now = new Date().toISOString()
+    setFinderSearchJobs((current) =>
+      current.map((job) =>
+        job.id === jobId ? updateFinderSearchJobStatus(job, status, now) : job
+      )
+    )
+  }
+
+  const saveFinderCandidateResult = () => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    if (!selectedFinderSearchJob) {
+      setFinderSearchError('Select a search job before adding a candidate.')
+      return
+    }
+
+    try {
+      const candidate = createFinderCandidateResult(
+        selectedFinderSearchJob,
+        {
+          ...finderCandidateDraft,
+          links: normalizeLinksText(finderCandidateDraft.linksText)
+        },
+        {
+          id: createLocalId('finder-result'),
+          now: new Date().toISOString()
+        }
+      )
+
+      setFinderCandidateResults((current) => [candidate, ...current])
+      setFinderSearchJobStatus(selectedFinderSearchJob.id, 'ready')
+      setFinderCandidateDraft(emptyFinderCandidateDraft)
+      setFinderSearchNotice('Candidate result saved locally.')
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to save candidate result.'
+      )
+    }
+  }
+
+  const setFinderCandidateStatus = (
+    resultId: string,
+    status: FinderCandidateResult['status']
+  ) => {
+    setFinderCandidateResults((current) =>
+      current.map((result) =>
+        result.id === resultId ? { ...result, status } : result
+      )
+    )
+  }
+
+  const importFinderCandidateResult = async (result: FinderCandidateResult) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingCounterpartyPacks(true)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const draft = createContextPackDraftFromFinderResult(result)
+      const payload = await window.coqpi.contextPacks.ingestFinderPayloadBatch([
+        draft
+      ])
+      const nextPacks = payload.manifest.counterpartyPacks ?? []
+      const nextSessionContext = getSessionContextWithImportedCandidates(
+        sessionContext,
+        nextPacks,
+        [draft]
+      )
+
+      applyCounterpartyPackManifest(nextPacks, [draft])
+      setSessionContext(nextSessionContext)
+      setSessionContextDraft(nextSessionContext)
+      setFinderCandidateStatus(result.id, 'imported')
+      setFinderSearchJobStatus(result.jobId, 'imported')
+
+      try {
+        const saved = await window.coqpi.session.saveContext(nextSessionContext)
+        setSessionContext(saved.context)
+        setSessionContextDraft(saved.context)
+      } catch (error) {
+        setSessionContextError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to save session selection for imported finder result.'
+        )
+      }
+
+      setFinderSearchNotice('Finder result imported as selected context pack.')
+    } catch (error) {
+      setFinderSearchError(getCounterpartyPackErrorMessage(error))
     } finally {
       contextSourceMutationRef.current = false
       setIsSavingCounterpartyPacks(false)
@@ -3981,6 +4219,13 @@ export const App = () => {
             Prep
           </button>
           <button
+            className={activeTab === 'finder' ? 'tab-active' : ''}
+            onClick={() => setActiveTab('finder')}
+            type="button"
+          >
+            Finder
+          </button>
+          <button
             className={activeTab === 'context' ? 'tab-active' : ''}
             onClick={() => setActiveTab('context')}
             type="button"
@@ -4575,6 +4820,334 @@ export const App = () => {
                   >
                     Clear
                   </button>
+                </div>
+              </div>
+            </article>
+          </section>
+        </section>
+      ) : null}
+
+      {activeTab === 'finder' ? (
+        <section className="prepare-layout scroll-section">
+          <section className="prepare-grid prepare-grid-single">
+            <article className="panel-card context-sources-card">
+              <div className="panel-header">
+                <div>
+                  <h2>Finder</h2>
+                </div>
+                <span>{finderSearchJobs.length} local jobs</span>
+              </div>
+              <p className="context-sources-description">
+                Local foundation for search tasks. No outbound search runs here yet; a future runner can write candidate results into this contract.
+              </p>
+              {(finderSearchError || finderSearchNotice) && (
+                <div className="stack">
+                  {finderSearchError ? (
+                    <div className="error-box">{finderSearchError}</div>
+                  ) : null}
+                  {finderSearchNotice ? (
+                    <div className="info-box">{finderSearchNotice}</div>
+                  ) : null}
+                </div>
+              )}
+              <div className="finder-status-strip">
+                {(['draft', 'ready', 'imported', 'rejected'] as const).map(
+                  (status) => (
+                    <div className="finder-status-card" key={status}>
+                      <span>{status}</span>
+                      <strong>{finderSearchStatusCounts[status]}</strong>
+                    </div>
+                  )
+                )}
+              </div>
+              <div className="finder-grid">
+                <div className="finder-column">
+                  <div className="compact-form-grid context-source-form">
+                    <label className="settings-row">
+                      <span className="settings-row-label">Kind</span>
+                      <select
+                        onChange={(event) =>
+                          setFinderSearchDraft((current) => ({
+                            ...current,
+                            kind: event.target.value as CounterpartyContextPackKind
+                          }))
+                        }
+                        value={finderSearchDraft.kind}
+                      >
+                        <option value="job">job</option>
+                        <option value="partner">partner</option>
+                        <option value="investor">investor</option>
+                        <option value="accelerator">accelerator</option>
+                        <option value="other">other</option>
+                      </select>
+                    </label>
+                    <label className="settings-row">
+                      <span className="settings-row-label">Label</span>
+                      <input
+                        onChange={(event) =>
+                          setFinderSearchDraft((current) => ({
+                            ...current,
+                            label: event.target.value
+                          }))
+                        }
+                        placeholder="France product roles"
+                        value={finderSearchDraft.label}
+                      />
+                    </label>
+                    <label className="settings-row settings-row-textarea">
+                      <span className="settings-row-label">Query</span>
+                      <textarea
+                        className="prepare-textarea"
+                        onChange={(event) =>
+                          setFinderSearchDraft((current) => ({
+                            ...current,
+                            query: event.target.value
+                          }))
+                        }
+                        placeholder="What should the future finder look for?"
+                        rows={3}
+                        value={finderSearchDraft.query}
+                      />
+                    </label>
+                    <label className="settings-row">
+                      <span className="settings-row-label">Goal</span>
+                      <input
+                        onChange={(event) =>
+                          setFinderSearchDraft((current) => ({
+                            ...current,
+                            goal: event.target.value
+                          }))
+                        }
+                        placeholder="Prepare intro / interview / investor call"
+                        value={finderSearchDraft.goal}
+                      />
+                    </label>
+                    <div className="button-row settings-actions">
+                      <button
+                        onClick={() => createFinderSearchJobFromDraft()}
+                        type="button"
+                      >
+                        Add search job
+                      </button>
+                    </div>
+                  </div>
+                  <div className="finder-table" aria-live="polite">
+                    {finderSearchJobs.length === 0 ? (
+                      <div className="context-source-empty">
+                        No search jobs yet.
+                      </div>
+                    ) : (
+                      finderSearchJobs.map((job) => (
+                        <button
+                          className={`finder-row ${
+                            selectedFinderSearchJobId === job.id
+                              ? 'finder-row-selected'
+                              : ''
+                          }`}
+                          key={job.id}
+                          onClick={() => setSelectedFinderSearchJobId(job.id)}
+                          type="button"
+                        >
+                          <span
+                            className={`finder-status finder-status-${job.status}`}
+                          >
+                            {job.status}
+                          </span>
+                          <strong>{job.label}</strong>
+                          <code>{job.kind} · {job.query}</code>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="finder-column">
+                  {selectedFinderSearchJob ? (
+                    <>
+                      <div className="finder-selected-card">
+                        <div>
+                          <span>Selected job</span>
+                          <strong>{selectedFinderSearchJob.label}</strong>
+                          <code>{selectedFinderSearchJob.query}</code>
+                        </div>
+                        <div className="button-row settings-actions">
+                          <button
+                            className="button-small"
+                            onClick={() =>
+                              setFinderSearchJobStatus(
+                                selectedFinderSearchJob.id,
+                                'ready'
+                              )
+                            }
+                            type="button"
+                          >
+                            Mark ready
+                          </button>
+                          <button
+                            className="button-small"
+                            onClick={() =>
+                              setFinderSearchJobStatus(
+                                selectedFinderSearchJob.id,
+                                'rejected'
+                              )
+                            }
+                            type="button"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                      <div className="compact-form-grid context-source-form">
+                        <label className="settings-row">
+                          <span className="settings-row-label">Source ID</span>
+                          <input
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                sourceId: event.target.value
+                              }))
+                            }
+                            placeholder={`finder:${selectedFinderSearchJob.kind}:domain-or-id`}
+                            value={finderCandidateDraft.sourceId}
+                          />
+                        </label>
+                        <label className="settings-row">
+                          <span className="settings-row-label">Partner</span>
+                          <input
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                partnerName: event.target.value
+                              }))
+                            }
+                            placeholder="Company, fund, accelerator"
+                            value={finderCandidateDraft.partnerName}
+                          />
+                        </label>
+                        <label className="settings-row">
+                          <span className="settings-row-label">Title</span>
+                          <input
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                title: event.target.value
+                              }))
+                            }
+                            placeholder="Role, opportunity, fund thesis"
+                            value={finderCandidateDraft.title}
+                          />
+                        </label>
+                        <label className="settings-row settings-row-textarea">
+                          <span className="settings-row-label">Summary</span>
+                          <textarea
+                            className="prepare-textarea"
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                summary: event.target.value
+                              }))
+                            }
+                            placeholder="Why this candidate is relevant"
+                            rows={3}
+                            value={finderCandidateDraft.summary}
+                          />
+                        </label>
+                        <label className="settings-row settings-row-textarea">
+                          <span className="settings-row-label">Context</span>
+                          <textarea
+                            className="prepare-textarea"
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                context: event.target.value
+                              }))
+                            }
+                            placeholder="What to remember before a call"
+                            rows={3}
+                            value={finderCandidateDraft.context}
+                          />
+                        </label>
+                        <label className="settings-row settings-row-textarea">
+                          <span className="settings-row-label">Links</span>
+                          <textarea
+                            className="prepare-textarea"
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                linksText: event.target.value
+                              }))
+                            }
+                            placeholder="One link per line"
+                            rows={2}
+                            value={finderCandidateDraft.linksText}
+                          />
+                        </label>
+                        <div className="button-row settings-actions">
+                          <button
+                            onClick={() => saveFinderCandidateResult()}
+                            type="button"
+                          >
+                            Add candidate
+                          </button>
+                        </div>
+                      </div>
+                      <div className="finder-table">
+                        {selectedFinderSearchResults.length === 0 ? (
+                          <div className="context-source-empty">
+                            No candidates for this job yet.
+                          </div>
+                        ) : (
+                          selectedFinderSearchResults.map((result) => (
+                            <div className="finder-result-row" key={result.id}>
+                              <span
+                                className={`finder-status finder-status-${result.status}`}
+                              >
+                                {result.status}
+                              </span>
+                              <div>
+                                <strong>{result.partnerName}</strong>
+                                <span>
+                                  {result.kind} · {result.title}
+                                </span>
+                                <code>{result.summary}</code>
+                              </div>
+                              <div className="button-row settings-actions">
+                                <button
+                                  className="button-small"
+                                  disabled={
+                                    isSavingCounterpartyPacks ||
+                                    result.status !== 'ready'
+                                  }
+                                  onClick={() =>
+                                    void importFinderCandidateResult(result)
+                                  }
+                                  type="button"
+                                >
+                                  Import pack
+                                </button>
+                                <button
+                                  className="button-small"
+                                  disabled={result.status === 'imported'}
+                                  onClick={() =>
+                                    setFinderCandidateStatus(
+                                      result.id,
+                                      'rejected'
+                                    )
+                                  }
+                                  type="button"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="context-source-empty">
+                      Select or create a search job to add candidate results.
+                    </div>
+                  )}
                 </div>
               </div>
             </article>

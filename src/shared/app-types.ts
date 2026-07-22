@@ -184,6 +184,50 @@ export interface CounterpartyContextPackDraft {
   selected?: boolean
 }
 
+export type FinderSearchJobStatus = 'draft' | 'ready' | 'imported' | 'rejected'
+
+export interface FinderSearchJobDraft {
+  kind: CounterpartyContextPackKind
+  label: string
+  query: string
+  goal?: string
+  notes?: string
+}
+
+export interface FinderSearchJob extends FinderSearchJobDraft {
+  version: 1
+  id: string
+  status: FinderSearchJobStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export interface FinderCandidateResultDraft {
+  sourceId: string
+  partnerName: string
+  title: string
+  summary: string
+  context?: string
+  links?: string[]
+  score?: number
+}
+
+export interface FinderCandidateResult extends FinderCandidateResultDraft {
+  version: 1
+  id: string
+  jobId: string
+  kind: CounterpartyContextPackKind
+  status: 'ready' | 'imported' | 'rejected'
+  createdAt: string
+}
+
+export interface FinderSearchStatusCounts {
+  draft: number
+  ready: number
+  imported: number
+  rejected: number
+}
+
 export interface CounterpartyContextPack {
   version: 1
   id: string
