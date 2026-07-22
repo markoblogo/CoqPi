@@ -22,6 +22,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Local profile and per-call session context
 - Counterparty pack quality diagnostics showing strong/usable/weak/blocked context and concrete fixes before a call.
 - Manual prep preview card summarizing company/role/goal, selected pack quality, assistant payload size, and weak fields.
+- Assistant output quality fixtures for EN/FR interview-style prompts without using the microphone.
 - Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
 - Audio input selection and local level meter
 - Secure local API key storage via Electron `safeStorage` when available
@@ -37,6 +38,7 @@ Additional session-aware behavior:
 - Prepare view summarizes the current draft before saving, so missing fields and weak selected packs are visible before a call.
 - Retrieval filtering has an explicit strict allowlist contract: when pack IDs are provided, only those packs are candidates.
 - Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis, so disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
+- Assistant quality fixtures inspect the actual provider prompt and verify that selected packs are included while unselected packs stay out of the answer path.
 - Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
 
 Prompt/skill improvement is governed by an optional local skill-quality pipeline in [`docs/SKILL_QUALITY_PIPELINE.md`](docs/SKILL_QUALITY_PIPELINE.md). It is for synthetic or explicitly recorded mock transcript evidence only: bounded candidate edits, held-out validation, rejected-edit memory, and owner acceptance before any `best_skill.md` export.
