@@ -73,3 +73,25 @@ test('smoke readiness pack records the minimal path before real mic smoke', () =
     ['select_pack', 'mock_transcript', 'assistant_answer', 'real_mic']
   )
 })
+
+test('smoke readiness pack exposes a five-step real test script', () => {
+  const pack = buildSmokeReadinessPack(makeInput())
+
+  assert.deepEqual(
+    pack.realTestScript.map((step) => step.id),
+    [
+      'prep_ready',
+      'mock_probe',
+      'assistant_probe',
+      'mic_probe',
+      'final_check'
+    ]
+  )
+  assert.equal(pack.realTestScript.length, 5)
+  assert.equal(
+    pack.realTestScript.every(
+      (step) => step.action && step.successSignal && step.errorSignal
+    ),
+    true
+  )
+})

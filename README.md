@@ -148,9 +148,18 @@ Mock mode is for UI testing only.
 - It follows the same transcript-to-analysis path as a live completed utterance. Analysis therefore calls the configured assistant provider when auto-analysis or a manual action is enabled.
 - The scenario selector covers default EN/FR, job interview, investor call, partner call, French interview, and mixed EN/FR prompts.
 - The live smoke readiness pack gives one compact status before a call: setup, selected context, mock transcript path, assistant freshness, and real mic readiness.
+- The minimal real-test script stays at 5 actions: prep ready, mock probe, assistant probe, mic probe, final check.
 - The live smoke checklist keeps local Done/Blocker marks and shows the next active step from current app readiness.
 
 Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.
+
+Minimal real-test script when ready:
+
+1. Prep ready — Test panel says ready for mock assistant smoke; otherwise fix Setup or Context gate.
+2. Mock probe — enable Mock Transcript Mode and add one EN/FR line; transcript should get a final other-speaker line.
+3. Assistant probe — run Analyze 2m or wait for auto-analysis; Assist/Answers should show a fresh answer using the selected pack.
+4. Mic probe — start realtime and say one short EN/FR sentence; realtime should listen and transcript should update.
+5. Final check — stop realtime and check the latest assistant answer; it should be fresh, short, and tied to the selected pack.
 
 ### Test commands
 

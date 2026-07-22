@@ -3280,6 +3280,22 @@ export const App = () => {
                 </div>
               ))}
             </div>
+            <div className="real-test-script">
+              <div className="real-test-script-header">
+                <strong>Real test minimal script</strong>
+                <span>5 actions when you are ready for a live check</span>
+              </div>
+              <div className="real-test-script-list">
+                {smokeReadinessPack.realTestScript.map((step) => (
+                  <div className="real-test-script-item" key={step.id}>
+                    <strong>{step.title}</strong>
+                    <span>{step.action}</span>
+                    <code>ok: {step.successSignal}</code>
+                    <code>error: {step.errorSignal}</code>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="smoke-checklist">
             <div className="smoke-checklist-header">

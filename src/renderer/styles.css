@@ -1219,12 +1219,14 @@ button:disabled {
 
 .smoke-readiness-header,
 .smoke-readiness-gates,
-.smoke-readiness-scenario {
+.smoke-readiness-scenario,
+.real-test-script-header {
   display: flex;
   gap: var(--space-2);
 }
 
-.smoke-readiness-header {
+.smoke-readiness-header,
+.real-test-script-header {
   align-items: flex-start;
   justify-content: space-between;
 }
@@ -1237,7 +1239,9 @@ button:disabled {
 
 .smoke-readiness-header strong,
 .smoke-readiness-gate strong,
-.smoke-readiness-step strong {
+.smoke-readiness-step strong,
+.real-test-script-header strong,
+.real-test-script-item strong {
   color: #eef3f8;
   font-size: var(--font-sm);
   overflow-wrap: anywhere;
@@ -1245,7 +1249,10 @@ button:disabled {
 
 .smoke-readiness-header span,
 .smoke-readiness-gate span,
-.smoke-readiness-step span {
+.smoke-readiness-step span,
+.real-test-script-header span,
+.real-test-script-item span,
+.real-test-script-item code {
   color: #a9b8c6;
   font-size: var(--font-xs);
   overflow-wrap: anywhere;
@@ -1298,6 +1305,31 @@ button:disabled {
 
 .smoke-readiness-ready_for_real_mic {
   border-color: #355848;
+}
+
+.real-test-script,
+.real-test-script-list {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.real-test-script {
+  padding-top: var(--space-1);
+  border-top: 1px solid #33404d;
+}
+
+.real-test-script-list {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.real-test-script-item {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+  padding: 5px 6px;
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #1a212a;
 }
 
 .smoke-checklist {
@@ -1391,7 +1423,8 @@ button:disabled {
   }
 
   .smoke-readiness-gates,
-  .smoke-readiness-scenario {
+  .smoke-readiness-scenario,
+  .real-test-script-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1429,7 +1462,8 @@ button:disabled {
   }
 
   .smoke-readiness-gates,
-  .smoke-readiness-scenario {
+  .smoke-readiness-scenario,
+  .real-test-script-list {
     grid-template-columns: 1fr;
   }
 
