@@ -26,6 +26,7 @@ import {
   type FinderCandidateResult,
   type FinderCandidateResultDraft,
   type FinderOutreachDraft,
+  type FinderSourceAdapterPreviewResult,
   type FinderSearchJob,
   type FinderSearchJobDraft,
   type FinderSearchStore,
@@ -216,6 +217,13 @@ const emptyFinderSearchJobDraft: FinderSearchJobDraft = {
 
 type FinderCandidateFormDraft = FinderCandidateResultDraft & {
   linksText: string
+}
+
+type FinderOwnerSourcePreviewItem = {
+  index: number
+  selected: boolean
+  duplicate: boolean
+  draft: FinderCandidateResultDraft
 }
 
 const emptyFinderCandidateDraft: FinderCandidateFormDraft = {
@@ -716,6 +724,10 @@ export const App = () => {
   )
   const [isRunningFinderJob, setIsRunningFinderJob] = useState(false)
   const [finderOwnerSourceText, setFinderOwnerSourceText] = useState('')
+  const [finderOwnerSourcePreview, setFinderOwnerSourcePreview] =
+    useState<FinderSourceAdapterPreviewResult | null>(null)
+  const [finderOwnerSourcePreviewItems, setFinderOwnerSourcePreviewItems] =
+    useState<FinderOwnerSourcePreviewItem[]>([])
   const [isImportingFinderOwnerSource, setIsImportingFinderOwnerSource] =
     useState(false)
   const [finderRunnerPayloadText, setFinderRunnerPayloadText] = useState('')
@@ -744,6 +756,15 @@ export const App = () => {
     finderPayloadSelectionStats.areAllSelected
   const finderSearchStatusCounts =
     getFinderSearchStatusCounts(finderSearchJobs)
+  const selectableFinderOwnerSourceCount = finderOwnerSourcePreviewItems.filter(
+    (item) => !item.duplicate
+  ).length
+  const selectedFinderOwnerSourceCount = finderOwnerSourcePreviewItems.filter(
+    (item) => item.selected && !item.duplicate
+  ).length
+  const areAllFinderOwnerSourceCandidatesSelected =
+    selectableFinderOwnerSourceCount > 0 &&
+    selectedFinderOwnerSourceCount === selectableFinderOwnerSourceCount
   const selectedFinderSearchJob =
     finderSearchJobs.find((job) => job.id === selectedFinderSearchJobId) ?? null
   const selectedFinderSearchResultsRaw = selectedFinderSearchJob
@@ -2149,7 +2170,7 @@ export const App = () => {
     }
   }
 
-  const ingestFinderOwnerSource = async () => {
+  const previewFinderOwnerSource = async () => {
     if (
       !selectedFinderSearchJob ||
       isImportingFinderOwnerSource ||
@@ -2163,18 +2184,69 @@ export const App = () => {
     setFinderSearchNotice(null)
 
     try {
-      const payload = await window.coqpi.finderSearch.ingestOwnerSource(
+      const preview = await window.coqpi.finderSearch.previewOwnerSource(
         selectedFinderSearchJob.id,
         finderOwnerSourceText
       )
+      setFinderOwnerSourcePreview(preview)
+      setFinderOwnerSourcePreviewItems(
+        preview.candidates.map((candidate) => ({
+          index: candidate.index,
+          selected: !candidate.duplicate,
+          duplicate: candidate.duplicate,
+          draft: candidate.draft
+        }))
+      )
+      setFinderSearchNotice(
+        `Source preview: ${preview.validCount} valid of ${preview.requestedCount}. ${preview.duplicateCount} duplicate skipped by default.`
+      )
+    } catch (error) {
+      setFinderOwnerSourcePreview(null)
+      setFinderOwnerSourcePreviewItems([])
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to preview owner-provided source.'
+      )
+    } finally {
+      setIsImportingFinderOwnerSource(false)
+    }
+  }
+
+  const importSelectedFinderOwnerSourceCandidates = async () => {
+    if (!selectedFinderSearchJob || isImportingFinderOwnerSource) {
+      return
+    }
+
+    const selectedDrafts = finderOwnerSourcePreviewItems
+      .filter((item) => item.selected && !item.duplicate)
+      .map((item) => item.draft)
+
+    if (selectedDrafts.length === 0) {
+      setFinderSearchError('Select at least one non-duplicate source candidate.')
+      return
+    }
+
+    setIsImportingFinderOwnerSource(true)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const payload =
+        await window.coqpi.finderSearch.ingestOwnerSourceCandidates(
+          selectedFinderSearchJob.id,
+          selectedDrafts
+        )
       const summary = payload.finderSourceAdapterSummary
 
       applyFinderSearchStore(payload.store)
       setSelectedFinderSearchJobId(selectedFinderSearchJob.id)
       setFinderOwnerSourceText('')
+      setFinderOwnerSourcePreview(null)
+      setFinderOwnerSourcePreviewItems([])
       setFinderSearchNotice(
         summary
-          ? `Source adapter imported: ${summary.generatedCount} generated, ${summary.skippedDuplicateCount} duplicate skipped, ${summary.errors.length} issue${summary.errors.length === 1 ? '' : 's'}.`
+          ? `Source adapter imported: ${summary.generatedCount} generated, ${summary.skippedDuplicateCount} duplicate skipped.`
           : 'Source adapter imported.'
       )
     } catch (error) {
@@ -5321,6 +5393,8 @@ export const App = () => {
                           onClick={() => {
                             setSelectedFinderSearchJobId(job.id)
                             setFocusedFinderCandidateResultId(null)
+                            setFinderOwnerSourcePreview(null)
+                            setFinderOwnerSourcePreviewItems([])
                           }}
                           type="button"
                         >
@@ -5400,6 +5474,8 @@ export const App = () => {
                           className="prepare-textarea"
                           onChange={(event) => {
                             setFinderOwnerSourceText(event.target.value)
+                            setFinderOwnerSourcePreview(null)
+                            setFinderOwnerSourcePreviewItems([])
                             setFinderSearchError(null)
                             setFinderSearchNotice(null)
                           }}
@@ -5407,6 +5483,188 @@ export const App = () => {
                           rows={4}
                           value={finderOwnerSourceText}
                         />
+                        {finderOwnerSourcePreview ? (
+                          <div className="finder-preview-list">
+                            <div className="settings-row settings-row-inline">
+                              <div className="settings-row-label">
+                                Source preview: {selectedFinderOwnerSourceCount} selected of{' '}
+                                {selectableFinderOwnerSourceCount} importable.
+                                {' '}
+                                {finderOwnerSourcePreview.duplicateCount > 0
+                                  ? `${finderOwnerSourcePreview.duplicateCount} duplicate.`
+                                  : 'No duplicates.'}
+                              </div>
+                              <div className="button-row settings-actions">
+                                <button
+                                  className="button-small"
+                                  disabled={
+                                    isImportingFinderOwnerSource ||
+                                    selectableFinderOwnerSourceCount === 0
+                                  }
+                                  onClick={() => {
+                                    const shouldSelect =
+                                      !areAllFinderOwnerSourceCandidatesSelected
+                                    setFinderOwnerSourcePreviewItems((current) =>
+                                      current.map((item) => ({
+                                        ...item,
+                                        selected: item.duplicate
+                                          ? false
+                                          : shouldSelect
+                                      }))
+                                    )
+                                  }}
+                                  type="button"
+                                >
+                                  {areAllFinderOwnerSourceCandidatesSelected
+                                    ? 'Deselect all'
+                                    : 'Select all'}
+                                </button>
+                              </div>
+                            </div>
+                            {finderOwnerSourcePreview.errors.length > 0 ? (
+                              <ul className="error-list">
+                                {finderOwnerSourcePreview.errors
+                                  .slice(0, 5)
+                                  .map((error, index) => (
+                                    <li key={`${index}-${error.reason}`}>
+                                      {error.index === undefined
+                                        ? error.reason
+                                        : `Item ${error.index + 1}: ${error.reason}`}
+                                    </li>
+                                  ))}
+                              </ul>
+                            ) : null}
+                            {finderOwnerSourcePreviewItems.map((item) => (
+                              <div className="finder-preview-item" key={item.draft.sourceId}>
+                                <label className="settings-row settings-row-inline">
+                                  <input
+                                    checked={item.selected && !item.duplicate}
+                                    disabled={
+                                      isImportingFinderOwnerSource ||
+                                      item.duplicate
+                                    }
+                                    onChange={(event) => {
+                                      const { checked } = event.target
+                                      setFinderOwnerSourcePreviewItems((current) =>
+                                        current.map((candidate) =>
+                                          candidate.index === item.index
+                                            ? { ...candidate, selected: checked }
+                                            : candidate
+                                        )
+                                      )
+                                    }}
+                                    type="checkbox"
+                                  />
+                                  <span className="settings-row-label">
+                                    {item.duplicate
+                                      ? 'Duplicate'
+                                      : `Candidate ${item.index + 1}`}
+                                  </span>
+                                </label>
+                                <div className="compact-form-grid">
+                                  <label className="settings-row">
+                                    <span className="settings-row-label">
+                                      Partner
+                                    </span>
+                                    <input
+                                      disabled={isImportingFinderOwnerSource}
+                                      onChange={(event) => {
+                                        const { value } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  draft: {
+                                                    ...candidate.draft,
+                                                    partnerName: value
+                                                  }
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      value={item.draft.partnerName}
+                                    />
+                                  </label>
+                                  <label className="settings-row">
+                                    <span className="settings-row-label">Title</span>
+                                    <input
+                                      disabled={isImportingFinderOwnerSource}
+                                      onChange={(event) => {
+                                        const { value } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  draft: {
+                                                    ...candidate.draft,
+                                                    title: value
+                                                  }
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      value={item.draft.title}
+                                    />
+                                  </label>
+                                  <label className="settings-row settings-row-textarea">
+                                    <span className="settings-row-label">Summary</span>
+                                    <textarea
+                                      className="prepare-textarea"
+                                      disabled={isImportingFinderOwnerSource}
+                                      onChange={(event) => {
+                                        const { value } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  draft: {
+                                                    ...candidate.draft,
+                                                    summary: value
+                                                  }
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      rows={2}
+                                      value={item.draft.summary}
+                                    />
+                                  </label>
+                                  <label className="settings-row settings-row-textarea">
+                                    <span className="settings-row-label">Next action</span>
+                                    <textarea
+                                      className="prepare-textarea"
+                                      disabled={isImportingFinderOwnerSource}
+                                      onChange={(event) => {
+                                        const { value } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  draft: {
+                                                    ...candidate.draft,
+                                                    nextAction: value
+                                                  }
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      rows={2}
+                                      value={item.draft.nextAction}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
                         <div className="button-row settings-actions">
                           <button
                             disabled={
@@ -5414,20 +5672,38 @@ export const App = () => {
                               selectedFinderSearchJob.status === 'rejected' ||
                               !finderOwnerSourceText.trim()
                             }
-                            onClick={() => void ingestFinderOwnerSource()}
+                            onClick={() => void previewFinderOwnerSource()}
                             type="button"
                           >
                             {isImportingFinderOwnerSource
-                              ? 'Importing...'
-                              : 'Import pasted source'}
+                              ? 'Previewing...'
+                              : 'Preview source'}
                           </button>
                           <button
                             disabled={
                               isImportingFinderOwnerSource ||
-                              !finderOwnerSourceText.trim()
+                              selectedFinderSearchJob.status === 'rejected' ||
+                              selectedFinderOwnerSourceCount === 0
+                            }
+                            onClick={() =>
+                              void importSelectedFinderOwnerSourceCandidates()
+                            }
+                            type="button"
+                          >
+                            {isImportingFinderOwnerSource
+                              ? 'Importing...'
+                              : 'Import selected'}
+                          </button>
+                          <button
+                            disabled={
+                              isImportingFinderOwnerSource ||
+                              (!finderOwnerSourceText.trim() &&
+                                finderOwnerSourcePreviewItems.length === 0)
                             }
                             onClick={() => {
                               setFinderOwnerSourceText('')
+                              setFinderOwnerSourcePreview(null)
+                              setFinderOwnerSourcePreviewItems([])
                               setFinderSearchError(null)
                               setFinderSearchNotice(null)
                             }}

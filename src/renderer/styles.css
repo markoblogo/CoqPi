@@ -1082,6 +1082,20 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.finder-preview-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.finder-preview-item {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #171e26;
+}
+
 .finder-pipeline-controls {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

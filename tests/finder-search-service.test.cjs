@@ -216,6 +216,59 @@ test('finder search service ingests owner pasted source idempotently', async () 
   })
 })
 
+test('finder search service previews and imports reviewed owner source candidates', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech'
+    })
+    const job = afterJob.store.jobs[0]
+    const sourceText = [
+      'https://example.com/jobs/product-lead',
+      '',
+      'Northfield Labs - AI Product Lead',
+      'Product leadership role in France.',
+      'https://northfield.example/careers'
+    ].join('\n')
+
+    const preview = await service.previewFinderOwnerPastedSource(
+      job.id,
+      sourceText
+    )
+    const unchanged = await service.getFinderSearchStore()
+    const reviewed = {
+      ...preview.candidates[1].draft,
+      partnerName: 'Northfield Labs Reviewed',
+      title: 'Reviewed AI Product Lead',
+      summary: 'Reviewed and selected from local owner-pasted source.'
+    }
+    const imported = await service.ingestFinderOwnerPastedSourceCandidates(
+      job.id,
+      [reviewed]
+    )
+    const secondPreview = await service.previewFinderOwnerPastedSource(
+      job.id,
+      sourceText
+    )
+
+    assert.equal(preview.requestedCount, 2)
+    assert.equal(preview.validCount, 2)
+    assert.equal(preview.duplicateCount, 0)
+    assert.equal(unchanged.store.results.length, 0)
+    assert.equal(imported.store.jobs[0].status, 'ready')
+    assert.equal(imported.store.results.length, 1)
+    assert.equal(imported.store.results[0].partnerName, 'Northfield Labs Reviewed')
+    assert.equal(imported.store.results[0].title, 'Reviewed AI Product Lead')
+    assert.equal(imported.finderSourceAdapterSummary.generatedCount, 1)
+    assert.equal(secondPreview.duplicateCount, 1)
+    assert.equal(
+      secondPreview.candidates.filter((candidate) => candidate.duplicate).length,
+      1
+    )
+  })
+})
+
 test('finder search service rejects owner pasted source for rejected jobs', async () => {
   await withFinderWorkspace(async (service) => {
     const afterJob = await service.addFinderSearchJob({

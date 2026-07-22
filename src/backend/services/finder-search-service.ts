@@ -3,6 +3,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import type {
   FinderCandidateResultDraft,
+  FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
   FinderSearchStore,
@@ -524,6 +525,117 @@ export const ingestFinderOwnerPastedSource = async (
       newDrafts.length,
       parsed.candidates.length - newDrafts.length,
       parsed.errors
+    )
+  }
+}
+
+export const previewFinderOwnerPastedSource = async (
+  jobId: string,
+  sourceText: string
+): Promise<FinderSourceAdapterPreviewResult> => {
+  const store = await getFinderSearchStoreRaw()
+  const job = store.jobs.find((item) => item.id === jobId)
+
+  if (!job) {
+    throw new Error('Finder search job not found.')
+  }
+
+  if (job.status === 'rejected') {
+    throw new Error('Rejected finder jobs cannot preview source adapter results.')
+  }
+
+  const parsed = createFinderCandidatesFromOwnerPastedSource(job, sourceText)
+  if (parsed.requestedCount === 0) {
+    throw new Error('Paste at least one URL, text block, or exported candidate.')
+  }
+
+  const existingSourceIds = new Set(
+    store.results
+      .filter((result) => result.jobId === job.id)
+      .map((result) => result.sourceId)
+  )
+  const candidates = parsed.candidates.map((draft, index) => ({
+    index,
+    draft,
+    duplicate: existingSourceIds.has(draft.sourceId)
+  }))
+
+  return {
+    jobId: job.id,
+    mode: 'owner_paste_v0',
+    requestedCount: parsed.requestedCount,
+    validCount: parsed.candidates.length,
+    duplicateCount: candidates.filter((candidate) => candidate.duplicate).length,
+    candidates,
+    errors: parsed.errors,
+    reason:
+      'Owner-pasted URL/text/export was normalized locally for review; no store write, web fetch, scraping, search API, scheduler, or outbound action was performed.'
+  }
+}
+
+export const ingestFinderOwnerPastedSourceCandidates = async (
+  jobId: string,
+  drafts: FinderCandidateResultDraft[]
+): Promise<FinderSearchStoreResult> => {
+  const store = await getFinderSearchStoreRaw()
+  const job = store.jobs.find((item) => item.id === jobId)
+
+  if (!job) {
+    throw new Error('Finder search job not found.')
+  }
+
+  if (job.status === 'rejected') {
+    throw new Error('Rejected finder jobs cannot ingest source adapter results.')
+  }
+
+  if (drafts.length === 0) {
+    throw new Error('Select at least one source adapter candidate to import.')
+  }
+
+  const now = new Date().toISOString()
+  const existingSourceIds = new Set(
+    store.results
+      .filter((result) => result.jobId === job.id)
+      .map((result) => result.sourceId)
+  )
+  const newDrafts = drafts.filter((draft) => !existingSourceIds.has(draft.sourceId))
+  const events: FinderSearchEvent[] = newDrafts.map((draft) => ({
+    version: 1,
+    type: 'candidate_recorded',
+    result: withResultSourceTruth(
+      createFinderCandidateResult(job, draft, {
+        id: randomUUID(),
+        now
+      }),
+      'owner pasted source adapter imported reviewed candidate'
+    )
+  }))
+
+  if (job.status === 'draft' || (newDrafts.length > 0 && job.status !== 'ready')) {
+    events.push({
+      version: 1,
+      type: 'job_status_changed',
+      job: {
+        ...job,
+        ...updateFinderSearchJobStatus(job, 'ready', now),
+        statusHistory: [
+          { status: 'ready', at: now, reason: 'owner pasted source adapter reviewed import completed' },
+          ...job.statusHistory
+        ]
+      }
+    })
+  }
+
+  const result = events.length > 0 ? await mutateStore(events) : { store }
+
+  return {
+    ...result,
+    finderSourceAdapterSummary: summarizeFinderSourceAdapterRun(
+      job.id,
+      drafts.length,
+      newDrafts.length,
+      drafts.length - newDrafts.length,
+      []
     )
   }
 }

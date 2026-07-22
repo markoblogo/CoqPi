@@ -5,6 +5,7 @@ import type {
   ContextSourceDraft,
   CounterpartyContextPackDraft,
   FinderCandidateResultDraft,
+  FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
   RealtimeTranscriptionStartRequest,
@@ -58,11 +59,26 @@ contextBridge.exposeInMainWorld('coqpi', {
       ),
     runJob: (jobId: string) =>
       ipcRenderer.invoke('coqpi:finder-search:run-job', jobId),
+    previewOwnerSource: (jobId: string, sourceText: string) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:preview-owner-source',
+        jobId,
+        sourceText
+      ) as Promise<FinderSourceAdapterPreviewResult>,
     ingestOwnerSource: (jobId: string, sourceText: string) =>
       ipcRenderer.invoke(
         'coqpi:finder-search:ingest-owner-source',
         jobId,
         sourceText
+      ),
+    ingestOwnerSourceCandidates: (
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:ingest-owner-source-candidates',
+        jobId,
+        drafts
       ),
     saveOutreachDraft: (candidateResultId: string) =>
       ipcRenderer.invoke(

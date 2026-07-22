@@ -248,6 +248,23 @@ export interface FinderSourceAdapterRunSummary {
   reason: string
 }
 
+export interface FinderSourceAdapterPreviewCandidate {
+  index: number
+  draft: FinderCandidateResultDraft
+  duplicate: boolean
+}
+
+export interface FinderSourceAdapterPreviewResult {
+  jobId: string
+  mode: FinderSourceAdapterMode
+  requestedCount: number
+  validCount: number
+  duplicateCount: number
+  candidates: FinderSourceAdapterPreviewCandidate[]
+  errors: { index?: number; reason: string }[]
+  reason: string
+}
+
 export interface FinderOutreachDraft {
   version: 1
   id: string

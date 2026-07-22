@@ -9,6 +9,7 @@ import type {
   ConfigStatus,
   DeleteOpenAIKeyResult,
   FinderCandidateResultDraft,
+  FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
   FinderSearchStoreResult,
@@ -62,9 +63,17 @@ declare global {
           payloadText: string
         ) => Promise<FinderSearchStoreResult>
         runJob: (jobId: string) => Promise<FinderSearchStoreResult>
+        previewOwnerSource: (
+          jobId: string,
+          sourceText: string
+        ) => Promise<FinderSourceAdapterPreviewResult>
         ingestOwnerSource: (
           jobId: string,
           sourceText: string
+        ) => Promise<FinderSearchStoreResult>
+        ingestOwnerSourceCandidates: (
+          jobId: string,
+          drafts: FinderCandidateResultDraft[]
         ) => Promise<FinderSearchStoreResult>
         saveOutreachDraft: (
           candidateResultId: string

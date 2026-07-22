@@ -11,6 +11,7 @@ import type {
   CounterpartyContextPackDraft,
   DeleteOpenAIKeyResult,
   FinderCandidateResultDraft,
+  FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
   FinderSearchStoreResult,
@@ -53,7 +54,9 @@ import {
   addFinderSearchJob,
   getFinderSearchStore,
   ingestFinderOwnerPastedSource,
+  ingestFinderOwnerPastedSourceCandidates,
   ingestFinderRunnerPayload,
+  previewFinderOwnerPastedSource,
   runManualFinderSearchJob,
   saveFinderOutreachDraft,
   setFinderCandidateResultStatus,
@@ -307,6 +310,16 @@ const registerIpcHandlers = () => {
   )
 
   ipcMain.handle(
+    'coqpi:finder-search:preview-owner-source',
+    async (
+      _event,
+      jobId: string,
+      sourceText: string
+    ): Promise<FinderSourceAdapterPreviewResult> =>
+      previewFinderOwnerPastedSource(jobId, sourceText)
+  )
+
+  ipcMain.handle(
     'coqpi:finder-search:ingest-owner-source',
     async (
       _event,
@@ -314,6 +327,16 @@ const registerIpcHandlers = () => {
       sourceText: string
     ): Promise<FinderSearchStoreResult> =>
       ingestFinderOwnerPastedSource(jobId, sourceText)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:ingest-owner-source-candidates',
+    async (
+      _event,
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ): Promise<FinderSearchStoreResult> =>
+      ingestFinderOwnerPastedSourceCandidates(jobId, drafts)
   )
 
   ipcMain.handle(
