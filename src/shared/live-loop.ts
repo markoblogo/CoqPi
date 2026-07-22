@@ -14,6 +14,16 @@ export type AssistantStatusLabelInfo = {
   classNameSuffix: string
 }
 
+export type LiveTestCockpitTone = 'ok' | 'info' | 'warning' | 'error'
+
+export type LiveTestCockpitItem = {
+  id: 'listening' | 'ignored' | 'assistant' | 'sent' | 'context'
+  label: string
+  value: string
+  tone: LiveTestCockpitTone
+  title: string
+}
+
 export const getAutoAnalysisFingerprint = (
   latestFinalUtterance: TranscriptUtterance,
   transcriptText: string,
@@ -434,6 +444,138 @@ export const getAutoAnalysisTranscriptUtterances = (
   utterances.filter((utterance) =>
     isAutoAnalysisTranscriptCandidate(utterance, callLanguage)
   )
+
+export const getIgnoredAutoAnalysisUtterances = (
+  utterances: TranscriptUtterance[],
+  callLanguage: AssistantCallLanguage = 'auto'
+) =>
+  utterances.filter((utterance) => {
+    if (
+      !utterance.isFinal ||
+      utterance.speaker !== 'other' ||
+      (utterance.source !== 'realtime' && utterance.source !== 'mock')
+    ) {
+      return false
+    }
+
+    return !getAutoAnalysisUtteranceEligibility(utterance, callLanguage).eligible
+  })
+
+export const getAutoAnalysisIgnoreReasonLabel = (
+  reason: AutoAnalysisUtteranceEligibility['reason']
+) => {
+  if (reason === 'unsupported-language') {
+    return 'non EN/FR'
+  }
+
+  if (reason === 'too-short-transcript') {
+    return 'too short'
+  }
+
+  return 'not ignored'
+}
+
+export const buildLiveTestCockpitItems = ({
+  callLanguage,
+  realtimeLabel,
+  assistantStatus,
+  autoTranscriptText,
+  selectedPackLabel,
+  selectedPackCount,
+  transcriptUtterances,
+  latestRelevantUtteranceId,
+  lastAnalyzedUtteranceId,
+  cooldownRemainingSeconds = 0
+}: {
+  callLanguage: AssistantCallLanguage
+  realtimeLabel: string
+  assistantStatus: AssistantStatusLabelInfo
+  autoTranscriptText: string
+  selectedPackLabel: string
+  selectedPackCount: number
+  transcriptUtterances: TranscriptUtterance[]
+  latestRelevantUtteranceId: string | undefined
+  lastAnalyzedUtteranceId: string | null
+  cooldownRemainingSeconds?: number
+}): LiveTestCockpitItem[] => {
+  const eligibleCount = getAutoAnalysisTranscriptUtterances(
+    transcriptUtterances,
+    callLanguage
+  ).length
+  const ignoredUtterances = getIgnoredAutoAnalysisUtterances(
+    transcriptUtterances,
+    callLanguage
+  )
+  const lastIgnored = ignoredUtterances.at(-1)
+  const lastIgnoredReason = lastIgnored
+    ? getAutoAnalysisIgnoreReasonLabel(
+        getAutoAnalysisUtteranceEligibility(lastIgnored, callLanguage).reason
+      )
+    : null
+  const freshness =
+    latestRelevantUtteranceId && lastAnalyzedUtteranceId === latestRelevantUtteranceId
+      ? 'fresh'
+      : latestRelevantUtteranceId
+        ? 'stale'
+        : 'waiting'
+  const assistantValue =
+    cooldownRemainingSeconds > 0
+      ? `${assistantStatus.label} / ${cooldownRemainingSeconds}s`
+      : assistantStatus.label
+
+  return [
+    {
+      id: 'listening',
+      label: 'Listening',
+      value: `${callLanguage.toUpperCase()} / ${realtimeLabel}`,
+      tone: realtimeLabel.toLowerCase().includes('error') ? 'error' : 'info',
+      title: 'Current call-language filter and realtime listening state.'
+    },
+    {
+      id: 'ignored',
+      label: 'Ignored',
+      value:
+        ignoredUtterances.length === 0
+          ? '0'
+          : `${ignoredUtterances.length} / ${lastIgnoredReason}`,
+      tone: ignoredUtterances.length === 0 ? 'ok' : 'warning',
+      title: 'Final other-speaker lines ignored before automatic assistant analysis.'
+    },
+    {
+      id: 'sent',
+      label: 'Auto window',
+      value:
+        autoTranscriptText.trim().length === 0
+          ? `${eligibleCount} lines`
+          : `${eligibleCount} lines / ${autoTranscriptText.trim().length} chars`,
+      tone: autoTranscriptText.trim().length === 0 ? 'warning' : 'ok',
+      title: 'Eligible transcript window that automatic analysis can send.'
+    },
+    {
+      id: 'context',
+      label: 'Context',
+      value: selectedPackCount > 0 ? selectedPackLabel : 'No pack',
+      tone: selectedPackCount > 0 ? 'ok' : 'warning',
+      title: 'Selected counterparty packs active for assistant retrieval.'
+    },
+    {
+      id: 'assistant',
+      label: 'Assistant',
+      value: `${assistantValue} / ${freshness}`,
+      tone:
+        freshness === 'stale'
+          ? 'warning'
+          : assistantStatus.classNameSuffix === 'ready'
+          ? 'ok'
+          : assistantStatus.classNameSuffix === 'error' ||
+              assistantStatus.classNameSuffix === 'retry-blocked' ||
+              assistantStatus.classNameSuffix === 'auth-missing'
+            ? 'error'
+            : 'info',
+      title: 'Assistant status and whether the visible suggestion matches the latest relevant line.'
+    }
+  ]
+}
 
 export const decideAutoAnalysis = ({
   latestFinalUtterance,

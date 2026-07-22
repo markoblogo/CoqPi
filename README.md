@@ -16,6 +16,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Realtime transcription v0 over OpenAI Realtime
 - Automatic assistant analysis after each completed utterance, with manual override
 - Local auto-analysis guard for EN/FR live-loop input: explicit Russian/Cyrillic background speech and too-short noise are ignored before provider analysis and excluded from the automatic transcript window.
+- Live test cockpit showing what is being listened to, what was ignored, what can be sent to assistant, active pack context, and answer freshness.
 - Mock Transcript Mode for local UI testing
 - Local profile and per-call session context
 - Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
@@ -128,6 +129,7 @@ Receipt writes are best-effort so a local disk failure cannot interrupt a live c
 - `Prepare`: mock transcript controls, manual analysis actions, cost counters, and collapsible profile context.
 - `Settings / Debug`: secure API key handling, defaults, audio advanced controls, realtime diagnostics, and privacy info.
 - Live diagnostics in the `Assist` path now show concise status reasons for timeout/budget/manual errors and direct next-action hints, with a one-click `Reset conversation` action available from the transcript card.
+- The `Live` screen includes a compact test cockpit for smoke testing: listening filter, ignored transcript count, automatic transcript window, selected pack context, and fresh/stale assistant state.
 
 ## Mock Transcript Mode
 

@@ -472,6 +472,59 @@ button:disabled {
   color: #f1c2c2;
 }
 
+.test-cockpit {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+.test-cockpit-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #151b22;
+}
+
+.test-cockpit-item span {
+  color: #8294a7;
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+}
+
+.test-cockpit-item strong {
+  min-width: 0;
+  color: #e3eaf1;
+  font-size: var(--font-xs);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.test-cockpit-item-ok {
+  border-color: #355848;
+  background: #14221b;
+}
+
+.test-cockpit-item-info {
+  border-color: #385470;
+  background: #15212c;
+}
+
+.test-cockpit-item-warning {
+  border-color: #6b5636;
+  background: #241d14;
+}
+
+.test-cockpit-item-error {
+  border-color: #7c4747;
+  background: #261616;
+}
+
 .live-main {
   display: grid;
   grid-template-columns: minmax(0, 1.22fr) minmax(0, 1fr);
@@ -1071,6 +1124,10 @@ button:disabled {
   .app-bar-left .status-chip:last-child {
     display: none;
   }
+
+  .test-cockpit {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
@@ -1086,6 +1143,10 @@ button:disabled {
 
   .live-footnote {
     display: none;
+  }
+
+  .test-cockpit {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .settings-shell {

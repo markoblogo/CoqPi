@@ -36,6 +36,7 @@ import {
   AUTO_ANALYSIS_DEBOUNCE_MS,
   AssistantState,
   type AssistantStatusCode,
+  buildLiveTestCockpitItems,
   buildAutoAnalysisSchedule,
   getAutoAnalysisTranscriptUtterances,
   getAutoAnalysisUtteranceEligibility,
@@ -2583,9 +2584,10 @@ export const App = () => {
     costMode
   )
   const lastUtterance = getLastUtterance(transcriptUtterances)
+  const assistantCallLanguage = toAssistantCallLanguage(controls.callLanguage)
   const assistantRelevantLastUtterance = getLatestAutoAnalysisUtterance(
     transcriptUtterances,
-    toAssistantCallLanguage(controls.callLanguage)
+    assistantCallLanguage
   )
   const activeSessionLabel = getSessionContextLabel(sessionContext)
   const hasSessionContext = Boolean(getSessionContextText(sessionContext))
@@ -2665,6 +2667,26 @@ export const App = () => {
     sessionContext.selectedCounterpartyPackIds.length > 0
       ? `Packs: ${selectedCounterpartyPackNamesLabel}`
       : 'No packs selected'
+  const autoAnalysisTranscriptText = getRecentTranscriptText(
+    getAutoAnalysisTranscriptUtterances(
+      transcriptUtterances,
+      assistantCallLanguage
+    ),
+    30
+  )
+  const liveTestCockpitItems = buildLiveTestCockpitItems({
+    callLanguage: assistantCallLanguage,
+    realtimeLabel:
+      realtimeStatus === 'idle' ? 'idle' : realtimeHealthLabel.toLowerCase(),
+    assistantStatus,
+    autoTranscriptText: autoAnalysisTranscriptText,
+    selectedPackLabel: selectedCounterpartyPackNamesLabel,
+    selectedPackCount: sessionContext.selectedCounterpartyPackIds.length,
+    transcriptUtterances,
+    latestRelevantUtteranceId: assistantRelevantLastUtterance?.id,
+    lastAnalyzedUtteranceId,
+    cooldownRemainingSeconds
+  })
   const requestCostPreview = estimateAssistantRequestCost(
     lastUtterance?.text.length ?? 0,
     (includeProfileContext ? profileContext.length : 0) +
@@ -2918,6 +2940,21 @@ export const App = () => {
         </div>
       </div>
     </article>
+  )
+
+  const testCockpitPanel = (
+    <section className="test-cockpit" aria-label="Live test cockpit">
+      {liveTestCockpitItems.map((item) => (
+        <div
+          className={`test-cockpit-item test-cockpit-item-${item.tone}`}
+          key={item.id}
+          title={item.title}
+        >
+          <span>{item.label}</span>
+          <strong>{item.value}</strong>
+        </div>
+      ))}
+    </section>
   )
 
   const settingsNavItems = [
@@ -3737,6 +3774,8 @@ export const App = () => {
               {costNotice ? <div className="info-box">{costNotice}</div> : null}
             </div>
           )}
+
+          {testCockpitPanel}
 
           {!isMiniLayout ? (
             <section className="live-main">

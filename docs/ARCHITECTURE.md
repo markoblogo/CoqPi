@@ -45,6 +45,8 @@ Only one automatic analysis request may run at a time. Manual controls remain an
 
 The local auto-analysis guard is deliberately cheap and does not add an LLM or provider round trip in the audio hot path. It allows explicit EN/FR transcript language, allows unknown-language Latin text in Auto mode, and blocks obvious non-EN/FR background speech or too-short transcript noise before the assistant provider is called. Automatic assistant requests also build their transcript window only from eligible utterances; manual actions remain the override path.
 
+The renderer exposes the same route state through a compact live test cockpit: realtime listening filter, ignored auto-analysis lines, eligible automatic transcript window size, selected pack context, and assistant freshness. It is diagnostic UI only and does not change provider routing.
+
 ## Cost guardrail layer
 
 The cost guardrail layer is intentionally approximate and local-only.

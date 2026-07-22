@@ -3,6 +3,7 @@ const test = require('node:test')
 
 const {
   AUTO_ANALYSIS_DEBOUNCE_MS,
+  buildLiveTestCockpitItems,
   buildAutoAnalysisSchedule,
   decideAutoAnalysis,
   getAutoAnalysisTranscriptUtterances,
@@ -647,6 +648,75 @@ test('auto analysis transcript window excludes ignored background speech', () =>
     transcriptWindow.map((utterance) => utterance.id),
     ['u-window-eligible']
   )
+})
+
+test('live test cockpit summarizes listening, ignored, sent, context, and freshness', () => {
+  const englishQuestion = makeUtterance({
+    id: 'u-cockpit-eligible',
+    language: 'en',
+    text: 'Can you describe your product management background?'
+  })
+  const ignoredBackground = makeUtterance({
+    id: 'u-cockpit-ignored',
+    language: 'ru',
+    text: 'Сделай мне пожалуйста чай.'
+  })
+
+  const items = buildLiveTestCockpitItems({
+    callLanguage: 'auto',
+    realtimeLabel: 'listening',
+    assistantStatus: {
+      label: 'Ready',
+      classNameSuffix: 'ready'
+    },
+    autoTranscriptText: englishQuestion.text,
+    selectedPackLabel: 'Acme',
+    selectedPackCount: 1,
+    transcriptUtterances: [englishQuestion, ignoredBackground],
+    latestRelevantUtteranceId: englishQuestion.id,
+    lastAnalyzedUtteranceId: englishQuestion.id
+  })
+  const byId = Object.fromEntries(items.map((item) => [item.id, item]))
+
+  assert.equal(byId.listening.value, 'AUTO / listening')
+  assert.equal(byId.ignored.value, '1 / non EN/FR')
+  assert.equal(byId.ignored.tone, 'warning')
+  assert.equal(byId.sent.value, `1 lines / ${englishQuestion.text.length} chars`)
+  assert.equal(byId.context.value, 'Acme')
+  assert.equal(byId.context.tone, 'ok')
+  assert.equal(byId.assistant.value, 'Ready / fresh')
+  assert.equal(byId.assistant.tone, 'ok')
+})
+
+test('live test cockpit exposes no-pack and stale assistant state', () => {
+  const latestQuestion = makeUtterance({
+    id: 'u-cockpit-latest',
+    language: 'fr',
+    text: 'Pouvez-vous presenter votre parcours produit ?'
+  })
+
+  const items = buildLiveTestCockpitItems({
+    callLanguage: 'fr',
+    realtimeLabel: 'idle',
+    assistantStatus: {
+      label: 'Ready',
+      classNameSuffix: 'ready'
+    },
+    autoTranscriptText: '',
+    selectedPackLabel: 'No pack selected',
+    selectedPackCount: 0,
+    transcriptUtterances: [latestQuestion],
+    latestRelevantUtteranceId: latestQuestion.id,
+    lastAnalyzedUtteranceId: 'older'
+  })
+  const byId = Object.fromEntries(items.map((item) => [item.id, item]))
+
+  assert.equal(byId.listening.value, 'FR / idle')
+  assert.equal(byId.sent.tone, 'warning')
+  assert.equal(byId.context.value, 'No pack')
+  assert.equal(byId.context.tone, 'warning')
+  assert.equal(byId.assistant.value, 'Ready / stale')
+  assert.equal(byId.assistant.tone, 'warning')
 })
 
 test('auto analyze maps timeout and budget statuses for UI chain', () => {
