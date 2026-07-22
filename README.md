@@ -152,6 +152,7 @@ Mock mode is for UI testing only.
 - `Reset for test` clears transcript, assistant result/errors, mock playback, checklist marks, cost notice, counters, and realtime timer while preserving profile, session context, selected packs, key, and audio device.
 - `Save smoke note` records what worked, what broke, and the next fix to a local `smoke-notes.jsonl` file under the sessions directory; it does not store transcript text.
 - The post-smoke fix queue derives the next local fixes from saved smoke notes, deduplicates repeated `Next fix` items, and keeps the first pending fix visible without creating an external tracker.
+- `Copy report` turns the latest smoke note and first queued fix into a short markdown summary for pasting into Codex; it does not include transcript text.
 - The live smoke checklist keeps local Done/Blocker marks and shows the next active step from current app readiness.
 
 Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.

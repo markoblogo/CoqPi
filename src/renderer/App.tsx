@@ -89,6 +89,9 @@ import {
   buildSmokeFixQueue
 } from '@shared/smoke-fix-queue'
 import {
+  buildSmokeReportText
+} from '@shared/smoke-report'
+import {
   preTestResetPlan
 } from '@shared/pre-test-reset'
 import {
@@ -684,6 +687,9 @@ export const App = () => {
   const [smokeNoteError, setSmokeNoteError] = useState<string | null>(null)
   const [smokeNoteNotice, setSmokeNoteNotice] = useState<string | null>(null)
   const [isSavingSmokeNote, setIsSavingSmokeNote] = useState(false)
+  const [copiedSmokeReportNoteId, setCopiedSmokeReportNoteId] = useState<
+    string | null
+  >(null)
   const [smokeChecklistMarks, setSmokeChecklistMarks] = useState<
     Partial<Record<SmokeChecklistStepId, SmokeChecklistMark>>
   >({})
@@ -1370,6 +1376,7 @@ export const App = () => {
     setIsSavingSmokeNote(true)
     setSmokeNoteError(null)
     setSmokeNoteNotice(null)
+    setCopiedSmokeReportNoteId(null)
 
     try {
       const note = await window.coqpi.smokeNotes.save({
@@ -1388,6 +1395,27 @@ export const App = () => {
       )
     } finally {
       setIsSavingSmokeNote(false)
+    }
+  }
+
+  const copySmokeReport = async (note: SmokeTestNote) => {
+    setSmokeNoteError(null)
+    setSmokeNoteNotice(null)
+
+    try {
+      await navigator.clipboard.writeText(
+        buildSmokeReportText(note, smokeFixQueue)
+      )
+      setCopiedSmokeReportNoteId(note.id)
+      setSmokeNoteNotice('Smoke report copied.')
+      window.setTimeout(() => {
+        setCopiedSmokeReportNoteId((current) =>
+          current === note.id ? null : current
+        )
+      }, 1400)
+    } catch {
+      setCopiedSmokeReportNoteId(null)
+      setSmokeNoteError('Unable to copy smoke report.')
     }
   }
 
@@ -3597,7 +3625,17 @@ export const App = () => {
             ) : null}
             {smokeNotes[0] ? (
               <div className="smoke-note-latest">
-                <span>Latest saved</span>
+                <div className="smoke-note-latest-heading">
+                  <span>Latest saved</span>
+                  <button
+                    onClick={() => void copySmokeReport(smokeNotes[0])}
+                    type="button"
+                  >
+                    {copiedSmokeReportNoteId === smokeNotes[0].id
+                      ? 'Copied'
+                      : 'Copy report'}
+                  </button>
+                </div>
                 <strong>{new Date(smokeNotes[0].createdAt).toLocaleString()}</strong>
                 <code>
                   {[

@@ -1390,6 +1390,18 @@ button:disabled {
   background: #1a212a;
 }
 
+.smoke-note-latest-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.smoke-note-latest-heading button {
+  padding: 3px 7px;
+  font-size: var(--font-xs);
+}
+
 .smoke-note-latest p {
   margin: 0;
 }
