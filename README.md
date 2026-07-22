@@ -30,7 +30,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Finder Runner payload ingress accepts manual/mock JSON from a future search module, soft-accepts valid candidates, returns item errors, and does not browse or scrape from this path.
 - The selected Finder job can also run a bounded local `manual_mock` runner that generates deterministic placeholder candidates for review/scoring/import tests. It performs no web search, scraping, API call, scheduler work, or outreach.
 - Real Finder Source Adapter v1 accepts owner-pasted URLs, vacancy/export text, LinkedIn-style job snippets, accelerator/program snippets, investor/fund lists, and CSV-like candidate exports for the selected job. It extracts common fields (`company/partner`, `role/opportunity`, `country/city/location`, `contact`, `deadline`, `why relevant`, `missing info`), previews normalized candidates first, lets the owner select/edit them, and only then sends reviewed candidates into the same scoring/import pipeline.
-- Candidate review fields (`fitScore`, `whyRelevant`, `missingInfo`, `nextAction`) are stored, shown in the UI, and carried into the imported context pack.
+- Candidate review fields (`fitScore`, `whyRelevant`, `missingInfo`, `nextAction`) are scenario-aware for job, partner, investor, and accelerator flows; they are stored, shown in the UI, and carried into the imported context pack.
 - Prioritized pipeline view sorts and filters candidates by fit score, status, and next action so the Finder tab works as a review funnel.
 - Outreach prep pack summarizes the focused candidate before action: target, opportunity, fit, why relevant, known context, questions to ask, opening message, next action, and weak-field warnings.
 - Outreach draft handoff saves the focused prep card as a local append-only draft in Finder source truth; nothing is sent externally.
@@ -281,7 +281,7 @@ docs/
 
 ## Next development passes
 
-1. Finder candidate scoring pass: make fit score, missing info, and next action more scenario-aware before outreach prep.
+1. Finder score explanation pass: expose why a candidate received its fit score and which fields would improve it.
 2. Knowledge extraction adapters: support more explicit source types without recursive scanning or broad raw-content exposure.
 3. Live microphone tuning: run the short real-call smoke and tune turn segmentation/noise behavior from observed failures.
 4. Training mode foundation: reuse the same selected profile/session/pack/draft context for interview and negotiation rehearsal.

@@ -689,6 +689,128 @@ const extractOwnerSourceFields = (lines: string[]) => {
   }
 }
 
+const getScenarioMissingInfo = (
+  kind: CounterpartyContextPackKind,
+  evidence: {
+    links: string[]
+    contact: string
+    deadline: string
+    location: string
+    whyRelevant: string
+  }
+) => {
+  const common = [
+    evidence.links.length > 0 ? '' : 'source URL',
+    evidence.contact ? '' : 'contact',
+    'current status'
+  ]
+
+  const byKind: Record<CounterpartyContextPackKind, string[]> = {
+    job: [
+      evidence.deadline ? '' : 'application deadline',
+      'salary range',
+      'remote policy',
+      'interview process',
+      evidence.whyRelevant ? '' : 'fit to your product/agtech experience'
+    ],
+    partner: [
+      'decision maker',
+      'pilot budget',
+      'implementation timeline',
+      evidence.location ? '' : 'operating geography',
+      evidence.whyRelevant ? '' : 'specific partnership angle'
+    ],
+    investor: [
+      'ticket size',
+      'investment stage',
+      'portfolio fit',
+      evidence.location ? '' : 'geography mandate',
+      evidence.whyRelevant ? '' : 'thesis match'
+    ],
+    accelerator: [
+      evidence.deadline ? '' : 'application deadline',
+      'program terms',
+      'equity or fees',
+      'selection criteria',
+      evidence.whyRelevant ? '' : 'program fit'
+    ],
+    other: [
+      'decision maker',
+      'relevance to current goal',
+      'expected next step'
+    ]
+  }
+
+  return [...common, ...byKind[kind]].filter(Boolean).join(', ')
+}
+
+const getScenarioNextAction = (
+  kind: CounterpartyContextPackKind,
+  contact: string
+) => {
+  const contactSuffix = contact ? ` to ${contact}` : ''
+  const byKind: Record<CounterpartyContextPackKind, string> = {
+    job: `Prepare tailored CV/interview pack${contactSuffix}, then verify role details before outreach.`,
+    partner: `Prepare a partner intro${contactSuffix} with pilot angle, key questions, and expected next step.`,
+    investor: `Prepare an investor intro${contactSuffix} with thesis fit, traction questions, and ticket-size check.`,
+    accelerator:
+      'Prepare an application/intro pack with deadline, program fit, and selection criteria questions.',
+    other: `Prepare a short intro${contactSuffix}, then verify source and next step.`
+  }
+
+  return byKind[kind]
+}
+
+const scoreOwnerSourceCandidate = (
+  job: FinderSearchJob,
+  evidence: {
+    links: string[]
+    contact: string
+    deadline: string
+    location: string
+    partnerName: string
+    title: string
+    whyRelevant: string
+  }
+) => {
+  const points = [
+    evidence.partnerName ? 10 : 0,
+    evidence.title ? 10 : 0,
+    evidence.links.length > 0 ? 10 : 0,
+    evidence.contact ? 8 : 0,
+    evidence.location ? 7 : 0,
+    evidence.deadline ? 5 : 0,
+    evidence.whyRelevant ? 12 : 0
+  ].reduce((total, value) => total + value, 0)
+  const scenarioBoost: Record<CounterpartyContextPackKind, number> = {
+    job: evidence.title && /product|manager|lead|director|head/i.test(evidence.title)
+      ? 8
+      : 3,
+    partner: /partner|pilot|distribution|implementation|integration/i.test(
+      `${evidence.title} ${evidence.whyRelevant}`
+    )
+      ? 8
+      : 3,
+    investor: /fund|capital|ventures|seed|invest/i.test(
+      `${evidence.partnerName} ${evidence.title} ${evidence.whyRelevant}`
+    )
+      ? 8
+      : 3,
+    accelerator: /accelerator|incubator|program|application/i.test(
+      `${evidence.partnerName} ${evidence.title}`
+    )
+      ? 8
+      : 3,
+    other: 3
+  }
+  const fitScore = Math.max(50, Math.min(94, 42 + points + scenarioBoost[job.kind]))
+
+  return {
+    score: Math.min(96, fitScore + (evidence.contact ? 2 : 0)),
+    fitScore
+  }
+}
+
 export const createFinderCandidatesFromOwnerPastedSource = (
   job: FinderSearchJob,
   sourceText: string
@@ -756,22 +878,30 @@ export const createFinderCandidatesFromOwnerPastedSource = (
     ]
       .filter(Boolean)
       .join(' ')
-    const missingInfo = fields.missingInfo
-      ? fields.missingInfo
-      : [
-          links.length > 0 ? '' : 'source URL',
-          contact ? '' : 'contact',
-          fields.deadline ? '' : job.kind === 'job' ? 'application deadline' : '',
-          job.kind === 'job' ? 'compensation' : 'decision maker',
-          'current status'
-        ]
-          .filter(Boolean)
-          .join(', ')
+    const missingInfo =
+      fields.missingInfo ||
+      getScenarioMissingInfo(job.kind, {
+        links,
+        contact,
+        deadline: fields.deadline,
+        location: fields.location,
+        whyRelevant: fields.whyRelevant
+      })
     const nextAction =
       fields.nextAction ||
-      (contact
-        ? `Review normalized candidate and prepare outreach to ${contact}.`
-        : 'Review normalized candidate, enrich missing fields, then import as a session pack if useful.')
+      getScenarioNextAction(job.kind, contact)
+    const relevance =
+      fields.whyRelevant ||
+      `Owner pasted this ${job.kind} source for the "${job.label}" Finder job; evidence should be reviewed before outreach.`
+    const scores = scoreOwnerSourceCandidate(job, {
+      links,
+      contact,
+      deadline: fields.deadline,
+      location: fields.location,
+      partnerName,
+      title,
+      whyRelevant: relevance
+    })
 
     candidates.push({
       sourceId: `coqpi:source-adapter:${job.kind}:${jobSlug}:${sourceHash}`,
@@ -791,11 +921,9 @@ export const createFinderCandidatesFromOwnerPastedSource = (
         .filter(Boolean)
         .join('\n'),
       links,
-      score: links.length > 0 || contact ? 78 : 62,
-      fitScore: fields.whyRelevant ? 76 : links.length > 0 ? 70 : 60,
-      whyRelevant:
-        fields.whyRelevant ||
-        `Owner pasted this source for the "${job.label}" Finder job. Review evidence before outreach.`,
+      score: scores.score,
+      fitScore: scores.fitScore,
+      whyRelevant: relevance,
       missingInfo: missingInfo
         ? `Verify ${missingInfo} before outreach.`
         : 'Verify current status before outreach.',

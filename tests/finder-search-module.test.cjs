@@ -318,7 +318,7 @@ test('owner pasted source adapter extracts structured vacancy fields before prev
     candidate.whyRelevant,
     'Agtech product leadership with French market exposure.'
   )
-  assert.match(candidate.missingInfo, /Verify compensation/)
+  assert.match(candidate.missingInfo, /salary range/)
   assert.match(candidate.nextAction, /hiring@northfield\.example/)
 })
 
@@ -434,6 +434,107 @@ test('owner pasted source adapter parses CSV-like investor lists as multiple can
   assert.match(parsed.candidates[0].context, /intro@greenseed\.example/)
   assert.equal(parsed.candidates[1].partnerName, 'Blue Fields Fund')
   assert.deepEqual(parsed.candidates[1].links, ['https://bluefields.example/'])
+})
+
+test('owner pasted source adapter scores job candidates by interview readiness', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech'
+    },
+    { id: 'job-scoring-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Company: Northfield Labs',
+      'Role: Senior Product Manager',
+      'Location: Paris, France',
+      'Website: https://northfield.example/careers',
+      'Contact: hiring@northfield.example',
+      'Why relevant: Product management role in French agtech market.'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.ok(candidate.fitScore >= 84)
+  assert.match(candidate.missingInfo, /salary range/)
+  assert.match(candidate.missingInfo, /interview process/)
+  assert.match(candidate.nextAction, /tailored CV/)
+})
+
+test('owner pasted source adapter scores partner candidates by outreach readiness', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'partner',
+      label: 'Agro partners France',
+      query: 'agri commodity ecosystem implementation partners france'
+    },
+    { id: 'partner-scoring-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Partner: AgroTrade France',
+      'Opportunity: Pilot distribution partner',
+      'Country: France',
+      'URL: https://agrotrade.example',
+      'Why relevant: Strong distribution channel for agro commodity workflows.'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.ok(candidate.fitScore >= 78)
+  assert.match(candidate.missingInfo, /decision maker/)
+  assert.match(candidate.missingInfo, /pilot budget/)
+  assert.match(candidate.nextAction, /partner intro/)
+})
+
+test('owner pasted source adapter scores investor and accelerator candidates by scenario', () => {
+  const investorJob = createFinderSearchJob(
+    {
+      kind: 'investor',
+      label: 'Agri seed funds',
+      query: 'agri commodity seed funds europe'
+    },
+    { id: 'investor-scoring-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const acceleratorJob = createFinderSearchJob(
+    {
+      kind: 'accelerator',
+      label: 'Agri accelerators Europe',
+      query: 'agtech accelerator europe seed program'
+    },
+    { id: 'accelerator-scoring-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const investor = createFinderCandidatesFromOwnerPastedSource(
+    investorJob,
+    [
+      'Fund: Green Seed Capital',
+      'Focus: Agri infrastructure',
+      'Geography: Europe',
+      'Website: https://greenseed.example',
+      'Contact: intro@greenseed.example'
+    ].join('\n')
+  ).candidates[0]
+  const accelerator = createFinderCandidatesFromOwnerPastedSource(
+    acceleratorJob,
+    [
+      'AgriTech Europe Accelerator',
+      'Applications close September 30, 2026',
+      'Paris / Remote',
+      'For climate and agricultural infrastructure startups.',
+      'https://accelerator.example/apply'
+    ].join('\n')
+  ).candidates[0]
+
+  assert.ok(investor.fitScore >= 82)
+  assert.match(investor.missingInfo, /ticket size/)
+  assert.match(investor.nextAction, /investor intro/)
+  assert.ok(accelerator.fitScore >= 80)
+  assert.match(accelerator.missingInfo, /program terms/)
+  assert.match(accelerator.nextAction, /application/)
 })
 
 test('finder pipeline view prioritizes high-fit ready candidates', () => {
