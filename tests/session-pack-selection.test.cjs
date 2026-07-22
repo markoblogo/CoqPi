@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
+  getCounterpartyPackSessionEligibility,
   getSessionContextWithCounterpartyPacks,
   getSessionSelectedCounterpartyPackIds
 } = require('../dist-electron/shared/session-pack-selection.js')
@@ -79,6 +80,33 @@ test('session pack selection drops disabled, removed, duplicate and missing ids'
       .selectedCounterpartyPackIds,
     []
   )
+})
+
+test('session pack eligibility reports stable blocking reasons', () => {
+  const eligible = getCounterpartyPackSessionEligibility(makePack())
+  assert.equal(eligible.eligible, true)
+  assert.deepEqual(eligible.reasons, [])
+
+  const blocked = getCounterpartyPackSessionEligibility(
+    makePack({
+      version: undefined,
+      selected: false,
+      status: 'pending_classification',
+      ownerId: 'other',
+      classification: 'pending',
+      retrievalScopes: []
+    })
+  )
+
+  assert.equal(blocked.eligible, false)
+  assert.deepEqual(blocked.reasons, [
+    'wrong_version',
+    'not_selected',
+    'not_retrieval_ready',
+    'wrong_owner',
+    'not_private',
+    'missing_interview_scope'
+  ])
 })
 
 test('session pack selection auto-adds only imported packs that remain eligible', () => {

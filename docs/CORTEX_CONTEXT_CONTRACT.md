@@ -120,6 +120,7 @@ Stored counterparty packs are also normalized as versioned compact records befor
 - `version: 1`, stable `sourceId`, provenance digest, `contentHash`, private classification, TTL/retention, and `coqpi_interview_en_fr` scope are required.
 - UI state, session save/load, and assistant analysis revalidate `selectedCounterpartyPackIds` against the current manifest.
 - Disabled, removed, duplicate, missing, non-private, non-`retrieval_ready`, wrong-version, or wrong-scope packs are pruned before the assistant prompt is built.
+- The shared eligibility helper exposes stable blocking reasons (`wrong_version`, `not_selected`, `not_retrieval_ready`, `wrong_owner`, `not_private`, `missing_interview_scope`) for future UI diagnostics.
 - Raw candidate artifacts such as transcripts, HTML, binary contents, credentials, or unreviewed source text are not preserved in compact pack events.
 
 Folders, manual paths, links, binary files, PDFs, office documents, external URL fetching, and recursive scans remain pending. They cannot enter retrieval merely because they were recorded as ingress.

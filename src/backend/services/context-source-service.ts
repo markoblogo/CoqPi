@@ -22,6 +22,7 @@ import {
   parseFinderCounterpartyPayloadTextPermissive,
   type ParsedFinderCounterpartyPayload
 } from '../../shared/finder-ingest-contract'
+import { isSessionEligibleCounterpartyPack } from '../../shared/session-pack-selection'
 import { getAppInfo } from './app-state'
 
 type IngressEvent =
@@ -573,14 +574,6 @@ const validateCounterpartyDraft = (draft: CounterpartyContextPackDraft) => {
   }
 }
 
-const isRetrievalReadyCounterpartyPack = (pack: CounterpartyContextPack) =>
-  pack.version === 1 &&
-  pack.selected === true &&
-  pack.status === 'retrieval_ready' &&
-  pack.ownerId === 'owner' &&
-  pack.classification === 'private' &&
-  pack.retrievalScopes.includes('coqpi_interview_en_fr')
-
 export const createContextPackFromFinder = (
   payloadText: string
 ): ParsedFinderCounterpartyPayload => {
@@ -800,7 +793,7 @@ export const resolveSessionSelectedCounterpartyPackIds = async (
 
   return requestedIds.filter((id) => {
     const pack = packById.get(id)
-    return pack ? isRetrievalReadyCounterpartyPack(pack) : false
+    return pack ? isSessionEligibleCounterpartyPack(pack) : false
   })
 }
 
