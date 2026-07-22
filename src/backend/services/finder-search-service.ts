@@ -88,7 +88,11 @@ const withResultSourceTruth = (
     summary: result.summary,
     context: result.context,
     links: result.links,
-    score: result.score
+    score: result.score,
+    fitScore: result.fitScore,
+    whyRelevant: result.whyRelevant,
+    missingInfo: result.missingInfo,
+    nextAction: result.nextAction
   }),
   statusHistory: [{ status: result.status, at: result.createdAt, reason }]
 })

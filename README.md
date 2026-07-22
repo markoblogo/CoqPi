@@ -27,6 +27,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
 - Finder Search foundation: local search jobs, candidate results, statuses (`draft`, `ready`, `imported`, `rejected`), append-only backend history, and one-click candidate import into selected context packs.
 - Finder Runner payload ingress: paste/mock JSON from a future search module, soft-accept valid candidate results, show item errors, and import candidates locally before turning them into context packs.
+- Finder candidate review fields: `fitScore`, `whyRelevant`, `missingInfo`, and `nextAction` help filter candidates before outreach and are carried into the context pack on import.
 - Audio input selection and local level meter
 - Secure local API key storage via Electron `safeStorage` when available
 - Cost guardrails and session counters
@@ -45,6 +46,7 @@ Additional session-aware behavior:
 - Batch finder import supports partial success (malformed entries are returned as errors without aborting valid ones).
 - Finder search jobs/results are local-only source-truth records persisted under the Personal Knowledge Core `finder/` directory with append-only events, content hashes, provenance, and status history; this step does not scrape sites, call search APIs, or run scheduled outbound monitoring.
 - Finder runner payload import is manual/mock only. CoqPi accepts JSON results but does not execute searches or browse the web from this path.
+- Finder candidate review is evidence/curation metadata, not an automatic outreach decision; imported review context remains private and session-scoped through selected packs.
 
 Prompt/skill improvement is governed by an optional local skill-quality pipeline in [`docs/SKILL_QUALITY_PIPELINE.md`](docs/SKILL_QUALITY_PIPELINE.md). It is for synthetic or explicitly recorded mock transcript evidence only: bounded candidate edits, held-out validation, rejected-edit memory, and owner acceptance before any `best_skill.md` export.
 
@@ -278,13 +280,14 @@ docs/
 3. ✅ Added batch-friendly finder/context integration: single and batch counterparty pack ingest, preview/import UX, and retrieval-kind gating for interview/founder modes.
 4. ✅ Added Finder Search foundation: local search job/result contracts, backend source-truth storage, and UI, with candidate import into selected context packs.
 5. ✅ Added Finder Runner contract: manual/mock runner JSON can create local search jobs/results without outbound monitoring.
-6. ✅ Pass 7/8 completion: finder batch import now flows through session context into selected pack IDs used by `analyzeRecentTranscript`/retrieval.
-7. ✅ Pass 9 hardening: timeout/budget/retry UX now has cooldown-aware hints and dedicated regression checks.
-8. ✅ Pass 10 hardening: provider retryability is policy-driven (`isRetryableProviderError`), non-retryable errors are surfaced as `provider_not_retryable`, and UI distinguishes retry-blocked state.
-9. ✅ Pass 11 communication slice: assistant status now includes explicit blocked/recovery diagnostics and manual-recovery checks for retry-blocked flow.
-10. ✅ Selected pack source-of-truth pass: counterparty packs are versioned/redacted at storage, selected pack IDs are cleaned through UI/session/analyze paths, and stale packs are blocked before assistant retrieval.
-11. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
-12. Add training mode using the same profile, session-context, and assistant-provider layers.
+6. ✅ Added Finder candidate review/scoring: fit score, relevance reason, missing info, and next action are stored and carried into imported packs.
+7. ✅ Pass 7/8 completion: finder batch import now flows through session context into selected pack IDs used by `analyzeRecentTranscript`/retrieval.
+8. ✅ Pass 9 hardening: timeout/budget/retry UX now has cooldown-aware hints and dedicated regression checks.
+9. ✅ Pass 10 hardening: provider retryability is policy-driven (`isRetryableProviderError`), non-retryable errors are surfaced as `provider_not_retryable`, and UI distinguishes retry-blocked state.
+10. ✅ Pass 11 communication slice: assistant status now includes explicit blocked/recovery diagnostics and manual-recovery checks for retry-blocked flow.
+11. ✅ Selected pack source-of-truth pass: counterparty packs are versioned/redacted at storage, selected pack IDs are cleaned through UI/session/analyze paths, and stale packs are blocked before assistant retrieval.
+12. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.
+13. Add training mode using the same profile, session-context, and assistant-provider layers.
 
 The local STT reference and licensing boundary are recorded in [docs/ARCHITECTURE.md](/Volumes/Work/Work/CoqPi/docs/ARCHITECTURE.md).
 

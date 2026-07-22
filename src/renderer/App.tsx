@@ -213,7 +213,11 @@ const emptyFinderCandidateDraft: FinderCandidateFormDraft = {
   context: '',
   links: [],
   linksText: '',
-  score: undefined
+  score: undefined,
+  fitScore: undefined,
+  whyRelevant: '',
+  missingInfo: '',
+  nextAction: ''
 }
 
 const emptySmokeNoteDraft: SmokeTestNoteDraft = {
@@ -5165,6 +5169,69 @@ export const App = () => {
                             value={finderCandidateDraft.context}
                           />
                         </label>
+                        <label className="settings-row">
+                          <span className="settings-row-label">Fit score</span>
+                          <input
+                            max={100}
+                            min={0}
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                fitScore: event.target.value
+                                  ? Number(event.target.value)
+                                  : undefined
+                              }))
+                            }
+                            placeholder="0-100"
+                            type="number"
+                            value={finderCandidateDraft.fitScore ?? ''}
+                          />
+                        </label>
+                        <label className="settings-row settings-row-textarea">
+                          <span className="settings-row-label">Why relevant</span>
+                          <textarea
+                            className="prepare-textarea"
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                whyRelevant: event.target.value
+                              }))
+                            }
+                            placeholder="Why this candidate is useful for you"
+                            rows={2}
+                            value={finderCandidateDraft.whyRelevant}
+                          />
+                        </label>
+                        <label className="settings-row settings-row-textarea">
+                          <span className="settings-row-label">Missing info</span>
+                          <textarea
+                            className="prepare-textarea"
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                missingInfo: event.target.value
+                              }))
+                            }
+                            placeholder="What should be checked before outreach"
+                            rows={2}
+                            value={finderCandidateDraft.missingInfo}
+                          />
+                        </label>
+                        <label className="settings-row settings-row-textarea">
+                          <span className="settings-row-label">Next action</span>
+                          <textarea
+                            className="prepare-textarea"
+                            onChange={(event) =>
+                              setFinderCandidateDraft((current) => ({
+                                ...current,
+                                nextAction: event.target.value
+                              }))
+                            }
+                            placeholder="Next step if this candidate is worth pursuing"
+                            rows={2}
+                            value={finderCandidateDraft.nextAction}
+                          />
+                        </label>
                         <label className="settings-row settings-row-textarea">
                           <span className="settings-row-label">Links</span>
                           <textarea
@@ -5207,7 +5274,25 @@ export const App = () => {
                                 <span>
                                   {result.kind} · {result.title}
                                 </span>
+                                <span>
+                                  fit:{' '}
+                                  {result.fitScore === undefined
+                                    ? 'not scored'
+                                    : `${result.fitScore}/100`}
+                                  {result.score === undefined
+                                    ? ''
+                                    : ` · runner: ${result.score}/100`}
+                                </span>
                                 <code>{result.summary}</code>
+                                {result.whyRelevant ? (
+                                  <code>why: {result.whyRelevant}</code>
+                                ) : null}
+                                {result.missingInfo ? (
+                                  <code>missing: {result.missingInfo}</code>
+                                ) : null}
+                                {result.nextAction ? (
+                                  <code>next: {result.nextAction}</code>
+                                ) : null}
                               </div>
                               <div className="button-row settings-actions">
                                 <button

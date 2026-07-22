@@ -210,6 +210,10 @@ export interface FinderCandidateResultDraft {
   context?: string
   links?: string[]
   score?: number
+  fitScore?: number
+  whyRelevant?: string
+  missingInfo?: string
+  nextAction?: string
 }
 
 export interface FinderCandidateResult extends FinderCandidateResultDraft {

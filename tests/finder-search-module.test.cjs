@@ -52,7 +52,11 @@ test('finder candidate result converts to selected context pack draft', () => {
       summary: 'Seed investor focused on climate and agri infrastructure.',
       context: 'Relevant for ecosystem infrastructure and commodity workflows.',
       links: ['https://example.com', 'https://example.com'],
-      score: 87.4
+      score: 87.4,
+      fitScore: 92.3,
+      whyRelevant: 'Strong fit for agri commodity infrastructure.',
+      missingInfo: 'Check ticket size and geography.',
+      nextAction: 'Prepare a short intro email.'
     },
     { id: 'result-1', now: '2026-07-22T10:02:00.000Z' }
   )
@@ -60,6 +64,10 @@ test('finder candidate result converts to selected context pack draft', () => {
 
   assert.equal(result.kind, 'investor')
   assert.equal(result.score, 87)
+  assert.equal(result.fitScore, 92)
+  assert.equal(result.whyRelevant, 'Strong fit for agri commodity infrastructure.')
+  assert.equal(result.missingInfo, 'Check ticket size and geography.')
+  assert.equal(result.nextAction, 'Prepare a short intro email.')
   assert.deepEqual(result.links, ['https://example.com'])
   assert.deepEqual(pack, {
     sourceId: 'finder:investor:green-seed',
@@ -67,7 +75,13 @@ test('finder candidate result converts to selected context pack draft', () => {
     partnerName: 'Green Seed Capital',
     title: 'Climate/agri seed fund',
     summary: 'Seed investor focused on climate and agri infrastructure.',
-    context: 'Relevant for ecosystem infrastructure and commodity workflows.',
+    context: [
+      'Relevant for ecosystem infrastructure and commodity workflows.',
+      'Fit score: 92/100',
+      'Why relevant: Strong fit for agri commodity infrastructure.',
+      'Missing info: Check ticket size and geography.',
+      'Next action: Prepare a short intro email.'
+    ].join('\n'),
     links: ['https://example.com'],
     selected: true
   })
@@ -144,7 +158,11 @@ test('finder runner payload accepts valid candidates and returns item errors', (
         title: 'AI Product Lead',
         summary: 'Product leadership role with AI workflow focus.',
         links: ['https://example.com/northfield'],
-        score: 91
+        score: 91,
+        fitScore: 88,
+        whyRelevant: 'Matches AI product leadership and France search.',
+        missingInfo: 'Need salary range and remote policy.',
+        nextAction: 'Open company page and prepare outreach.'
       },
       {
         sourceId: 'finder:job:broken',
@@ -169,6 +187,10 @@ test('finder runner payload accepts valid candidates and returns item errors', (
   assert.equal(records.results.length, 1)
   assert.equal(records.results[0].jobId, 'runner-job-1')
   assert.equal(records.results[0].kind, 'job')
+  assert.equal(records.results[0].fitScore, 88)
+  assert.equal(records.results[0].whyRelevant, 'Matches AI product leadership and France search.')
+  assert.equal(records.results[0].missingInfo, 'Need salary range and remote policy.')
+  assert.equal(records.results[0].nextAction, 'Open company page and prepare outreach.')
 })
 
 test('finder runner payload rejects malformed envelopes before UI import', () => {

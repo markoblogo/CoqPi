@@ -56,7 +56,11 @@ test('finder search service persists jobs, candidates and status history', async
       partnerName: 'Northfield Labs',
       title: 'AI Product Lead',
       summary: 'Product leadership role with AI workflow focus.',
-      links: ['https://example.com/northfield']
+      links: ['https://example.com/northfield'],
+      fitScore: 86,
+      whyRelevant: 'Good overlap with AI product leadership.',
+      missingInfo: 'Need compensation and reporting line.',
+      nextAction: 'Prepare tailored CV points.'
     })
     const result = afterCandidate.store.results[0]
     const afterImport = await service.setFinderCandidateResultStatus(
@@ -84,6 +88,10 @@ test('finder search service persists jobs, candidates and status history', async
     assert.equal(storedJob.ownerId, 'owner')
     assert.match(storedJob.contentHash, /^[0-9a-f]{64}$/)
     assert.match(storedResult.provenance.locatorSha256, /^[0-9a-f]{64}$/)
+    assert.equal(storedResult.fitScore, 86)
+    assert.equal(storedResult.whyRelevant, 'Good overlap with AI product leadership.')
+    assert.equal(storedResult.missingInfo, 'Need compensation and reporting line.')
+    assert.equal(storedResult.nextAction, 'Prepare tailored CV points.')
     assert.equal(storedResult.statusHistory[0].status, 'imported')
     assert.ok(eventLines.length >= 4)
   })
@@ -102,7 +110,11 @@ test('finder search service ingests runner payload with append-only source truth
           sourceId: 'finder:investor:green-seed',
           partnerName: 'Green Seed Capital',
           title: 'Climate/agri seed fund',
-          summary: 'Seed investor focused on climate and agri infrastructure.'
+          summary: 'Seed investor focused on climate and agri infrastructure.',
+          fitScore: 90,
+          whyRelevant: 'Strong thesis match.',
+          missingInfo: 'Need current fund stage.',
+          nextAction: 'Check portfolio and partners.'
         },
         {
           sourceId: 'finder:investor:bad',
@@ -118,6 +130,8 @@ test('finder search service ingests runner payload with append-only source truth
     assert.equal(result.store.jobs[0].status, 'ready')
     assert.equal(result.store.results.length, 1)
     assert.equal(result.store.results[0].kind, 'investor')
+    assert.equal(result.store.results[0].fitScore, 90)
+    assert.equal(result.store.results[0].nextAction, 'Check portfolio and partners.')
     assert.equal(result.errors.length, 1)
     assert.equal(result.errors[0].index, 1)
   })

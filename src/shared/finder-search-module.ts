@@ -93,7 +93,11 @@ const normalizeCandidate = (
     summary,
     context: sanitizeText(candidate.context, 2000),
     links: sanitizeLinks(candidate.links),
-    score: clampScore(candidate.score)
+    score: clampScore(candidate.score),
+    fitScore: clampScore(candidate.fitScore),
+    whyRelevant: sanitizeText(candidate.whyRelevant, 1200),
+    missingInfo: sanitizeText(candidate.missingInfo, 1200),
+    nextAction: sanitizeText(candidate.nextAction, 1200)
   }
 }
 
@@ -116,10 +120,26 @@ export const createFinderCandidateResult = (
     context: normalized.context,
     links: normalized.links,
     score: normalized.score,
+    fitScore: normalized.fitScore,
+    whyRelevant: normalized.whyRelevant,
+    missingInfo: normalized.missingInfo,
+    nextAction: normalized.nextAction,
     status: 'ready',
     createdAt: options.now
   }
 }
+
+const buildFinderResultContext = (result: FinderCandidateResult) =>
+  [
+    result.context,
+    result.fitScore === undefined ? '' : `Fit score: ${result.fitScore}/100`,
+    result.whyRelevant ? `Why relevant: ${result.whyRelevant}` : '',
+    result.missingInfo ? `Missing info: ${result.missingInfo}` : '',
+    result.nextAction ? `Next action: ${result.nextAction}` : ''
+  ]
+    .map((line) => line?.trim() ?? '')
+    .filter(Boolean)
+    .join('\n')
 
 export const createContextPackDraftFromFinderResult = (
   result: FinderCandidateResult
@@ -129,7 +149,7 @@ export const createContextPackDraftFromFinderResult = (
   partnerName: result.partnerName,
   title: result.title,
   summary: result.summary,
-  context: result.context,
+  context: buildFinderResultContext(result),
   links: result.links,
   selected: true
 })
@@ -214,7 +234,11 @@ export const parseFinderRunnerPayloadText = (
             summary: normalized.summary,
             context: normalized.context,
             links: normalized.links,
-            score: normalized.score
+            score: normalized.score,
+            fitScore: normalized.fitScore,
+            whyRelevant: normalized.whyRelevant,
+            missingInfo: normalized.missingInfo,
+            nextAction: normalized.nextAction
           }
         })
       } catch (error) {
