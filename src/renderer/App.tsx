@@ -84,6 +84,9 @@ import {
   buildSmokeReadinessPack
 } from '@shared/smoke-readiness-pack'
 import {
+  preTestResetPlan
+} from '@shared/pre-test-reset'
+import {
   createFinderPreviewItems,
   getFinderPreviewSelectionStats,
   type CounterpartyFinderPreviewItem,
@@ -221,6 +224,22 @@ type SessionStats = {
   transcriptCharsSent: number
   profileCharsSent: number
   sessionContextCharsSent: number
+}
+
+const emptySessionStats: SessionStats = {
+  assistantRequests: 0,
+  keywordsRequests: 0,
+  transcriptCharsSent: 0,
+  profileCharsSent: 0,
+  sessionContextCharsSent: 0
+}
+
+const emptyRealtimeEventCounters = {
+  total: 0,
+  delta: 0,
+  completed: 0,
+  failed: 0,
+  genericError: 0
 }
 
 type RunAssistantAnalysisOptions = {
@@ -647,6 +666,7 @@ export const App = () => {
   const [mockTranscriptScenarioId, setMockTranscriptScenarioId] =
     useState<MockTranscriptScenarioId>('default')
   const [mockError, setMockError] = useState<string | null>(null)
+  const [testResetNotice, setTestResetNotice] = useState<string | null>(null)
   const [smokeChecklistMarks, setSmokeChecklistMarks] = useState<
     Partial<Record<SmokeChecklistStepId, SmokeChecklistMark>>
   >({})
@@ -689,21 +709,13 @@ export const App = () => {
     useState<RTCDataChannelState>('closed')
   const [realtimeLifecycleLog, setRealtimeLifecycleLog] = useState<string[]>([])
   const [realtimeEventCounters, setRealtimeEventCounters] = useState({
-    total: 0,
-    delta: 0,
-    completed: 0,
-    failed: 0,
-    genericError: 0
+    ...emptyRealtimeEventCounters
   })
   const [lastSanitizedRealtimeError, setLastSanitizedRealtimeError] = useState<
     string | null
   >(null)
   const [sessionStats, setSessionStats] = useState<SessionStats>({
-    assistantRequests: 0,
-    keywordsRequests: 0,
-    transcriptCharsSent: 0,
-    profileCharsSent: 0,
-    sessionContextCharsSent: 0
+    ...emptySessionStats
   })
   const [realtimeStartedAt, setRealtimeStartedAt] = useState<number | null>(
     null
@@ -2090,6 +2102,7 @@ export const App = () => {
 
     setIsMockModeEnabled(enabled)
     setMockError(null)
+    setTestResetNotice(null)
 
     if (!enabled) {
       setIsMockRunning(false)
@@ -2102,17 +2115,37 @@ export const App = () => {
     })
   }
 
+  const resetForTest = () => {
+    setIsMockRunning(false)
+    setSmokeChecklistMarks({})
+    resetAssistantConversationState({
+      clearTranscriptState: true,
+      lastAnalyzedUtteranceId: null
+    })
+    setSessionStats({ ...emptySessionStats })
+    setAccumulatedRealtimeMs(0)
+    setRealtimeStartedAt(null)
+    setTestResetNotice(
+      'Test state reset. Profile, session context, selected packs, key, and audio device were preserved.'
+    )
+  }
+
   const resetAssistantConversationState = ({
-    clearTranscriptState = false
+    clearTranscriptState = false,
+    lastAnalyzedUtteranceId
   }: {
     clearTranscriptState?: boolean
+    lastAnalyzedUtteranceId?: string | null
   } = {}) => {
     if (autoAnalysisTimeoutRef.current !== null) {
       window.clearTimeout(autoAnalysisTimeoutRef.current)
       autoAnalysisTimeoutRef.current = null
     }
 
-    const latestUtteranceId = getLastUtterance(transcriptUtterances)?.id
+    const latestUtteranceId =
+      lastAnalyzedUtteranceId === undefined
+        ? getLastUtterance(transcriptUtterances)?.id
+        : lastAnalyzedUtteranceId
 
     lastAutoAnalyzedFingerprintRef.current = null
     scheduledAutoAnalysisFingerprintRef.current = null
@@ -2122,13 +2155,7 @@ export const App = () => {
     if (clearTranscriptState) {
       setTranscriptUtterances(clearTranscript())
       setRealtimeEventTypes([])
-      setRealtimeEventCounters({
-        total: 0,
-        delta: 0,
-        completed: 0,
-        failed: 0,
-        genericError: 0
-      })
+      setRealtimeEventCounters({ ...emptyRealtimeEventCounters })
     }
 
     setMockError(null)
@@ -2138,7 +2165,7 @@ export const App = () => {
     setAssistantErrorSource(null)
     setAssistantResult(emptyAnalysis)
     setAssistantResultUpdatedAt(null)
-    setLastAnalyzedUtteranceId(latestUtteranceId)
+    setLastAnalyzedUtteranceId(latestUtteranceId ?? null)
     setAnalysisCooldownUntil(0)
   }
 
@@ -2777,6 +2804,10 @@ export const App = () => {
       : 'waiting',
     realtimeReady: isRealtimeReady
   })
+  const canResetForTest =
+    realtimeStatus === 'idle' ||
+    realtimeStatus === 'stopped' ||
+    realtimeStatus === 'error'
   const requestCostPreview = estimateAssistantRequestCost(
     lastUtterance?.text.length ?? 0,
     (includeProfileContext ? profileContext.length : 0) +
@@ -3233,6 +3264,7 @@ export const App = () => {
                   event.target.value as MockTranscriptScenarioId
                 )
                 setMockError(null)
+                setTestResetNotice(null)
               }}
               value={mockTranscriptScenarioId}
             >
@@ -3250,6 +3282,9 @@ export const App = () => {
               )?.description
             }
           </p>
+          {testResetNotice ? (
+            <div className="info-box">{testResetNotice}</div>
+          ) : null}
           <div className={`smoke-readiness smoke-readiness-${smokeReadinessPack.status}`}>
             <div className="smoke-readiness-header">
               <div>
@@ -3352,51 +3387,81 @@ export const App = () => {
           </div>
           <div className="button-row">
             <button
+              className="secondary-button"
+              disabled={!canResetForTest}
+              onClick={resetForTest}
+              title={
+                canResetForTest
+                  ? `Clears ${preTestResetPlan.clears.join(', ')}. Preserves ${preTestResetPlan.preserves.join(', ')}.`
+                  : 'Stop realtime before resetting test state.'
+              }
+              type="button"
+            >
+              {preTestResetPlan.label}
+            </button>
+            <button
               disabled={!isMockModeEnabled || isMockRunning}
-              onClick={startMockTranscript}
+              onClick={() => {
+                setTestResetNotice(null)
+                startMockTranscript()
+              }}
               type="button"
             >
               Start Mock
             </button>
             <button
               disabled={!isMockRunning}
-              onClick={stopMockTranscript}
+              onClick={() => {
+                setTestResetNotice(null)
+                stopMockTranscript()
+              }}
               type="button"
             >
               Stop Mock
             </button>
             <button
               disabled={!isMockModeEnabled}
-              onClick={addOneMockLine}
+              onClick={() => {
+                setTestResetNotice(null)
+                addOneMockLine()
+              }}
               type="button"
             >
               Add Line
             </button>
-            <button onClick={clearTranscriptState} type="button">
+            <button
+              onClick={() => {
+                setTestResetNotice(null)
+                clearTranscriptState()
+              }}
+              type="button"
+            >
               Clear
             </button>
             <button
               disabled={cooldownRemainingSeconds > 0}
-              onClick={() =>
+              onClick={() => {
+                setTestResetNotice(null)
                 void runAssistantAnalysis({
                   recentWindowLabel: '2m',
                   seconds: 120,
                   mode: 'full'
                 })
-              }
+              }}
               type="button"
             >
               Analyze 2m
             </button>
             <button
               disabled={cooldownRemainingSeconds > 0}
-              onClick={() =>
+              onClick={() => {
+                setTestResetNotice(null)
                 void runAssistantAnalysis({
                   recentWindowLabel: '2m',
                   seconds: 120,
                   mode: 'keywords'
                 })
-              }
+              }}
               type="button"
             >
               KW

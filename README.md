@@ -149,6 +149,7 @@ Mock mode is for UI testing only.
 - The scenario selector covers default EN/FR, job interview, investor call, partner call, French interview, and mixed EN/FR prompts.
 - The live smoke readiness pack gives one compact status before a call: setup, selected context, mock transcript path, assistant freshness, and real mic readiness.
 - The minimal real-test script stays at 5 actions: prep ready, mock probe, assistant probe, mic probe, final check.
+- `Reset for test` clears transcript, assistant result/errors, mock playback, checklist marks, cost notice, counters, and realtime timer while preserving profile, session context, selected packs, key, and audio device.
 - The live smoke checklist keeps local Done/Blocker marks and shows the next active step from current app readiness.
 
 Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.
