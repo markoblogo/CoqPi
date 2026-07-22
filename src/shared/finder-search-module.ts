@@ -7,6 +7,7 @@ import type {
   FinderSearchJob,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
+  FinderSourceAdapterRunSummary,
   FinderRunnerRunSummary,
   FinderSearchStatusCounts
 } from './app-types'
@@ -64,6 +65,31 @@ const slugify = (value: string, fallback: string) => {
     .slice(0, 64)
 
   return slug || fallback
+}
+
+const stableTextHash = (value: string) => {
+  let hash = 2166136261
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
+const parseMaybeUrl = (value: string) => {
+  try {
+    const url = new URL(value)
+
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return null
+    }
+
+    return url
+  } catch {
+    return null
+  }
 }
 
 const normalizeJob = (draft: FinderSearchJobDraft): FinderSearchJobDraft => {
@@ -409,6 +435,131 @@ export const summarizeManualFinderRunnerRun = (
   skippedDuplicateCount,
   reason:
     'Local manual/mock runner generated bounded candidate placeholders only; no web search, scraping, API call, or outbound action was performed.'
+})
+
+const splitOwnerPastedSourceEntries = (text: string) =>
+  text
+    .split(/\n{2,}/)
+    .flatMap((block) => {
+      const trimmed = block.trim()
+
+      if (!trimmed) {
+        return []
+      }
+
+      const lines = trimmed.split('\n').map((line) => line.trim()).filter(Boolean)
+
+      if (lines.length > 1 && lines.every((line) => parseMaybeUrl(line))) {
+        return lines
+      }
+
+      return [trimmed]
+    })
+    .slice(0, 25)
+
+const getFirstUrlFromText = (text: string) =>
+  text
+    .split(/\s+/)
+    .map((part) => part.replace(/[),.;]+$/g, ''))
+    .map(parseMaybeUrl)
+    .find((url): url is URL => Boolean(url)) ?? null
+
+export const createFinderCandidatesFromOwnerPastedSource = (
+  job: FinderSearchJob,
+  sourceText: string
+): {
+  requestedCount: number
+  candidates: FinderCandidateResultDraft[]
+  errors: { index?: number; reason: string }[]
+} => {
+  const entries = splitOwnerPastedSourceEntries(sourceText)
+  const candidates: FinderCandidateResultDraft[] = []
+  const errors: { index?: number; reason: string }[] = []
+  const jobSlug = slugify(job.id, 'job')
+
+  entries.forEach((entry, index) => {
+    const normalizedEntry = sanitizeText(entry, 5000)
+    const firstUrl = getFirstUrlFromText(normalizedEntry)
+    const lines = normalizedEntry
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+    const headline = sanitizeText(lines[0] ?? '', 180)
+
+    if (!normalizedEntry || (!headline && !firstUrl)) {
+      errors.push({ index, reason: 'Owner pasted source entry is empty.' })
+      return
+    }
+
+    const domain = firstUrl?.hostname.replace(/^www\./, '') ?? ''
+    const partnerName = domain
+      ? domain.split('.')[0]?.replace(/[-_]+/g, ' ') || domain
+      : headline.split(/[|,–-]/)[0]?.trim() || `Source candidate ${index + 1}`
+    const title = domain
+      ? headline && !parseMaybeUrl(headline)
+        ? headline
+        : `${job.label} source ${index + 1}`
+      : headline
+    const sourceHash = stableTextHash(`${job.id}\n${normalizedEntry}`)
+    const link = firstUrl?.toString()
+    const body = lines.slice(1).join(' ').trim()
+    const summary = [
+      `Owner-provided source for ${job.label}.`,
+      headline && !parseMaybeUrl(headline) ? `Headline: ${headline}.` : '',
+      body ? `Excerpt: ${sanitizeText(body, 420)}.` : '',
+      link ? `URL: ${link}` : ''
+    ]
+      .filter(Boolean)
+      .join(' ')
+
+    candidates.push({
+      sourceId: `coqpi:source-adapter:${job.kind}:${jobSlug}:${sourceHash}`,
+      partnerName,
+      title,
+      summary,
+      context: [
+        'Imported through owner_paste_v0 from owner-provided URL/text/export.',
+        'No web fetch, scraping, search API, scheduler, or outbound action was performed.',
+        `Original job query: ${job.query}.`,
+        job.goal ? `Job goal: ${job.goal}.` : '',
+        body ? `Owner pasted excerpt: ${sanitizeText(body, 900)}` : ''
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      links: link ? [link] : [],
+      score: link ? 72 : 62,
+      fitScore: link ? 70 : 60,
+      whyRelevant: `Owner pasted this source for the "${job.label}" Finder job. Review evidence before outreach.`,
+      missingInfo: link
+        ? 'Verify the page content and contact/current status before outreach.'
+        : 'Add source URL or reviewed provenance before outreach.',
+      nextAction:
+        'Review normalized candidate, enrich missing fields, then import as a session pack if useful.'
+    })
+  })
+
+  return {
+    requestedCount: entries.length,
+    candidates,
+    errors
+  }
+}
+
+export const summarizeFinderSourceAdapterRun = (
+  jobId: string,
+  requestedCount: number,
+  generatedCount: number,
+  skippedDuplicateCount: number,
+  errors: { index?: number; reason: string }[]
+): FinderSourceAdapterRunSummary => ({
+  jobId,
+  mode: 'owner_paste_v0',
+  requestedCount,
+  generatedCount,
+  skippedDuplicateCount,
+  errors,
+  reason:
+    'Owner-pasted URL/text/export was normalized locally; no web fetch, scraping, search API, scheduler, or outbound action was performed.'
 })
 
 export const getFinderSearchStatusCounts = (

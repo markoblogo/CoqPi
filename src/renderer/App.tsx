@@ -715,6 +715,9 @@ export const App = () => {
     null
   )
   const [isRunningFinderJob, setIsRunningFinderJob] = useState(false)
+  const [finderOwnerSourceText, setFinderOwnerSourceText] = useState('')
+  const [isImportingFinderOwnerSource, setIsImportingFinderOwnerSource] =
+    useState(false)
   const [finderRunnerPayloadText, setFinderRunnerPayloadText] = useState('')
   const [finderRunnerPayloadPreview, setFinderRunnerPayloadPreview] =
     useState<FinderRunnerPayloadPreviewResult | null>(null)
@@ -2143,6 +2146,45 @@ export const App = () => {
       )
     } finally {
       setIsRunningFinderJob(false)
+    }
+  }
+
+  const ingestFinderOwnerSource = async () => {
+    if (
+      !selectedFinderSearchJob ||
+      isImportingFinderOwnerSource ||
+      !finderOwnerSourceText.trim()
+    ) {
+      return
+    }
+
+    setIsImportingFinderOwnerSource(true)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const payload = await window.coqpi.finderSearch.ingestOwnerSource(
+        selectedFinderSearchJob.id,
+        finderOwnerSourceText
+      )
+      const summary = payload.finderSourceAdapterSummary
+
+      applyFinderSearchStore(payload.store)
+      setSelectedFinderSearchJobId(selectedFinderSearchJob.id)
+      setFinderOwnerSourceText('')
+      setFinderSearchNotice(
+        summary
+          ? `Source adapter imported: ${summary.generatedCount} generated, ${summary.skippedDuplicateCount} duplicate skipped, ${summary.errors.length} issue${summary.errors.length === 1 ? '' : 's'}.`
+          : 'Source adapter imported.'
+      )
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to import owner-provided source.'
+      )
+    } finally {
+      setIsImportingFinderOwnerSource(false)
     }
   }
 
@@ -5340,6 +5382,58 @@ export const App = () => {
                             type="button"
                           >
                             Reject
+                          </button>
+                        </div>
+                      </div>
+                      <div className="finder-runner-import context-source-form">
+                        <div className="finder-runner-header">
+                          <div>
+                            <strong>Source adapter v0</strong>
+                            <span>
+                              Paste one URL, a vacancy/export block, or several URL
+                              lines. CoqPi normalizes candidates locally.
+                            </span>
+                          </div>
+                          <span>owner_paste_v0</span>
+                        </div>
+                        <textarea
+                          className="prepare-textarea"
+                          onChange={(event) => {
+                            setFinderOwnerSourceText(event.target.value)
+                            setFinderSearchError(null)
+                            setFinderSearchNotice(null)
+                          }}
+                          placeholder={'https://company.example/jobs/product-lead\n\nOr paste a vacancy / partner export block here.'}
+                          rows={4}
+                          value={finderOwnerSourceText}
+                        />
+                        <div className="button-row settings-actions">
+                          <button
+                            disabled={
+                              isImportingFinderOwnerSource ||
+                              selectedFinderSearchJob.status === 'rejected' ||
+                              !finderOwnerSourceText.trim()
+                            }
+                            onClick={() => void ingestFinderOwnerSource()}
+                            type="button"
+                          >
+                            {isImportingFinderOwnerSource
+                              ? 'Importing...'
+                              : 'Import pasted source'}
+                          </button>
+                          <button
+                            disabled={
+                              isImportingFinderOwnerSource ||
+                              !finderOwnerSourceText.trim()
+                            }
+                            onClick={() => {
+                              setFinderOwnerSourceText('')
+                              setFinderSearchError(null)
+                              setFinderSearchNotice(null)
+                            }}
+                            type="button"
+                          >
+                            Clear source
                           </button>
                         </div>
                       </div>

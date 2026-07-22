@@ -62,6 +62,10 @@ declare global {
           payloadText: string
         ) => Promise<FinderSearchStoreResult>
         runJob: (jobId: string) => Promise<FinderSearchStoreResult>
+        ingestOwnerSource: (
+          jobId: string,
+          sourceText: string
+        ) => Promise<FinderSearchStoreResult>
         saveOutreachDraft: (
           candidateResultId: string
         ) => Promise<FinderSearchStoreResult>

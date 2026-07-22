@@ -58,6 +58,12 @@ contextBridge.exposeInMainWorld('coqpi', {
       ),
     runJob: (jobId: string) =>
       ipcRenderer.invoke('coqpi:finder-search:run-job', jobId),
+    ingestOwnerSource: (jobId: string, sourceText: string) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:ingest-owner-source',
+        jobId,
+        sourceText
+      ),
     saveOutreachDraft: (candidateResultId: string) =>
       ipcRenderer.invoke(
         'coqpi:finder-search:save-outreach-draft',

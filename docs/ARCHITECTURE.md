@@ -79,6 +79,7 @@ Shared cost constants live in:
 - **Counterparty/context packs**: compact partner and role-specific records from Finder or manually curated intake are stored in the same local manifest under `manifest.counterpartyPacks` with explicit provenance, selection flag, retention, and a compact hash.
 - **Finder outreach drafts**: local append-only Finder drafts can be attached to `current-session.json` by draft ID. The assistant receives only the compact selected draft summary, never an outbound send action.
 - **Finder runner**: `manual_mock` is the only runnable adapter in this phase. It creates deterministic local placeholder candidates from a selected job so the review/scoring/import path can be exercised without web search, scraping, external APIs, scheduling, or outreach.
+- **Finder source adapter v0**: `owner_paste_v0` normalizes owner-pasted URLs, vacancy/export text, or simple candidate lists for a selected job. URLs are stored as provenance links only; CoqPi does not fetch them in this phase.
 - **Knowledge ingestion quality**: shared readiness helpers summarize pending/hash-only/retrieval-ready sources, retention expiry, selected pack quality, and whether the current strict candidate set is clean enough for a future vector adapter.
 - **User settings**: JSON under `app.getPath("userData")`
 - **Stored encrypted API key**: file under `app.getPath("userData")/secrets/`

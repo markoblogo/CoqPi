@@ -185,6 +185,57 @@ test('finder search service refuses to run rejected jobs', async () => {
   })
 })
 
+test('finder search service ingests owner pasted source idempotently', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech'
+    })
+    const job = afterJob.store.jobs[0]
+    const sourceText = [
+      'https://example.com/jobs/product-lead',
+      '',
+      'Northfield Labs - AI Product Lead',
+      'Product leadership role in France.',
+      'https://northfield.example/careers'
+    ].join('\n')
+    const first = await service.ingestFinderOwnerPastedSource(job.id, sourceText)
+    const second = await service.ingestFinderOwnerPastedSource(job.id, sourceText)
+
+    assert.equal(first.store.jobs[0].status, 'ready')
+    assert.equal(first.store.results.length, 2)
+    assert.equal(first.finderSourceAdapterSummary.mode, 'owner_paste_v0')
+    assert.equal(first.finderSourceAdapterSummary.requestedCount, 2)
+    assert.equal(first.finderSourceAdapterSummary.generatedCount, 2)
+    assert.equal(first.finderSourceAdapterSummary.skippedDuplicateCount, 0)
+    assert.match(first.finderSourceAdapterSummary.reason, /No web fetch|no web fetch/i)
+    assert.equal(second.store.results.length, 2)
+    assert.equal(second.finderSourceAdapterSummary.generatedCount, 0)
+    assert.equal(second.finderSourceAdapterSummary.skippedDuplicateCount, 2)
+  })
+})
+
+test('finder search service rejects owner pasted source for rejected jobs', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'Rejected partner search',
+      query: 'irrelevant'
+    })
+    const job = afterJob.store.jobs[0]
+    await service.setFinderSearchJobStatus(job.id, 'rejected')
+
+    await assert.rejects(
+      service.ingestFinderOwnerPastedSource(
+        job.id,
+        'https://example.com/rejected'
+      ),
+      /Rejected finder jobs cannot ingest/
+    )
+  })
+})
+
 test('finder search service saves outreach draft handoff locally', async () => {
   await withFinderWorkspace(async (service, directory) => {
     const afterJob = await service.addFinderSearchJob({

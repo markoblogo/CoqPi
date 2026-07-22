@@ -4,6 +4,7 @@ const test = require('node:test')
 const {
   createFinderRecordsFromRunnerPayload,
   createContextPackDraftFromFinderResult,
+  createFinderCandidatesFromOwnerPastedSource,
   createFinderCandidateResult,
   createFinderOutreachDraft,
   createFinderOutreachPrepPack,
@@ -245,6 +246,40 @@ test('manual finder runner creates bounded local placeholder candidates', () => 
   assert.match(candidates[0].context, /not an internet search result/)
   assert.match(candidates[0].whyRelevant, /Requires manual evidence/)
   assert.deepEqual(candidates[0].links, [])
+})
+
+test('owner pasted source adapter normalizes urls and text blocks', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech',
+      goal: 'Prepare interview packs'
+    },
+    { id: 'job-owner-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'https://example.com/jobs/product-lead',
+      '',
+      'Northfield Labs - AI Product Lead',
+      'Product leadership role in France.',
+      'https://northfield.example/careers'
+    ].join('\n')
+  )
+
+  assert.equal(parsed.requestedCount, 2)
+  assert.equal(parsed.errors.length, 0)
+  assert.equal(parsed.candidates.length, 2)
+  assert.match(parsed.candidates[0].sourceId, /^coqpi:source-adapter:job:/)
+  assert.equal(parsed.candidates[0].partnerName, 'example')
+  assert.deepEqual(parsed.candidates[0].links, [
+    'https://example.com/jobs/product-lead'
+  ])
+  assert.equal(parsed.candidates[1].title, 'Northfield Labs - AI Product Lead')
+  assert.match(parsed.candidates[1].context, /No web fetch/)
+  assert.match(parsed.candidates[1].missingInfo, /Verify/)
 })
 
 test('finder pipeline view prioritizes high-fit ready candidates', () => {

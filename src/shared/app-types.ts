@@ -236,6 +236,18 @@ export interface FinderRunnerRunSummary {
   reason: string
 }
 
+export type FinderSourceAdapterMode = 'owner_paste_v0'
+
+export interface FinderSourceAdapterRunSummary {
+  jobId: string
+  mode: FinderSourceAdapterMode
+  requestedCount: number
+  generatedCount: number
+  skippedDuplicateCount: number
+  errors: { index?: number; reason: string }[]
+  reason: string
+}
+
 export interface FinderOutreachDraft {
   version: 1
   id: string
@@ -298,6 +310,7 @@ export interface FinderSearchStoreResult {
   store: FinderSearchStore
   errors?: { index?: number; reason: string }[]
   finderRunSummary?: FinderRunnerRunSummary
+  finderSourceAdapterSummary?: FinderSourceAdapterRunSummary
 }
 
 export interface FinderSearchStatusCounts {
