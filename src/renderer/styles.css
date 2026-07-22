@@ -1120,6 +1120,87 @@ button:disabled {
   line-height: 1.35;
 }
 
+.smoke-checklist {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #151b22;
+}
+
+.smoke-checklist-header,
+.smoke-checklist-item,
+.smoke-checklist-status {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.smoke-checklist-header {
+  justify-content: space-between;
+}
+
+.smoke-checklist-header > div,
+.smoke-checklist-body {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.smoke-checklist-header strong,
+.smoke-checklist-body strong {
+  color: #eef3f8;
+  font-size: var(--font-sm);
+}
+
+.smoke-checklist-header span,
+.smoke-checklist-body span,
+.smoke-checklist-body code,
+.smoke-checklist-status span {
+  color: #a9b8c6;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.smoke-checklist-list {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.smoke-checklist-item {
+  justify-content: space-between;
+  padding: 5px 6px;
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #1a212a;
+}
+
+.smoke-checklist-status {
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.smoke-checklist-item-ready {
+  border-color: #385470;
+  background: #15212c;
+}
+
+.smoke-checklist-item-done {
+  border-color: #355848;
+  background: #14221b;
+}
+
+.smoke-checklist-item-blocked {
+  border-color: #7c4747;
+  background: #261616;
+}
+
+.smoke-checklist-item-waiting {
+  border-color: #4a5563;
+}
+
 @media (max-width: 700px) {
   .app-bar-left .status-chip:last-child {
     display: none;
@@ -1147,6 +1228,15 @@ button:disabled {
 
   .test-cockpit {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .smoke-checklist-item {
+    flex-direction: column;
+  }
+
+  .smoke-checklist-status {
+    width: 100%;
+    align-items: flex-start;
   }
 
   .settings-shell {

@@ -69,6 +69,11 @@ import {
   getSessionSelectedCounterpartyPackIds
 } from '@shared/session-pack-selection'
 import {
+  buildSmokeChecklistSummary,
+  type SmokeChecklistMark,
+  type SmokeChecklistStepId
+} from '@shared/smoke-checklist'
+import {
   createFinderPreviewItems,
   getFinderPreviewSelectionStats,
   type CounterpartyFinderPreviewItem,
@@ -632,6 +637,9 @@ export const App = () => {
   const [mockTranscriptScenarioId, setMockTranscriptScenarioId] =
     useState<MockTranscriptScenarioId>('default')
   const [mockError, setMockError] = useState<string | null>(null)
+  const [smokeChecklistMarks, setSmokeChecklistMarks] = useState<
+    Partial<Record<SmokeChecklistStepId, SmokeChecklistMark>>
+  >({})
   const [transcriptUtterances, setTranscriptUtterances] = useState<
     TranscriptUtterance[]
   >([])
@@ -2704,6 +2712,32 @@ export const App = () => {
     lastAnalyzedUtteranceId,
     cooldownRemainingSeconds
   })
+  const smokeChecklistSummary = buildSmokeChecklistSummary(
+    {
+      apiKeyAvailable: configStatus.effectiveKeyAvailable,
+      mockModeEnabled: isMockModeEnabled,
+      transcriptCount: transcriptUtterances.length,
+      autoWindowChars: autoAnalysisTranscriptText.trim().length,
+      assistantLabel: assistantStatus.label,
+      assistantFreshness: assistantRelevantLastUtterance?.id
+        ? lastAnalyzedUtteranceId === assistantRelevantLastUtterance.id
+          ? 'fresh'
+          : 'stale'
+        : 'waiting',
+      selectedPackCount: sessionContext.selectedCounterpartyPackIds.length,
+      realtimeReady: isRealtimeReady
+    },
+    smokeChecklistMarks
+  )
+  const setSmokeChecklistMark = (
+    stepId: SmokeChecklistStepId,
+    mark: SmokeChecklistMark
+  ) => {
+    setSmokeChecklistMarks((current) => ({
+      ...current,
+      [stepId]: mark
+    }))
+  }
   const requestCostPreview = estimateAssistantRequestCost(
     lastUtterance?.text.length ?? 0,
     (includeProfileContext ? profileContext.length : 0) +
@@ -3177,6 +3211,59 @@ export const App = () => {
               )?.description
             }
           </p>
+          <div className="smoke-checklist">
+            <div className="smoke-checklist-header">
+              <div>
+                <strong>Live smoke checklist</strong>
+                <span>
+                  {smokeChecklistSummary.progressLabel} · Next:{' '}
+                  {smokeChecklistSummary.activeTitle}
+                </span>
+              </div>
+              <button
+                className="secondary-button"
+                onClick={() => setSmokeChecklistMarks({})}
+                type="button"
+              >
+                Reset
+              </button>
+            </div>
+            <div className="smoke-checklist-list">
+              {smokeChecklistSummary.items.map((item) => (
+                <div
+                  className={`smoke-checklist-item smoke-checklist-item-${item.status}`}
+                  key={item.id}
+                >
+                  <div className="smoke-checklist-body">
+                    <strong>{item.title}</strong>
+                    <span>{item.action}</span>
+                    <code>{item.expected}</code>
+                  </div>
+                  <div className="smoke-checklist-status">
+                    <span>{item.readiness}</span>
+                    <div className="button-row button-row-inline">
+                      <button
+                        disabled={item.status === 'done'}
+                        onClick={() => setSmokeChecklistMark(item.id, 'done')}
+                        type="button"
+                      >
+                        Done
+                      </button>
+                      <button
+                        disabled={item.status === 'blocked'}
+                        onClick={() =>
+                          setSmokeChecklistMark(item.id, 'blocked')
+                        }
+                        type="button"
+                      >
+                        Blocker
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
           <div className="button-row">
             <button
               disabled={!isMockModeEnabled || isMockRunning}
