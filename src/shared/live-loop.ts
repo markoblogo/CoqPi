@@ -1,5 +1,6 @@
 import type {
   AssistantAnalysisError,
+  AssistantCallLanguage,
   TranscriptUtterance
 } from './app-types'
 
@@ -304,6 +305,8 @@ export const getAssistantStatusRecoveryGuide = (
 export type LiveLoopDecisionReason =
   | 'schedule'
   | 'no-final'
+  | 'unsupported-language'
+  | 'too-short-transcript'
   | 'already-analyzed'
   | 'already-scheduled'
   | 'assistant-busy'
@@ -317,6 +320,7 @@ export type LiveLoopDecision = {
 export type LiveLoopScheduleInput = {
   latestFinalUtterance: TranscriptUtterance | undefined
   transcriptText: string
+  callLanguage?: AssistantCallLanguage
   lastAutoAnalyzedFingerprint: string | null
   scheduledAutoAnalysisFingerprint: string | null
   assistantState: AssistantState
@@ -332,9 +336,109 @@ export type LiveLoopSchedulePlan = {
   delayMs: number | null
 }
 
+export type AutoAnalysisUtteranceEligibility = {
+  eligible: boolean
+  reason: Extract<
+    LiveLoopDecisionReason,
+    'unsupported-language' | 'too-short-transcript'
+  > | null
+}
+
+const unsupportedTranscriptScriptPattern =
+  /[\u0400-\u04ff\u0600-\u06ff\u0590-\u05ff\u3040-\u30ff\u3400-\u9fff]/
+const latinLetterPattern = /[A-Za-zÀ-ÖØ-öø-ÿ]/
+const meaningfulWordPattern = /[A-Za-zÀ-ÖØ-öø-ÿ]{2,}/g
+
+const hasEnoughAutoAnalysisText = (text: string) => {
+  const trimmed = text.trim()
+
+  if (trimmed.length < 6) {
+    return false
+  }
+
+  return (trimmed.match(meaningfulWordPattern) ?? []).length >= 2
+}
+
+export const getAutoAnalysisUtteranceEligibility = (
+  utterance: TranscriptUtterance,
+  callLanguage: AssistantCallLanguage = 'auto'
+): AutoAnalysisUtteranceEligibility => {
+  const language = utterance.language ?? 'unknown'
+  const hasUnsupportedScript = unsupportedTranscriptScriptPattern.test(utterance.text)
+  const hasLatinLetters = latinLetterPattern.test(utterance.text)
+
+  if (language === 'ru' || hasUnsupportedScript) {
+    return {
+      eligible: false,
+      reason: 'unsupported-language'
+    }
+  }
+
+  if (!hasEnoughAutoAnalysisText(utterance.text)) {
+    return {
+      eligible: false,
+      reason: 'too-short-transcript'
+    }
+  }
+
+  if (language === 'en' || language === 'fr') {
+    if (callLanguage === 'auto' || callLanguage === language) {
+      return {
+        eligible: true,
+        reason: null
+      }
+    }
+
+    return {
+      eligible: false,
+      reason: 'unsupported-language'
+    }
+  }
+
+  if (language === 'unknown' && hasLatinLetters) {
+    return {
+      eligible: true,
+      reason: null
+    }
+  }
+
+  return {
+    eligible: false,
+    reason: 'unsupported-language'
+  }
+}
+
+export const isAutoAnalysisTranscriptCandidate = (
+  utterance: TranscriptUtterance,
+  callLanguage: AssistantCallLanguage = 'auto'
+) =>
+  utterance.isFinal &&
+  utterance.speaker === 'other' &&
+  (utterance.source === 'realtime' || utterance.source === 'mock') &&
+  getAutoAnalysisUtteranceEligibility(utterance, callLanguage).eligible
+
+export const getLatestAutoAnalysisUtterance = (
+  utterances: TranscriptUtterance[],
+  callLanguage: AssistantCallLanguage = 'auto'
+) =>
+  [...utterances]
+    .reverse()
+    .find((utterance) =>
+      isAutoAnalysisTranscriptCandidate(utterance, callLanguage)
+    )
+
+export const getAutoAnalysisTranscriptUtterances = (
+  utterances: TranscriptUtterance[],
+  callLanguage: AssistantCallLanguage = 'auto'
+) =>
+  utterances.filter((utterance) =>
+    isAutoAnalysisTranscriptCandidate(utterance, callLanguage)
+  )
+
 export const decideAutoAnalysis = ({
   latestFinalUtterance,
   transcriptText,
+  callLanguage = 'auto',
   lastAutoAnalyzedFingerprint,
   scheduledAutoAnalysisFingerprint,
   assistantState,
@@ -342,6 +446,7 @@ export const decideAutoAnalysis = ({
 }: {
   latestFinalUtterance: TranscriptUtterance | undefined
   transcriptText: string
+  callLanguage?: AssistantCallLanguage
   lastAutoAnalyzedFingerprint: string | null
   scheduledAutoAnalysisFingerprint: string | null
   assistantState: AssistantState
@@ -351,6 +456,19 @@ export const decideAutoAnalysis = ({
     return {
       shouldRun: false,
       reason: 'no-final',
+      fingerprint: null
+    }
+  }
+
+  const utteranceEligibility = getAutoAnalysisUtteranceEligibility(
+    latestFinalUtterance,
+    callLanguage
+  )
+
+  if (!utteranceEligibility.eligible) {
+    return {
+      shouldRun: false,
+      reason: utteranceEligibility.reason ?? 'unsupported-language',
       fingerprint: null
     }
   }
@@ -395,6 +513,7 @@ export const decideAutoAnalysis = ({
 export const buildAutoAnalysisSchedule = ({
   latestFinalUtterance,
   transcriptText,
+  callLanguage,
   lastAutoAnalyzedFingerprint,
   scheduledAutoAnalysisFingerprint,
   assistantState,
@@ -405,6 +524,7 @@ export const buildAutoAnalysisSchedule = ({
   const decision = decideAutoAnalysis({
     latestFinalUtterance,
     transcriptText,
+    callLanguage,
     lastAutoAnalyzedFingerprint,
     scheduledAutoAnalysisFingerprint,
     assistantState,

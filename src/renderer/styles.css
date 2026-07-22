@@ -602,6 +602,10 @@ button:disabled {
   color: #c6dff5;
 }
 
+.transcript-ignore-badge {
+  color: #f0b37e;
+}
+
 .transcript-item-text,
 .panel-card p {
   margin: 0;

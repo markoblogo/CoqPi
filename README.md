@@ -15,6 +15,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 
 - Realtime transcription v0 over OpenAI Realtime
 - Automatic assistant analysis after each completed utterance, with manual override
+- Local auto-analysis guard for EN/FR live-loop input: explicit Russian/Cyrillic background speech and too-short noise are ignored before provider analysis and excluded from the automatic transcript window.
 - Mock Transcript Mode for local UI testing
 - Local profile and per-call session context
 - Finder payload ingestion for counterparty packs (single + batch), with duplicate-safe import and preview error reporting
@@ -241,7 +242,7 @@ docs/
 
 ## Next planned steps
 
-1. Test the live loop with a microphone and real calls; tune turn segmentation and transcript quality.
+1. Test the live loop with a microphone and real calls; tune turn segmentation and transcript quality. The app now locally ignores obvious non-EN/FR background speech before auto-analysis, but real noisy-call tuning still needs manual smoke testing.
 2. ✅ Added OpenAI-to-Ollama runtime fallback for text assistant analysis with governance and retry-policy checks; next iteration will refine model-specific routing policies.
 3. ✅ Added batch-friendly finder/context integration: single and batch counterparty pack ingest, preview/import UX, and retrieval-kind gating for interview/founder modes.
 4. Research local STT behind a provider interface, without changing the proven OpenAI Realtime path yet.

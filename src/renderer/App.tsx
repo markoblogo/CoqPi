@@ -37,6 +37,9 @@ import {
   AssistantState,
   type AssistantStatusCode,
   buildAutoAnalysisSchedule,
+  getAutoAnalysisTranscriptUtterances,
+  getAutoAnalysisUtteranceEligibility,
+  getLatestAutoAnalysisUtterance,
   isRetryButtonDisabled,
   isRetryNowButtonDisabled,
   getAssistantRunHint,
@@ -2318,8 +2321,16 @@ export const App = () => {
       return false
     }
 
+    const assistantCallLanguage = toAssistantCallLanguage(controls.callLanguage)
+    const transcriptWindowUtterances =
+      trigger === 'auto'
+        ? getAutoAnalysisTranscriptUtterances(
+            transcriptUtterances,
+            assistantCallLanguage
+          )
+        : transcriptUtterances
     const recentTranscript = getRecentTranscriptText(
-      transcriptUtterances,
+      transcriptWindowUtterances,
       seconds
     )
 
@@ -2399,7 +2410,7 @@ export const App = () => {
 
     const request: AssistantAnalysisRequest = {
       transcriptText: transcriptToSend,
-      callLanguage: toAssistantCallLanguage(controls.callLanguage),
+      callLanguage: assistantCallLanguage,
       answerLanguage: toAssistantAnswerLanguage(controls.answerLanguage),
       mode: effectiveMode,
       includeProfileContext,
@@ -2490,14 +2501,11 @@ export const App = () => {
   runAssistantAnalysisRef.current = runAssistantAnalysis
 
   useEffect(() => {
-    const latestFinalUtterance = [...transcriptUtterances]
-      .reverse()
-      .find(
-        (utterance) =>
-          utterance.isFinal &&
-          utterance.speaker === 'other' &&
-          (utterance.source === 'realtime' || utterance.source === 'mock')
-      )
+    const assistantCallLanguage = toAssistantCallLanguage(controls.callLanguage)
+    const latestFinalUtterance = getLatestAutoAnalysisUtterance(
+      transcriptUtterances,
+      assistantCallLanguage
+    )
 
     if (!latestFinalUtterance) {
       return
@@ -2507,6 +2515,7 @@ export const App = () => {
     const plan = buildAutoAnalysisSchedule({
       latestFinalUtterance,
       transcriptText: analysisText,
+      callLanguage: assistantCallLanguage,
       lastAutoAnalyzedFingerprint: lastAutoAnalyzedFingerprintRef.current,
       scheduledAutoAnalysisFingerprint: scheduledAutoAnalysisFingerprintRef.current,
       assistantState,
@@ -2558,6 +2567,7 @@ export const App = () => {
   }, [
     analysisCooldownUntil,
     assistantState,
+    controls.callLanguage,
     transcriptUtterances,
     sessionContext.selectedCounterpartyPackIds
   ])
@@ -2573,16 +2583,20 @@ export const App = () => {
     costMode
   )
   const lastUtterance = getLastUtterance(transcriptUtterances)
+  const assistantRelevantLastUtterance = getLatestAutoAnalysisUtterance(
+    transcriptUtterances,
+    toAssistantCallLanguage(controls.callLanguage)
+  )
   const activeSessionLabel = getSessionContextLabel(sessionContext)
   const hasSessionContext = Boolean(getSessionContextText(sessionContext))
   const isAssistantResultStale =
-    Boolean(lastUtterance?.isFinal) &&
+    Boolean(assistantRelevantLastUtterance?.isFinal) &&
     assistantState === 'done' &&
-    lastAnalyzedUtteranceId !== lastUtterance?.id
+    lastAnalyzedUtteranceId !== assistantRelevantLastUtterance?.id
   const assistantStatus = getAssistantStatusLabel(
     assistantState,
     lastAnalyzedUtteranceId,
-    lastUtterance?.id,
+    assistantRelevantLastUtterance?.id,
     assistantErrorCode
   )
   const assistantFreshnessLabel = assistantStatus.label
@@ -2605,7 +2619,7 @@ export const App = () => {
     assistantErrorCode,
     assistantError,
     lastAnalyzedUtteranceId,
-    lastUtterance?.id,
+    assistantRelevantLastUtterance?.id,
     cooldownRemainingSeconds,
     assistantErrorSource
   )
@@ -2731,26 +2745,41 @@ export const App = () => {
         <div className="empty-state">No transcript.</div>
       ) : (
         <div className="transcript-list">
-          {transcriptUtterances.map((utterance) => (
-            <article
-              className={`transcript-item ${
-                utterance.isFinal ? '' : 'transcript-item-partial'
-              }`}
-              key={utterance.id}
-            >
-              <div className="transcript-item-meta">
-                <span>{formatTranscriptTime(utterance.timestampStart)}</span>
-                <span>{speakerLabels[utterance.speaker]}</span>
-                {utterance.language ? (
-                  <span className="language-badge">
-                    {languageBadgeLabels[utterance.language]}
-                  </span>
-                ) : null}
-                <span>{utterance.isFinal ? 'Final' : 'Partial'}</span>
-              </div>
-              <p className="transcript-item-text">{utterance.text}</p>
-            </article>
-          ))}
+          {transcriptUtterances.map((utterance) => {
+            const eligibility =
+              utterance.isFinal && utterance.speaker === 'other'
+                ? getAutoAnalysisUtteranceEligibility(
+                    utterance,
+                    toAssistantCallLanguage(controls.callLanguage)
+                  )
+                : null
+
+            return (
+              <article
+                className={`transcript-item ${
+                  utterance.isFinal ? '' : 'transcript-item-partial'
+                }`}
+                key={utterance.id}
+              >
+                <div className="transcript-item-meta">
+                  <span>{formatTranscriptTime(utterance.timestampStart)}</span>
+                  <span>{speakerLabels[utterance.speaker]}</span>
+                  {utterance.language ? (
+                    <span className="language-badge">
+                      {languageBadgeLabels[utterance.language]}
+                    </span>
+                  ) : null}
+                  <span>{utterance.isFinal ? 'Final' : 'Partial'}</span>
+                  {eligibility && !eligibility.eligible ? (
+                    <span className="transcript-ignore-badge">
+                      ignored for auto
+                    </span>
+                  ) : null}
+                </div>
+                <p className="transcript-item-text">{utterance.text}</p>
+              </article>
+            )
+          })}
         </div>
       )}
     </article>

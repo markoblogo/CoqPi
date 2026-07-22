@@ -5,6 +5,8 @@ const {
   AUTO_ANALYSIS_DEBOUNCE_MS,
   buildAutoAnalysisSchedule,
   decideAutoAnalysis,
+  getAutoAnalysisTranscriptUtterances,
+  getAutoAnalysisUtteranceEligibility,
   isRetryButtonDisabled,
   isRetryNowButtonDisabled,
   getAssistantStatusRecoveryGuide,
@@ -338,7 +340,9 @@ test('selected change during in-flight analysis retries with latest pack after s
 
   assert.equal(schedule(), true)
   assert.equal(assistantState, 'idle')
-  await new Promise((resolve) => setTimeout(resolve, firstPlan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS + 40))
+  await new Promise((resolve) =>
+    setTimeout(resolve, (firstPlan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS) + 60)
+  )
 
   assert.equal(capturedRequests.length, 1)
   assert.deepEqual(capturedRequests[0], ['pack-A'])
@@ -510,6 +514,139 @@ test('auto analyze no-final utterance does not schedule analysis', () => {
   assert.equal(noDecision.shouldRun, false)
   assert.equal(noDecision.reason, 'no-final')
   assert.equal(noDecision.fingerprint, null)
+})
+
+test('auto analyze ignores explicit non EN/FR background speech', () => {
+  const russianBackground = makeUtterance({
+    id: 'u-ru',
+    language: 'ru',
+    text: 'Сделай мне пожалуйста чай.'
+  })
+
+  const eligibility = getAutoAnalysisUtteranceEligibility(
+    russianBackground,
+    'auto'
+  )
+  assert.equal(eligibility.eligible, false)
+  assert.equal(eligibility.reason, 'unsupported-language')
+
+  const decision = decideAutoAnalysis({
+    latestFinalUtterance: russianBackground,
+    transcriptText: russianBackground.text,
+    callLanguage: 'auto',
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle'
+  })
+
+  assert.equal(decision.shouldRun, false)
+  assert.equal(decision.reason, 'unsupported-language')
+  assert.equal(decision.fingerprint, null)
+})
+
+test('auto analyze allows unknown-language Latin transcript in Auto mode', () => {
+  const unknownEnglish = makeUtterance({
+    id: 'u-auto-unknown',
+    language: 'unknown',
+    text: 'Can you describe your product management experience?'
+  })
+
+  const eligibility = getAutoAnalysisUtteranceEligibility(unknownEnglish, 'auto')
+  assert.equal(eligibility.eligible, true)
+  assert.equal(eligibility.reason, null)
+
+  const plan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: unknownEnglish,
+    transcriptText: unknownEnglish.text,
+    callLanguage: 'auto',
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: Date.now()
+  })
+
+  assert.equal(plan.shouldRun, true)
+  assert.equal(plan.reason, 'schedule')
+  assert.match(plan.fingerprint ?? '', /u-auto-unknown::other::/)
+})
+
+test('auto analyze skips too-short transcript noise', () => {
+  const shortNoise = makeUtterance({
+    id: 'u-short',
+    language: 'unknown',
+    text: 'ok'
+  })
+
+  const decision = decideAutoAnalysis({
+    latestFinalUtterance: shortNoise,
+    transcriptText: shortNoise.text,
+    callLanguage: 'auto',
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle'
+  })
+
+  assert.equal(decision.shouldRun, false)
+  assert.equal(decision.reason, 'too-short-transcript')
+  assert.equal(decision.fingerprint, null)
+})
+
+test('auto analyze keeps latest eligible utterance when ignored background arrives', () => {
+  const englishQuestion = makeUtterance({
+    id: 'u-eligible',
+    language: 'en',
+    text: 'Can you describe your product management background?'
+  })
+  const ignoredBackground = makeUtterance({
+    id: 'u-ignored',
+    language: 'ru',
+    text: 'Сделай мне пожалуйста чай.'
+  })
+  const utterances = [englishQuestion, ignoredBackground]
+  const latestEligible = [...utterances]
+    .reverse()
+    .find((utterance) =>
+      getAutoAnalysisUtteranceEligibility(utterance, 'auto').eligible
+    )
+
+  assert.equal(latestEligible?.id, 'u-eligible')
+
+  const plan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestEligible,
+    transcriptText: utterances.map((utterance) => utterance.text).join('\n'),
+    callLanguage: 'auto',
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: Date.now()
+  })
+
+  assert.equal(plan.shouldRun, true)
+  assert.equal(plan.reason, 'schedule')
+  assert.match(plan.fingerprint ?? '', /u-eligible::other::/)
+})
+
+test('auto analysis transcript window excludes ignored background speech', () => {
+  const englishQuestion = makeUtterance({
+    id: 'u-window-eligible',
+    language: 'en',
+    text: 'Can you describe your product management background?'
+  })
+  const ignoredBackground = makeUtterance({
+    id: 'u-window-ignored',
+    language: 'ru',
+    text: 'Сделай мне пожалуйста чай.'
+  })
+
+  const transcriptWindow = getAutoAnalysisTranscriptUtterances(
+    [englishQuestion, ignoredBackground],
+    'auto'
+  )
+
+  assert.deepEqual(
+    transcriptWindow.map((utterance) => utterance.id),
+    ['u-window-eligible']
+  )
 })
 
 test('auto analyze maps timeout and budget statuses for UI chain', () => {

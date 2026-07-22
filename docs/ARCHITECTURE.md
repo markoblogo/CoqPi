@@ -35,13 +35,15 @@
 
 ### Realtime transcription path
 
-`selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> transcript state -> completed utterance -> 900 ms debounce -> assistant analysis -> cockpit panels`
+`selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> transcript state -> completed utterance -> local EN/FR auto-analysis guard -> 900 ms debounce -> assistant analysis -> cockpit panels`
 
 ### Assistant analysis path
 
 `completed utterance or manual analysis click -> recent transcript selector -> optional profile and session context -> backend assistant service -> structured result -> cockpit panels`
 
 Only one automatic analysis request may run at a time. Manual controls remain an override.
+
+The local auto-analysis guard is deliberately cheap and does not add an LLM or provider round trip in the audio hot path. It allows explicit EN/FR transcript language, allows unknown-language Latin text in Auto mode, and blocks obvious non-EN/FR background speech or too-short transcript noise before the assistant provider is called. Automatic assistant requests also build their transcript window only from eligible utterances; manual actions remain the override path.
 
 ## Cost guardrail layer
 
