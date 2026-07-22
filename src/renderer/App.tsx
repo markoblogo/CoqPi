@@ -27,6 +27,8 @@ import {
   type RealtimeConnectionStatus,
   type SettingsMeta,
   type SessionContext,
+  type SmokeTestNote,
+  type SmokeTestNoteDraft,
   type SuggestedAnswer,
   type TranscriptLanguage,
   type TranscriptUtterance,
@@ -173,6 +175,12 @@ const emptyCounterpartyPackDraft: CounterpartyPackFormDraft = {
   context: '',
   linksText: '',
   selected: true
+}
+
+const emptySmokeNoteDraft: SmokeTestNoteDraft = {
+  worked: '',
+  broken: '',
+  nextFix: ''
 }
 
 const coqPiLogoSrc = new URL(
@@ -667,6 +675,12 @@ export const App = () => {
     useState<MockTranscriptScenarioId>('default')
   const [mockError, setMockError] = useState<string | null>(null)
   const [testResetNotice, setTestResetNotice] = useState<string | null>(null)
+  const [smokeNoteDraft, setSmokeNoteDraft] =
+    useState<SmokeTestNoteDraft>(emptySmokeNoteDraft)
+  const [smokeNotes, setSmokeNotes] = useState<SmokeTestNote[]>([])
+  const [smokeNoteError, setSmokeNoteError] = useState<string | null>(null)
+  const [smokeNoteNotice, setSmokeNoteNotice] = useState<string | null>(null)
+  const [isSavingSmokeNote, setIsSavingSmokeNote] = useState(false)
   const [smokeChecklistMarks, setSmokeChecklistMarks] = useState<
     Partial<Record<SmokeChecklistStepId, SmokeChecklistMark>>
   >({})
@@ -747,14 +761,23 @@ export const App = () => {
   useEffect(() => {
     const loadInitialState = async () => {
       try {
-        const [status, profile, session, contextSourcePayload, settingsPayload, keyState] =
+        const [
+          status,
+          profile,
+          session,
+          contextSourcePayload,
+          settingsPayload,
+          keyState,
+          smokeNotePayload
+        ] =
           await Promise.all([
             window.coqpi.config.getStatus(),
             window.coqpi.profile.getContext(),
             window.coqpi.session.getContext(),
             window.coqpi.contextSources.get(),
             window.coqpi.settings.get(),
-            window.coqpi.secrets.getOpenAIKeyStatus()
+            window.coqpi.secrets.getOpenAIKeyStatus(),
+            window.coqpi.smokeNotes.get()
           ])
 
         setConfigStatus(status)
@@ -779,6 +802,7 @@ export const App = () => {
         setKeyStatus(keyState)
         setSettingsForm(settingsPayload.settings)
         setSettingsMeta(settingsPayload.meta)
+        setSmokeNotes(smokeNotePayload.notes)
         setIncludeProfileContext(
           settingsPayload.settings.includeProfileContextByDefault
         )
@@ -798,6 +822,7 @@ export const App = () => {
         setCounterpartyPackDraft(emptyCounterpartyPackDraft)
         setCounterpartyPackDraftingId(null)
         setCounterpartyPackFinderPayload('')
+        setSmokeNotes([])
         setProfileError(
           error instanceof Error
             ? error.message
@@ -1335,6 +1360,31 @@ export const App = () => {
       )
     } finally {
       setIsSavingSessionContext(false)
+    }
+  }
+
+  const saveSmokeNote = async () => {
+    setIsSavingSmokeNote(true)
+    setSmokeNoteError(null)
+    setSmokeNoteNotice(null)
+
+    try {
+      const note = await window.coqpi.smokeNotes.save({
+        ...smokeNoteDraft,
+        sessionLabel: activeSessionPrepPreview.sessionLabel,
+        selectedPackLabel: selectedCounterpartyPackNamesLabel
+      })
+      const payload = await window.coqpi.smokeNotes.get()
+
+      setSmokeNotes(payload.notes.length > 0 ? payload.notes : [note])
+      setSmokeNoteDraft(emptySmokeNoteDraft)
+      setSmokeNoteNotice('Smoke note saved locally.')
+    } catch (error) {
+      setSmokeNoteError(
+        error instanceof Error ? error.message : 'Unable to save smoke note.'
+      )
+    } finally {
+      setIsSavingSmokeNote(false)
     }
   }
 
@@ -3466,6 +3516,96 @@ export const App = () => {
             >
               KW
             </button>
+          </div>
+          <div className="smoke-note-capture">
+            <div className="smoke-note-header">
+              <div>
+                <strong>Smoke result note</strong>
+                <span>Saved locally after a mock or real mic test.</span>
+              </div>
+              <button
+                disabled={
+                  isSavingSmokeNote ||
+                  !(
+                    smokeNoteDraft.worked.trim() ||
+                    smokeNoteDraft.broken.trim() ||
+                    smokeNoteDraft.nextFix.trim()
+                  )
+                }
+                onClick={() => void saveSmokeNote()}
+                type="button"
+              >
+                Save smoke note
+              </button>
+            </div>
+            <div className="smoke-note-grid">
+              <label>
+                <span>Worked</span>
+                <textarea
+                  onChange={(event) => {
+                    setSmokeNoteNotice(null)
+                    setSmokeNoteError(null)
+                    setSmokeNoteDraft((current) => ({
+                      ...current,
+                      worked: event.target.value
+                    }))
+                  }}
+                  placeholder="What worked?"
+                  value={smokeNoteDraft.worked}
+                />
+              </label>
+              <label>
+                <span>Broken</span>
+                <textarea
+                  onChange={(event) => {
+                    setSmokeNoteNotice(null)
+                    setSmokeNoteError(null)
+                    setSmokeNoteDraft((current) => ({
+                      ...current,
+                      broken: event.target.value
+                    }))
+                  }}
+                  placeholder="What failed or felt wrong?"
+                  value={smokeNoteDraft.broken}
+                />
+              </label>
+              <label>
+                <span>Next fix</span>
+                <textarea
+                  onChange={(event) => {
+                    setSmokeNoteNotice(null)
+                    setSmokeNoteError(null)
+                    setSmokeNoteDraft((current) => ({
+                      ...current,
+                      nextFix: event.target.value
+                    }))
+                  }}
+                  placeholder="What should be fixed next?"
+                  value={smokeNoteDraft.nextFix}
+                />
+              </label>
+            </div>
+            {smokeNoteError ? (
+              <div className="error-box">{smokeNoteError}</div>
+            ) : null}
+            {smokeNoteNotice ? (
+              <div className="info-box">{smokeNoteNotice}</div>
+            ) : null}
+            {smokeNotes[0] ? (
+              <div className="smoke-note-latest">
+                <span>Latest saved</span>
+                <strong>{new Date(smokeNotes[0].createdAt).toLocaleString()}</strong>
+                <code>
+                  {[
+                    smokeNotes[0].sessionLabel,
+                    smokeNotes[0].selectedPackLabel
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || 'No session label'}
+                </code>
+                <p>{smokeNotes[0].nextFix || smokeNotes[0].broken || smokeNotes[0].worked}</p>
+              </div>
+            ) : null}
           </div>
           {mockError ? <div className="error-box">{mockError}</div> : null}
         </div>

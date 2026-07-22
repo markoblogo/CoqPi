@@ -5,7 +5,8 @@ import type {
   ContextSourceDraft,
   CounterpartyContextPackDraft,
   RealtimeTranscriptionStartRequest,
-  SessionContext
+  SessionContext,
+  SmokeTestNoteDraft
 } from '../shared/app-types'
 
 contextBridge.exposeInMainWorld('coqpi', {
@@ -20,6 +21,11 @@ contextBridge.exposeInMainWorld('coqpi', {
     getContext: () => ipcRenderer.invoke('coqpi:session:get-context'),
     saveContext: (context: SessionContext) =>
       ipcRenderer.invoke('coqpi:session:save-context', context)
+  },
+  smokeNotes: {
+    get: () => ipcRenderer.invoke('coqpi:smoke-notes:get'),
+    save: (draft: SmokeTestNoteDraft) =>
+      ipcRenderer.invoke('coqpi:smoke-notes:save', draft)
   },
   contextSources: {
     get: () => ipcRenderer.invoke('coqpi:context-sources:get'),

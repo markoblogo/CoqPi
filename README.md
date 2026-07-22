@@ -150,6 +150,7 @@ Mock mode is for UI testing only.
 - The live smoke readiness pack gives one compact status before a call: setup, selected context, mock transcript path, assistant freshness, and real mic readiness.
 - The minimal real-test script stays at 5 actions: prep ready, mock probe, assistant probe, mic probe, final check.
 - `Reset for test` clears transcript, assistant result/errors, mock playback, checklist marks, cost notice, counters, and realtime timer while preserving profile, session context, selected packs, key, and audio device.
+- `Save smoke note` records what worked, what broke, and the next fix to a local `smoke-notes.jsonl` file under the sessions directory; it does not store transcript text.
 - The live smoke checklist keeps local Done/Blocker marks and shows the next active step from current app readiness.
 
 Use it from the `Prepare` tab to populate transcript state and test manual assistant actions safely.

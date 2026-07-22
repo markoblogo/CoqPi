@@ -413,6 +413,24 @@ export type RealtimeTranscriptionResponse =
       error: RealtimeTranscriptionError
     }
 
+export interface SmokeTestNoteDraft {
+  worked: string
+  broken: string
+  nextFix: string
+  sessionLabel?: string
+  selectedPackLabel?: string
+}
+
+export interface SmokeTestNote extends SmokeTestNoteDraft {
+  id: string
+  createdAt: string
+  version: 1
+}
+
+export interface SmokeTestNotesResult {
+  notes: SmokeTestNote[]
+}
+
 export interface OpenAIKeyStatus {
   hasStoredKey: boolean
   hasEnvKey: boolean

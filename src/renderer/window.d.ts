@@ -15,6 +15,9 @@ import type {
   SaveOpenAIKeyResult,
   SessionContext,
   SessionContextResult,
+  SmokeTestNote,
+  SmokeTestNoteDraft,
+  SmokeTestNotesResult,
   SettingsPayload
 } from '@shared/app-types'
 
@@ -31,6 +34,10 @@ declare global {
       session: {
         getContext: () => Promise<SessionContextResult>
         saveContext: (context: SessionContext) => Promise<SessionContextResult>
+      }
+      smokeNotes: {
+        get: () => Promise<SmokeTestNotesResult>
+        save: (draft: SmokeTestNoteDraft) => Promise<SmokeTestNote>
       }
       contextSources: {
         get: () => Promise<ContextSourceManifestResult>

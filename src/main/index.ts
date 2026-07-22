@@ -17,6 +17,9 @@ import type {
   SaveOpenAIKeyResult,
   SessionContext,
   SessionContextResult,
+  SmokeTestNote,
+  SmokeTestNoteDraft,
+  SmokeTestNotesResult,
   SettingsPayload
 } from '../shared/app-types'
 import { analyzeRecentTranscript } from '../backend/services/assistant-service'
@@ -37,6 +40,10 @@ import {
   getSessionContext,
   saveSessionContext
 } from '../backend/services/session-context-service'
+import {
+  getSmokeTestNotes,
+  saveSmokeTestNote
+} from '../backend/services/smoke-note-service'
 import {
   addContextSource,
   addCounterpartyContextPacks,
@@ -218,6 +225,17 @@ const registerIpcHandlers = () => {
     ): Promise<SessionContextResult> => {
       return saveSessionContext(context)
     }
+  )
+
+  ipcMain.handle(
+    'coqpi:smoke-notes:get',
+    async (): Promise<SmokeTestNotesResult> => getSmokeTestNotes()
+  )
+
+  ipcMain.handle(
+    'coqpi:smoke-notes:save',
+    async (_event, draft: SmokeTestNoteDraft): Promise<SmokeTestNote> =>
+      saveSmokeTestNote(draft)
   )
 
   ipcMain.handle(
