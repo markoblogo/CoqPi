@@ -353,6 +353,89 @@ test('owner pasted source adapter extracts partner export fields before preview'
   assert.match(candidate.nextAction, /marie@agrotrade\.example/)
 })
 
+test('owner pasted source adapter parses LinkedIn-style job snippets', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech'
+    },
+    { id: 'linkedin-job-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Senior Product Manager',
+      'Northfield Labs · Paris, Île-de-France, France · Reposted 2 weeks ago',
+      'Full-time · Mid-Senior level',
+      'https://www.linkedin.com/jobs/view/12345'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.partnerName, 'Northfield Labs')
+  assert.equal(candidate.title, 'Senior Product Manager')
+  assert.match(candidate.summary, /Paris, Île-de-France, France/)
+  assert.deepEqual(candidate.links, ['https://www.linkedin.com/jobs/view/12345'])
+  assert.match(candidate.missingInfo, /contact/)
+})
+
+test('owner pasted source adapter parses accelerator-style snippets', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'accelerator',
+      label: 'Agri accelerators Europe',
+      query: 'agtech accelerator europe seed program'
+    },
+    { id: 'accelerator-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'AgriTech Europe Accelerator',
+      'Applications close September 30, 2026',
+      'Paris / Remote',
+      'For climate and agricultural infrastructure startups.',
+      'https://accelerator.example/apply'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.partnerName, 'AgriTech Europe Accelerator')
+  assert.equal(candidate.title, 'Accelerator program')
+  assert.match(candidate.summary, /September 30, 2026/)
+  assert.match(candidate.summary, /Paris \/ Remote/)
+  assert.match(candidate.whyRelevant, /agricultural infrastructure/)
+})
+
+test('owner pasted source adapter parses CSV-like investor lists as multiple candidates', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'investor',
+      label: 'Agri seed funds',
+      query: 'agri commodity seed funds europe'
+    },
+    { id: 'csv-investor-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Fund,Focus,Geography,Website,Contact',
+      'Green Seed Capital,Agri infrastructure,Europe,https://greenseed.example,intro@greenseed.example',
+      'Blue Fields Fund,Commodity workflows,France,https://bluefields.example,'
+    ].join('\n')
+  )
+
+  assert.equal(parsed.requestedCount, 2)
+  assert.equal(parsed.candidates.length, 2)
+  assert.equal(parsed.candidates[0].partnerName, 'Green Seed Capital')
+  assert.equal(parsed.candidates[0].title, 'Agri infrastructure')
+  assert.match(parsed.candidates[0].summary, /Europe/)
+  assert.match(parsed.candidates[0].context, /intro@greenseed\.example/)
+  assert.equal(parsed.candidates[1].partnerName, 'Blue Fields Fund')
+  assert.deepEqual(parsed.candidates[1].links, ['https://bluefields.example/'])
+})
+
 test('finder pipeline view prioritizes high-fit ready candidates', () => {
   const job = createFinderSearchJob(
     { kind: 'job', label: 'Jobs', query: 'product manager' },

@@ -78,6 +78,9 @@ const stableTextHash = (value: string) => {
   return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
+const normalizeFieldLabel = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
 const parseMaybeUrl = (value: string) => {
   try {
     const url = new URL(value)
@@ -90,6 +93,41 @@ const parseMaybeUrl = (value: string) => {
   } catch {
     return null
   }
+}
+
+const splitDelimitedLine = (line: string) => {
+  const delimiter = line.includes('\t') ? '\t' : ','
+  const values: string[] = []
+  let current = ''
+  let inQuotes = false
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index]
+    const next = line[index + 1]
+
+    if (char === '"' && next === '"') {
+      current += '"'
+      index += 1
+      continue
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes
+      continue
+    }
+
+    if (char === delimiter && !inQuotes) {
+      values.push(current.trim())
+      current = ''
+      continue
+    }
+
+    current += char
+  }
+
+  values.push(current.trim())
+
+  return values
 }
 
 const normalizeJob = (draft: FinderSearchJobDraft): FinderSearchJobDraft => {
@@ -449,6 +487,45 @@ const splitOwnerPastedSourceEntries = (text: string) =>
 
       const lines = trimmed.split('\n').map((line) => line.trim()).filter(Boolean)
 
+      const delimitedRows = lines.map(splitDelimitedLine)
+      const header = delimitedRows[0] ?? []
+      const normalizedHeader = header.map(normalizeFieldLabel)
+      const looksLikeDelimitedTable =
+        lines.length > 1 &&
+        header.length > 1 &&
+        delimitedRows
+          .slice(1)
+          .some((row) => row.filter(Boolean).length > 1) &&
+        normalizedHeader.some((label) =>
+          [
+            'company',
+            'name',
+            'partner',
+            'fund',
+            'investor',
+            'accelerator',
+            'role',
+            'title',
+            'opportunity'
+          ].includes(label)
+        )
+
+      if (looksLikeDelimitedTable) {
+        return delimitedRows
+          .slice(1)
+          .map((row) =>
+            row
+              .map((value, index) => {
+                const label = header[index]
+
+                return label && value ? `${label}: ${value}` : ''
+              })
+              .filter(Boolean)
+              .join('\n')
+          )
+          .filter(Boolean)
+      }
+
       if (lines.length > 1 && lines.every((line) => parseMaybeUrl(line))) {
         return lines
       }
@@ -479,9 +556,6 @@ const getEmailsFromText = (text: string) =>
     (match) => match[0]
   ).filter((email, index, list) => list.indexOf(email) === index)
 
-const normalizeFieldLabel = (value: string) =>
-  value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
-
 const extractOwnerSourceFields = (lines: string[]) => {
   const fields = new Map<string, string>()
 
@@ -505,8 +579,49 @@ const extractOwnerSourceFields = (lines: string[]) => {
       .map((alias) => fields.get(alias))
       .find((value): value is string => Boolean(value)) ?? ''
 
+  const nonUrlLines = lines.filter((line) => !parseMaybeUrl(line))
+  const bulletLine = nonUrlLines.find((line) => line.includes('·')) ?? ''
+  const bulletParts = bulletLine
+    .split('·')
+    .map((part) => sanitizeText(part, 180))
+    .filter(Boolean)
+  const deadlineLine =
+    nonUrlLines.find((line) =>
+      /(?:applications?|apply|deadline|closes?|closing)\s+(?:close|by|date|on)?/i.test(
+        line
+      )
+    ) ?? ''
+  const inferredDeadline =
+    deadlineLine.match(
+      /(?:applications?|apply|deadline|closes?|closing)\s+(?:close|by|date|on)?\s*:?\s*(.+)$/i
+    )?.[1] ?? ''
+  const inferredLocation =
+    nonUrlLines.find(
+      (line) =>
+        /(?:remote|france|europe|paris|lyon|london|berlin|brussels|amsterdam|new york|san francisco)/i.test(
+          line
+        ) && !/applications?|deadline|closing|reposted|applicants?/i.test(line)
+    ) ?? ''
+  const inferredEntityName =
+    bulletParts.length > 1
+      ? bulletParts[0]
+      : nonUrlLines.find((line) =>
+          /(?:accelerator|incubator|fund|capital|ventures|labs|partner|partners|company)/i.test(
+            line
+          )
+        ) ?? ''
+  const inferredRelevance =
+    nonUrlLines.find(
+      (line) =>
+        line !== inferredEntityName &&
+        /(?:agri|agro|commodity|climate|infrastructure|startup|ecosystem|product)/i.test(
+          line
+        )
+    ) ?? ''
+
   const company = firstOf([
     'company',
+    'name',
     'employer',
     'organization',
     'organisation',
@@ -514,7 +629,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'fund',
     'accelerator',
     'investor'
-  ])
+  ]) || inferredEntityName
   const role = firstOf([
     'role',
     'title',
@@ -523,21 +638,29 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'opportunity',
     'focus',
     'program'
-  ])
+  ]) || (bulletParts.length > 1 ? nonUrlLines[0] : '')
   const country = firstOf(['country'])
   const city = firstOf(['city'])
   const location =
-    firstOf(['location', 'place', 'region', 'geo']) ||
+    firstOf(['location', 'place', 'region', 'geo', 'geography']) ||
+    (bulletParts.length > 1 ? bulletParts[1] : '') ||
     [city, country].filter(Boolean).join(', ')
   const contact = firstOf(['contact', 'email', 'recruiter', 'contact person'])
-  const deadline = firstOf(['deadline', 'apply by', 'closing date', 'date'])
+  const deadline = firstOf([
+    'deadline',
+    'apply by',
+    'closing date',
+    'date',
+    'applications close',
+    'application deadline'
+  ]) || inferredDeadline
   const whyRelevant = firstOf([
     'why relevant',
     'relevance',
     'fit',
     'why',
     'match'
-  ])
+  ]) || inferredRelevance
   const missingInfo = firstOf([
     'missing info',
     'missing',
@@ -547,11 +670,16 @@ const extractOwnerSourceFields = (lines: string[]) => {
   ])
   const nextAction = firstOf(['next action', 'action', 'todo', 'follow up'])
   const explicitLink = firstOf(['url', 'link', 'website', 'source'])
+  const inferredProgramTitle =
+    role ||
+    (lines.some((line) => /accelerator|incubator|program/i.test(line))
+      ? 'Accelerator program'
+      : '')
 
   return {
     company,
-    role,
-    location,
+    role: inferredProgramTitle,
+    location: location || inferredLocation,
     contact,
     deadline,
     whyRelevant,
@@ -592,6 +720,8 @@ export const createFinderCandidatesFromOwnerPastedSource = (
     const allLinks = [
       ...getAllUrlsFromText(normalizedEntry),
       fields.explicitLink
+        ? parseMaybeUrl(fields.explicitLink)?.toString() ?? fields.explicitLink
+        : ''
     ].filter(Boolean)
     const links = sanitizeLinks(allLinks)
     const contactEmails = getEmailsFromText(

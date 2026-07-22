@@ -5462,7 +5462,7 @@ export const App = () => {
                       <div className="finder-runner-import context-source-form">
                         <div className="finder-runner-header">
                           <div>
-                            <strong>Source adapter v0</strong>
+                            <strong>Source adapter v1</strong>
                             <span>
                               Paste one URL, a vacancy/export block, or several URL lines.
                               CoqPi extracts fields locally, previews candidates, then imports
