@@ -136,3 +136,45 @@ test('finder search service ingests runner payload with append-only source truth
     assert.equal(result.errors[0].index, 1)
   })
 })
+
+test('finder search service saves outreach draft handoff locally', async () => {
+  await withFinderWorkspace(async (service, directory) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech'
+    })
+    const job = afterJob.store.jobs[0]
+    const afterCandidate = await service.addFinderCandidateResult(job.id, {
+      sourceId: 'finder:job:northfield',
+      partnerName: 'Northfield Labs',
+      title: 'AI Product Lead',
+      summary: 'Product leadership role with AI workflow focus.',
+      fitScore: 91,
+      whyRelevant: 'Matches AI product leadership and France search.',
+      missingInfo: 'Salary range; Remote policy',
+      nextAction: 'Prepare a focused intro before applying.'
+    })
+    const candidate = afterCandidate.store.results[0]
+    const afterDraft = await service.saveFinderOutreachDraft(candidate.id)
+    const draft = afterDraft.store.outreachDrafts[0]
+    const reloaded = await service.getFinderSearchStore()
+    const eventsPath = path.join(
+      directory,
+      'core',
+      'finder',
+      'finder-search.events.jsonl'
+    )
+    const eventLog = await fs.readFile(eventsPath, 'utf8')
+
+    assert.equal(afterDraft.store.outreachDrafts.length, 1)
+    assert.equal(draft.candidateResultId, candidate.id)
+    assert.equal(draft.targetName, 'Northfield Labs')
+    assert.equal(draft.status, 'draft')
+    assert.match(draft.contentHash, /^[0-9a-f]{64}$/)
+    assert.match(draft.provenance.locatorSha256, /^[0-9a-f]{64}$/)
+    assert.match(draft.openingMessage, /I saw the AI Product Lead opportunity/)
+    assert.equal(reloaded.store.outreachDrafts[0].id, draft.id)
+    assert.match(eventLog, /outreach_draft_recorded/)
+  })
+})

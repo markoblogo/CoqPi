@@ -25,8 +25,10 @@ import {
   type ControlState,
   type FinderCandidateResult,
   type FinderCandidateResultDraft,
+  type FinderOutreachDraft,
   type FinderSearchJob,
   type FinderSearchJobDraft,
+  type FinderSearchStore,
   type OpenAIKeyStatus,
   type RealtimeConnectionStatus,
   type SettingsMeta,
@@ -688,6 +690,9 @@ export const App = () => {
   const [finderCandidateResults, setFinderCandidateResults] = useState<
     FinderCandidateResult[]
   >([])
+  const [finderOutreachDrafts, setFinderOutreachDrafts] = useState<
+    FinderOutreachDraft[]
+  >([])
   const [finderSearchDraft, setFinderSearchDraft] = useState(
     emptyFinderSearchJobDraft
   )
@@ -756,6 +761,16 @@ export const App = () => {
           focusedFinderCandidateResult
         )
       : null
+  const focusedFinderOutreachDrafts = focusedFinderCandidateResult
+    ? finderOutreachDrafts.filter(
+        (draft) => draft.candidateResultId === focusedFinderCandidateResult.id
+      )
+    : []
+  const applyFinderSearchStore = (store: FinderSearchStore) => {
+    setFinderSearchJobs(store.jobs)
+    setFinderCandidateResults(store.results)
+    setFinderOutreachDrafts(store.outreachDrafts ?? [])
+  }
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [contextSourceDraft, setContextSourceDraft] = useState(
     emptyContextSourceDraft
@@ -919,8 +934,7 @@ export const App = () => {
         setSettingsForm(settingsPayload.settings)
         setSettingsMeta(settingsPayload.meta)
         setSmokeNotes(smokeNotePayload.notes)
-        setFinderSearchJobs(finderSearchPayload.store.jobs)
-        setFinderCandidateResults(finderSearchPayload.store.results)
+        applyFinderSearchStore(finderSearchPayload.store)
         setIncludeProfileContext(
           settingsPayload.settings.includeProfileContextByDefault
         )
@@ -941,8 +955,12 @@ export const App = () => {
         setCounterpartyPackDraftingId(null)
         setCounterpartyPackFinderPayload('')
         setSmokeNotes([])
-        setFinderSearchJobs([])
-        setFinderCandidateResults([])
+        applyFinderSearchStore({
+          version: 1,
+          jobs: [],
+          results: [],
+          outreachDrafts: []
+        })
         setProfileError(
           error instanceof Error
             ? error.message
@@ -1906,8 +1924,7 @@ export const App = () => {
       const payload = await window.coqpi.finderSearch.addJob(finderSearchDraft)
       const job = payload.store.jobs[0]
 
-      setFinderSearchJobs(payload.store.jobs)
-      setFinderCandidateResults(payload.store.results)
+      applyFinderSearchStore(payload.store)
       setSelectedFinderSearchJobId(job?.id ?? null)
       setFinderSearchDraft(emptyFinderSearchJobDraft)
       setFinderSearchNotice('Search job saved to local source truth.')
@@ -1927,8 +1944,7 @@ export const App = () => {
 
     try {
       const payload = await window.coqpi.finderSearch.setJobStatus(jobId, status)
-      setFinderSearchJobs(payload.store.jobs)
-      setFinderCandidateResults(payload.store.results)
+      applyFinderSearchStore(payload.store)
     } catch (error) {
       setFinderSearchError(
         error instanceof Error
@@ -1956,8 +1972,7 @@ export const App = () => {
         }
       )
 
-      setFinderSearchJobs(payload.store.jobs)
-      setFinderCandidateResults(payload.store.results)
+      applyFinderSearchStore(payload.store)
       setFinderCandidateDraft(emptyFinderCandidateDraft)
       setFinderSearchNotice('Candidate result saved to local source truth.')
     } catch (error) {
@@ -1981,13 +1996,29 @@ export const App = () => {
         resultId,
         status
       )
-      setFinderSearchJobs(payload.store.jobs)
-      setFinderCandidateResults(payload.store.results)
+      applyFinderSearchStore(payload.store)
     } catch (error) {
       setFinderSearchError(
         error instanceof Error
           ? error.message
           : 'Unable to update finder candidate status.'
+      )
+    }
+  }
+
+  const saveFinderOutreachDraft = async (resultId: string) => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const payload = await window.coqpi.finderSearch.saveOutreachDraft(resultId)
+      applyFinderSearchStore(payload.store)
+      setFinderSearchNotice('Outreach draft saved locally. Nothing was sent.')
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to save local outreach draft.'
       )
     }
   }
@@ -2025,8 +2056,7 @@ export const App = () => {
         (result) => result.jobId === job?.id
       ).length
 
-      setFinderSearchJobs(payload.store.jobs)
-      setFinderCandidateResults(payload.store.results)
+      applyFinderSearchStore(payload.store)
       setSelectedFinderSearchJobId(job?.id ?? null)
       setFinderRunnerPayloadPreview(null)
       setFinderRunnerPayloadText('')
@@ -2075,8 +2105,7 @@ export const App = () => {
         result.id,
         'imported'
       )
-      setFinderSearchJobs(finderPayload.store.jobs)
-      setFinderCandidateResults(finderPayload.store.results)
+      applyFinderSearchStore(finderPayload.store)
 
       try {
         const saved = await window.coqpi.session.saveContext(nextSessionContext)
@@ -5374,7 +5403,25 @@ export const App = () => {
                                 {finderOutreachPrepPack.opportunity}
                               </strong>
                             </div>
-                            <span>{finderOutreachPrepPack.fitLabel}</span>
+                            <div className="finder-outreach-actions">
+                              <span>
+                                {finderOutreachPrepPack.fitLabel} · drafts:{' '}
+                                {focusedFinderOutreachDrafts.length}
+                              </span>
+                              {focusedFinderCandidateResult ? (
+                                <button
+                                  className="button-small"
+                                  onClick={() =>
+                                    void saveFinderOutreachDraft(
+                                      focusedFinderCandidateResult.id
+                                    )
+                                  }
+                                  type="button"
+                                >
+                                  Save draft
+                                </button>
+                              ) : null}
+                            </div>
                           </div>
                           <div className="finder-outreach-grid">
                             <div>

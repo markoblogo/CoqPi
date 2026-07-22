@@ -5,6 +5,7 @@ const {
   createFinderRecordsFromRunnerPayload,
   createContextPackDraftFromFinderResult,
   createFinderCandidateResult,
+  createFinderOutreachDraft,
   createFinderOutreachPrepPack,
   createFinderSearchJob,
   createFinderPipelineView,
@@ -387,4 +388,38 @@ test('finder outreach prep pack stays explicit when review fields are weak', () 
     'Add nextAction to make follow-up explicit.',
     'Add at least one source link for provenance.'
   ])
+})
+
+test('finder outreach draft handoff stores prep content as a local draft', () => {
+  const job = createFinderSearchJob(
+    { kind: 'investor', label: 'Funds', query: 'agri seed funds' },
+    { id: 'job-5', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const result = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:investor:green-seed',
+      partnerName: 'Green Seed Capital',
+      title: 'Climate/agri seed fund',
+      summary: 'Seed investor focused on climate and agri infrastructure.',
+      fitScore: 90,
+      whyRelevant: 'Strong thesis match.',
+      missingInfo: 'Need current fund stage.',
+      nextAction: 'Prepare a warm intro draft.'
+    },
+    { id: 'result-5', now: '2026-07-22T10:02:00.000Z' }
+  )
+  const draft = createFinderOutreachDraft(job, result, {
+    id: 'draft-1',
+    now: '2026-07-22T10:04:00.000Z'
+  })
+
+  assert.equal(draft.version, 1)
+  assert.equal(draft.id, 'draft-1')
+  assert.equal(draft.jobId, 'job-5')
+  assert.equal(draft.candidateResultId, 'result-5')
+  assert.equal(draft.status, 'draft')
+  assert.equal(draft.targetName, 'Green Seed Capital')
+  assert.match(draft.openingMessage, /I saw your work around/)
+  assert.equal(draft.nextAction, 'Prepare a warm intro draft.')
 })

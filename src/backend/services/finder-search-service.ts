@@ -8,10 +8,12 @@ import type {
   FinderSearchStore,
   FinderSearchStoreResult,
   StoredFinderCandidateResult,
+  StoredFinderOutreachDraft,
   StoredFinderSearchJob
 } from '../../shared/app-types'
 import {
   createFinderCandidateResult,
+  createFinderOutreachDraft,
   createFinderRecordsFromRunnerPayload,
   createFinderSearchJob,
   updateFinderSearchJobStatus
@@ -31,11 +33,17 @@ type FinderSearchEvent =
       type: 'candidate_status_changed'
       result: StoredFinderCandidateResult
     }
+  | {
+      version: 1
+      type: 'outreach_draft_recorded'
+      draft: StoredFinderOutreachDraft
+    }
 
 const emptyStore = (): FinderSearchStore => ({
   version: 1,
   jobs: [],
-  results: []
+  results: [],
+  outreachDrafts: []
 })
 
 const getFinderDirectory = () =>
@@ -97,6 +105,29 @@ const withResultSourceTruth = (
   statusHistory: [{ status: result.status, at: result.createdAt, reason }]
 })
 
+const withOutreachDraftSourceTruth = (
+  draft: ReturnType<typeof createFinderOutreachDraft>
+): StoredFinderOutreachDraft => ({
+  ...draft,
+  ownerId: 'owner',
+  provenance: provenanceFor(`coqpi:finder:outreach-draft:${draft.id}`),
+  contentHash: hashObject({
+    jobId: draft.jobId,
+    candidateResultId: draft.candidateResultId,
+    sourceId: draft.sourceId,
+    kind: draft.kind,
+    targetName: draft.targetName,
+    opportunity: draft.opportunity,
+    fitLabel: draft.fitLabel,
+    whyRelevant: draft.whyRelevant,
+    knownContext: draft.knownContext,
+    questionsToAsk: draft.questionsToAsk,
+    openingMessage: draft.openingMessage,
+    nextAction: draft.nextAction,
+    warnings: draft.warnings
+  })
+})
+
 const applyEvent = (
   store: FinderSearchStore,
   event: FinderSearchEvent
@@ -118,11 +149,18 @@ const applyEvent = (
     return { ...store, results: [event.result, ...store.results] }
   }
 
+  if (event.type === 'candidate_status_changed') {
+    return {
+      ...store,
+      results: store.results.map((result) =>
+        result.id === event.result.id ? event.result : result
+      )
+    }
+  }
+
   return {
     ...store,
-    results: store.results.map((result) =>
-      result.id === event.result.id ? event.result : result
-    )
+    outreachDrafts: [event.draft, ...store.outreachDrafts]
   }
 }
 
@@ -325,4 +363,32 @@ export const ingestFinderRunnerPayload = async (
   const result = await mutateStore(events)
 
   return { ...result, errors: records.errors }
+}
+
+export const saveFinderOutreachDraft = async (
+  candidateResultId: string
+): Promise<FinderSearchStoreResult> => {
+  const store = await getFinderSearchStoreRaw()
+  const result = store.results.find(
+    (candidate) => candidate.id === candidateResultId
+  )
+
+  if (!result) {
+    throw new Error('Finder candidate result not found.')
+  }
+
+  const job = store.jobs.find((candidateJob) => candidateJob.id === result.jobId)
+
+  if (!job) {
+    throw new Error('Finder search job not found.')
+  }
+
+  const draft = withOutreachDraftSourceTruth(
+    createFinderOutreachDraft(job, result, {
+      id: randomUUID(),
+      now: new Date().toISOString()
+    })
+  )
+
+  return mutateStore([{ version: 1, type: 'outreach_draft_recorded', draft }])
 }

@@ -55,6 +55,11 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke(
         'coqpi:finder-search:ingest-runner-payload',
         payloadText
+      ),
+    saveOutreachDraft: (candidateResultId: string) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:save-outreach-draft',
+        candidateResultId
       )
   },
   contextSources: {

@@ -1136,6 +1136,10 @@ button:disabled {
   min-width: 0;
 }
 
+.finder-outreach-actions {
+  justify-items: end;
+}
+
 .finder-outreach-prep span {
   color: #99abbc;
   font-size: var(--font-xs);
@@ -1849,6 +1853,10 @@ button:disabled {
   .finder-outreach-header,
   .finder-outreach-grid {
     grid-template-columns: 1fr;
+  }
+
+  .finder-outreach-actions {
+    justify-items: start;
   }
 }
 

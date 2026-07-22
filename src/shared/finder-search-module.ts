@@ -3,6 +3,7 @@ import type {
   CounterpartyContextPackKind,
   FinderCandidateResult,
   FinderCandidateResultDraft,
+  FinderOutreachDraft,
   FinderSearchJob,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
@@ -506,5 +507,33 @@ export const createFinderOutreachPrepPack = (
     openingMessage: buildOpeningMessage(job, result, result.whyRelevant ?? ''),
     nextAction: result.nextAction || 'Review missing info, then decide whether to import this candidate as a session pack.',
     warnings
+  }
+}
+
+export const createFinderOutreachDraft = (
+  job: FinderSearchJob,
+  result: FinderCandidateResult,
+  options: { id: string; now: string }
+): FinderOutreachDraft => {
+  const prep = createFinderOutreachPrepPack(job, result)
+
+  return {
+    version: 1,
+    id: options.id,
+    jobId: job.id,
+    candidateResultId: result.id,
+    sourceId: result.sourceId,
+    kind: result.kind,
+    targetName: prep.targetName,
+    opportunity: prep.opportunity,
+    fitLabel: prep.fitLabel,
+    whyRelevant: prep.whyRelevant,
+    knownContext: prep.knownContext,
+    questionsToAsk: prep.questionsToAsk,
+    openingMessage: prep.openingMessage,
+    nextAction: prep.nextAction,
+    warnings: prep.warnings,
+    status: 'draft',
+    createdAt: options.now
   }
 }

@@ -225,6 +225,26 @@ export interface FinderCandidateResult extends FinderCandidateResultDraft {
   createdAt: string
 }
 
+export interface FinderOutreachDraft {
+  version: 1
+  id: string
+  jobId: string
+  candidateResultId: string
+  sourceId: string
+  kind: CounterpartyContextPackKind
+  targetName: string
+  opportunity: string
+  fitLabel: string
+  whyRelevant: string
+  knownContext: string[]
+  questionsToAsk: string[]
+  openingMessage: string
+  nextAction: string
+  warnings: string[]
+  status: 'draft'
+  createdAt: string
+}
+
 export interface FinderRecordProvenance {
   sourceId: string
   locatorSha256: string
@@ -250,10 +270,17 @@ export interface StoredFinderCandidateResult extends FinderCandidateResult {
   statusHistory: FinderStatusHistoryEntry[]
 }
 
+export interface StoredFinderOutreachDraft extends FinderOutreachDraft {
+  ownerId: 'owner'
+  provenance: FinderRecordProvenance
+  contentHash: string
+}
+
 export interface FinderSearchStore {
   version: 1
   jobs: StoredFinderSearchJob[]
   results: StoredFinderCandidateResult[]
+  outreachDrafts: StoredFinderOutreachDraft[]
 }
 
 export interface FinderSearchStoreResult {

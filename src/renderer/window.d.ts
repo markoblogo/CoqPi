@@ -61,6 +61,9 @@ declare global {
         ingestRunnerPayload: (
           payloadText: string
         ) => Promise<FinderSearchStoreResult>
+        saveOutreachDraft: (
+          candidateResultId: string
+        ) => Promise<FinderSearchStoreResult>
       }
       contextSources: {
         get: () => Promise<ContextSourceManifestResult>
