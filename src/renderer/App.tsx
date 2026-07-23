@@ -86,6 +86,10 @@ import {
   buildManualPrepPreview
 } from '@shared/manual-prep-preview'
 import {
+  buildSessionPayloadInspector,
+  type SessionPayloadInspector
+} from '@shared/session-payload-inspector'
+import {
   formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
   getSessionContextWithCounterpartyPacks,
@@ -3662,7 +3666,21 @@ export const App = () => {
     includeProfileContext,
     profileChars: profileContext.length
   })
+  const activeSessionPayloadInspector = buildSessionPayloadInspector({
+    context: sessionContext,
+    availablePacks: counterpartyPacks,
+    availableOutreachDrafts: finderOutreachDrafts,
+    includeProfileContext,
+    profileChars: profileContext.length
+  })
   const manualPrepPreview = buildManualPrepPreview({
+    context: sessionContextDraft,
+    availablePacks: counterpartyPacks,
+    availableOutreachDrafts: finderOutreachDrafts,
+    includeProfileContext,
+    profileChars: profileContext.length
+  })
+  const draftSessionPayloadInspector = buildSessionPayloadInspector({
     context: sessionContextDraft,
     availablePacks: counterpartyPacks,
     availableOutreachDrafts: finderOutreachDrafts,
@@ -3962,6 +3980,71 @@ export const App = () => {
           <strong>{item.value}</strong>
         </div>
       ))}
+    </section>
+  )
+
+  const renderSessionPayloadInspector = (
+    inspector: SessionPayloadInspector,
+    label: string
+  ) => (
+    <section className="session-payload-inspector" aria-label={label}>
+      <div className="session-payload-inspector-header">
+        <div>
+          <span>{label}</span>
+          <strong>{inspector.summaryLabel}</strong>
+        </div>
+        <span
+          className={
+            inspector.warningCount > 0
+              ? 'context-source-status-blocked'
+              : 'context-source-status-ready'
+          }
+        >
+          {inspector.warningCount > 0
+            ? `${inspector.warningCount} warning${
+                inspector.warningCount === 1 ? '' : 's'
+              }`
+            : 'clean'}
+        </span>
+      </div>
+      <div className="session-payload-inspector-grid">
+        <div>
+          <span>Included packs</span>
+          {inspector.includedPacks.length > 0 ? (
+            inspector.includedPacks.slice(0, 3).map((pack) => (
+              <strong key={`included-${pack.id}`} title={pack.sourceId}>
+                {pack.label}
+              </strong>
+            ))
+          ) : (
+            <strong>none</strong>
+          )}
+        </div>
+        <div>
+          <span>Dropped packs</span>
+          {inspector.droppedPacks.length > 0 ? (
+            inspector.droppedPacks.slice(0, 3).map((pack) => (
+              <strong key={`dropped-${pack.id}`} title={pack.sourceId}>
+                {pack.label}: {pack.reason}
+              </strong>
+            ))
+          ) : (
+            <strong>none</strong>
+          )}
+        </div>
+        <div>
+          <span>Outreach draft</span>
+          <strong>
+            {inspector.includedOutreachDraft?.label ??
+              inspector.droppedOutreachDraft?.reason ??
+              'none'}
+          </strong>
+        </div>
+        <div>
+          <span>Profile</span>
+          <strong>{inspector.profileLabel}</strong>
+        </div>
+      </div>
     </section>
   )
 
@@ -5080,6 +5163,10 @@ export const App = () => {
           )}
 
           {testCockpitPanel}
+          {renderSessionPayloadInspector(
+            activeSessionPayloadInspector,
+            'Active assistant payload'
+          )}
 
           {!isMiniLayout ? (
             <section className="live-main">
@@ -5248,6 +5335,10 @@ export const App = () => {
                     </div>
                   )}
                 </div>
+                {renderSessionPayloadInspector(
+                  draftSessionPayloadInspector,
+                  'Draft assistant payload'
+                )}
                 <div className="context-source-list">
                   <div className="settings-row-label">Outreach draft for this call</div>
                   {finderOutreachDrafts.length === 0 ? (

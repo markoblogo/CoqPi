@@ -74,6 +74,7 @@ Shared cost constants live in:
 
 - **Profile context**: `data/profile/profile_context.md`
 - **Current session context**: `data/sessions/current-session.json`
+- **Session payload inspector**: shared Prepare/Live model that explains which selected packs and outreach draft will enter the assistant request, which selected items are dropped, and why. It uses compact labels, source IDs, and eligibility reasons only; raw source contents stay outside the inspector.
 - **Shared-RAG ingress manifest**: `data/context-sources/manifest.json` (canonical),
   plus `coqpi-context-pack.manifest.md` and `coqpi-context-pack.history.jsonl` in the same directory for review and change audit.
 - **Counterparty/context packs**: compact partner and role-specific records from Finder or manually curated intake are stored in the same local manifest under `manifest.counterpartyPacks` with explicit provenance, selection flag, retention, and a compact hash.

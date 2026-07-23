@@ -910,6 +910,59 @@ button:disabled {
   color: #8fd9ac;
 }
 
+.session-payload-inspector {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #151b22;
+}
+
+.session-payload-inspector-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.session-payload-inspector-header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.session-payload-inspector-header span,
+.session-payload-inspector-grid span {
+  color: #8294a7;
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+}
+
+.session-payload-inspector-header strong,
+.session-payload-inspector-grid strong {
+  color: #dbe7f2;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.session-payload-inspector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+
+.session-payload-inspector-grid > div {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #11171d;
+}
+
 .context-sources-card {
   display: grid;
   align-content: start;
@@ -2169,6 +2222,10 @@ button:disabled {
   }
 
   .knowledge-pack-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .session-payload-inspector-grid {
     grid-template-columns: 1fr;
   }
 

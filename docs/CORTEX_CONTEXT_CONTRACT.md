@@ -121,6 +121,7 @@ Stored counterparty packs are also normalized as versioned compact records befor
 
 - `version: 1`, stable `sourceId`, provenance digest, `contentHash`, private classification, TTL/retention, and `coqpi_interview_en_fr` scope are required.
 - UI state, session save/load, and assistant analysis revalidate `selectedCounterpartyPackIds` against the current manifest.
+- Prepare and Live expose a compact session payload inspector for selected pack IDs and the selected outreach draft. It may show labels, source IDs, inclusion state, and drop reasons, but it must not expose raw source text, transcripts, private file paths, or hidden reasoning.
 - Disabled, removed, duplicate, missing, non-private, non-`retrieval_ready`, wrong-version, or wrong-scope packs are pruned before the assistant prompt is built.
 - Finder outreach drafts are session-linked by draft ID only. The selected draft is resolved from local Finder source truth and compacted for assistant consistency; it is not treated as proof that a message was sent.
 - Finder `manual_mock` runner output is local candidate scaffolding only. It may enter review/scoring/import flows, but it is not evidence of a real external opportunity until the owner adds source links or other reviewed provenance.

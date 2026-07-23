@@ -41,6 +41,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 
 - Local profile context plus per-call session fields: company, role, context, goal, notes, selected counterparty packs, and the selected Finder outreach draft.
 - Counterparty packs include source, owner, classification, retention, scope, links, quality diagnostics, and session eligibility.
+- Prepare and Live include a compact session payload inspector: included packs, dropped selected packs with reasons, selected/missing outreach draft, and profile status. It surfaces the assistant boundary without showing raw source contents.
 - Context Sources have explicit local adapter types for owner profile/CV files, counterparty material files, public profile links, company/respondent links, and local folder pointers. Only explicitly selected readable file adapters can be captured for retrieval; links and folders remain provenance-only.
 - Context Sources show a safe extraction preview before use: title, adapter type, classification, missing fields, retrieval readiness, extraction mode, and provenance hash. The preview is built from local manifest metadata and does not read or expose raw file/link contents.
 - Explicitly captured `.md`, `.txt`, `.json`, and `.csv` files get deterministic local extraction fields for preview: owner facts, role/respondent facts, links, dates, and missing fields. No LLM, URL fetch, folder scan, or external upload is used.
