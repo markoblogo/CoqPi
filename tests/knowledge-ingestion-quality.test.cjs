@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
+  buildKnowledgeExtractionPreview,
   buildKnowledgeIngestionSummary,
   evaluateContextSourceReadiness,
   formatContextSourceReadinessFixes
@@ -136,6 +137,44 @@ test('context source readiness treats explicit source adapters differently', () 
     true
   )
   assert.match(formatContextSourceReadinessFixes(profileLink), /pointer-only/)
+})
+
+test('knowledge extraction preview exposes metadata without raw source content', () => {
+  const readyProfileFile = makeSource({
+    kind: 'owner_profile_file',
+    location: '/Users/owner/private/cv.md',
+    label: 'Owner CV',
+    status: 'retrieval_ready',
+    contentHash: 'e'.repeat(64),
+    classification: 'private',
+    retrievalScopes: ['coqpi_interview_en_fr']
+  })
+  const companyPointer = makeSource({
+    id: 'source-link',
+    kind: 'company_link',
+    location: 'https://example.com/team',
+    label: 'Company team page'
+  })
+
+  const readyPreview = buildKnowledgeExtractionPreview(readyProfileFile, now)
+  const pointerPreview = buildKnowledgeExtractionPreview(companyPointer, now)
+
+  assert.equal(readyPreview.title, 'Owner CV')
+  assert.equal(readyPreview.sourceTypeLabel, 'Owner profile/CV file')
+  assert.equal(readyPreview.classificationLabel, 'private')
+  assert.equal(readyPreview.extractionMode, 'retrieval_context')
+  assert.equal(readyPreview.retrievalReady, true)
+  assert.deepEqual(readyPreview.missingFields, [])
+  assert.doesNotMatch(JSON.stringify(readyPreview), /private\/cv\.md/)
+
+  assert.equal(pointerPreview.sourceTypeLabel, 'Company/respondent link')
+  assert.equal(pointerPreview.extractionMode, 'metadata_only')
+  assert.equal(pointerPreview.retrievalReady, false)
+  assert.equal(
+    pointerPreview.missingFields.includes('readable local file adapter'),
+    true
+  )
+  assert.doesNotMatch(JSON.stringify(pointerPreview), /example\.com\/team/)
 })
 
 test('knowledge ingestion summary reports lifecycle and vector candidate-set readiness', () => {

@@ -45,6 +45,18 @@ export type KnowledgeIngestionSummary = {
   label: string
 }
 
+export type KnowledgeExtractionPreview = {
+  title: string
+  sourceType: ContextSourceKind
+  sourceTypeLabel: string
+  classificationLabel: string
+  retrievalReadinessLabel: string
+  retrievalReady: boolean
+  extractionMode: 'metadata_only' | 'hash_only' | 'retrieval_context'
+  provenanceLabel: string
+  missingFields: string[]
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000
 const interviewScope = 'coqpi_interview_en_fr'
 const readableFileSourceKinds = new Set<ContextSourceKind>([
@@ -60,6 +72,18 @@ const pointerOnlySourceKinds = new Set<ContextSourceKind>([
   'company_link',
   'local_folder_manifest'
 ])
+
+const sourceKindLabels: Record<ContextSourceKind, string> = {
+  link: 'Legacy link',
+  file: 'Legacy file',
+  folder: 'Legacy folder',
+  path: 'Legacy path',
+  owner_profile_file: 'Owner profile/CV file',
+  counterparty_material_file: 'Counterparty material file',
+  public_profile_link: 'Public profile link',
+  company_link: 'Company/respondent link',
+  local_folder_manifest: 'Local folder pointer'
+}
 
 const daysUntil = (expiresAt: string, nowMs: number) => {
   const expiresMs = Date.parse(expiresAt)
@@ -236,6 +260,58 @@ export const buildKnowledgeIngestionSummary = (
     soonestExpiryLabel: soonestExpiry(sources, packs, now),
     vectorReady,
     label: `${sourceReadyCount}/${sources.length} sources ready · ${retrievalReadyPackCount}/${packs.length} packs usable`
+  }
+}
+
+export const buildKnowledgeExtractionPreview = (
+  source: ContextSource,
+  now = new Date()
+): KnowledgeExtractionPreview => {
+  const readiness = evaluateContextSourceReadiness(source, now)
+  const missingFields: string[] = []
+
+  if (!source.selected) {
+    missingFields.push('explicit selection')
+  }
+
+  if (!source.contentHash) {
+    missingFields.push('content hash')
+  }
+
+  if (source.classification !== 'private') {
+    missingFields.push('private classification')
+  }
+
+  if (!source.retrievalScopes.includes(interviewScope)) {
+    missingFields.push('EN/FR interview scope')
+  }
+
+  if (pointerOnlySourceKinds.has(source.kind)) {
+    missingFields.push('readable local file adapter')
+  }
+
+  if (readiness.daysUntilExpiry !== null && readiness.daysUntilExpiry < 0) {
+    missingFields.push('fresh retention window')
+  }
+
+  const extractionMode: KnowledgeExtractionPreview['extractionMode'] =
+    readiness.retrievalReady
+      ? 'retrieval_context'
+      : source.contentHash
+        ? 'hash_only'
+        : 'metadata_only'
+
+  return {
+    title: source.label || source.id,
+    sourceType: source.kind,
+    sourceTypeLabel: sourceKindLabels[source.kind],
+    classificationLabel:
+      source.classification === 'private' ? 'private' : 'pending classification',
+    retrievalReadinessLabel: readiness.label,
+    retrievalReady: readiness.retrievalReady,
+    extractionMode,
+    provenanceLabel: `${source.provenance.sourceId} · locator ${source.provenance.locatorSha256.slice(0, 12)}`,
+    missingFields: Array.from(new Set(missingFields))
   }
 }
 

@@ -76,6 +76,7 @@ import {
   formatCounterpartyPackQualityFixes
 } from '@shared/context-pack-quality'
 import {
+  buildKnowledgeExtractionPreview,
   buildKnowledgeIngestionSummary,
   evaluateContextSourceReadiness,
   formatContextSourceReadinessFixes
@@ -6381,6 +6382,8 @@ export const App = () => {
                 ) : (
                   contextSources.map((source) => {
                     const readiness = evaluateContextSourceReadiness(source)
+                    const extractionPreview =
+                      buildKnowledgeExtractionPreview(source)
 
                     return (
                       <div className="context-source-item" key={source.id}>
@@ -6405,6 +6408,46 @@ export const App = () => {
                           <span>
                             {source.kind} · {source.status.replaceAll('_', ' ')}
                           </span>
+                          <div className="knowledge-extraction-preview">
+                            <div>
+                              <span>Preview</span>
+                              <strong>{extractionPreview.title}</strong>
+                            </div>
+                            <div>
+                              <span>Source type</span>
+                              <strong>{extractionPreview.sourceTypeLabel}</strong>
+                            </div>
+                            <div>
+                              <span>Classification</span>
+                              <strong>{extractionPreview.classificationLabel}</strong>
+                            </div>
+                            <div>
+                              <span>Extraction</span>
+                              <strong>
+                                {extractionPreview.extractionMode.replaceAll(
+                                  '_',
+                                  ' '
+                                )}
+                              </strong>
+                            </div>
+                          </div>
+                          <span
+                            className={
+                              extractionPreview.retrievalReady
+                                ? 'context-source-status-ready'
+                                : 'context-source-status-blocked'
+                            }
+                          >
+                            preview readiness:{' '}
+                            {extractionPreview.retrievalReadinessLabel}
+                          </span>
+                          <span>
+                            missing:{' '}
+                            {extractionPreview.missingFields.length > 0
+                              ? extractionPreview.missingFields.join(', ')
+                              : 'none'}
+                          </span>
+                          <code>{extractionPreview.provenanceLabel}</code>
                           <span>
                             scope: {source.retrievalScopes[0] ?? 'none'} ·
                             content hash{' '}

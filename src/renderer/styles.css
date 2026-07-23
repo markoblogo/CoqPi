@@ -985,6 +985,35 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.knowledge-extraction-preview {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-1);
+  margin: 3px 0;
+}
+
+.knowledge-extraction-preview > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #151b22;
+}
+
+.knowledge-extraction-preview span {
+  color: #7f93a5 !important;
+  font-size: 10px !important;
+  text-transform: uppercase;
+}
+
+.knowledge-extraction-preview strong {
+  color: #dbe7f2;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
 .context-source-details .context-source-status-ready {
   color: #8fd9ac;
 }
@@ -1963,6 +1992,10 @@ button:disabled {
 
   .context-source-select {
     grid-column: 1 / -1;
+  }
+
+  .knowledge-extraction-preview {
+    grid-template-columns: 1fr;
   }
 
   .settings-actions {
