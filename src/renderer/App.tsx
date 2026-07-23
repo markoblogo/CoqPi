@@ -117,6 +117,9 @@ import {
   buildContextPackDraftFromKnowledgeExtraction
 } from '@shared/knowledge-extraction'
 import {
+  buildKnowledgePackReviewSurface
+} from '@shared/knowledge-pack-review'
+import {
   createContextPackDraftFromFinderResult,
   createFinderOutreachPrepPack,
   createFinderPipelineView,
@@ -817,6 +820,16 @@ export const App = () => {
         (draft) => draft.jobId === selectedFinderSearchJob.id
       )
     : []
+  const counterpartyPackReviewSurface = buildKnowledgePackReviewSurface({
+    sourceId: counterpartyPackDraft.sourceId,
+    kind: counterpartyPackDraft.kind,
+    partnerName: counterpartyPackDraft.partnerName,
+    title: counterpartyPackDraft.title,
+    summary: counterpartyPackDraft.summary,
+    context: counterpartyPackDraft.context,
+    links: normalizeLinksText(counterpartyPackDraft.linksText),
+    selected: counterpartyPackDraft.selected
+  })
   const applyFinderSearchStore = (store: FinderSearchStore) => {
     setFinderSearchJobs(store.jobs)
     setFinderCandidateResults(store.results)
@@ -6829,19 +6842,78 @@ export const App = () => {
                     <span>Use this pack in retrieval</span>
                   </label>
                 </div>
+                <div className="knowledge-pack-review">
+                  <div className="knowledge-pack-review-header">
+                    <div>
+                      <span>Review before save</span>
+                      <strong>{counterpartyPackReviewSurface.title || 'Untitled pack'}</strong>
+                    </div>
+                    <span
+                      className={
+                        counterpartyPackReviewSurface.canSave
+                          ? 'context-source-status-ready'
+                          : 'context-source-status-blocked'
+                      }
+                    >
+                      {counterpartyPackReviewSurface.canSave
+                        ? 'ready to save'
+                        : 'blocked'}
+                    </span>
+                  </div>
+                  <div className="knowledge-pack-review-grid">
+                    <div>
+                      <span>Summary</span>
+                      <strong>
+                        {counterpartyPackReviewSurface.summary || 'Missing'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Context</span>
+                      <strong>
+                        {counterpartyPackReviewSurface.context || 'Missing'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Links</span>
+                      <strong>
+                        {counterpartyPackReviewSurface.links.length} reviewed
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Retrieval</span>
+                      <strong>
+                        {counterpartyPackReviewSurface.selectedOnSave
+                          ? 'selected on save'
+                          : 'saved unselected'}
+                      </strong>
+                    </div>
+                  </div>
+                  {counterpartyPackReviewSurface.weakFields.length > 0 ? (
+                    <div className="knowledge-pack-review-warnings">
+                      {counterpartyPackReviewSurface.weakFields.map((field) => (
+                        <span key={field.id} title={field.fix}>
+                          {field.label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="knowledge-pack-review-ready">
+                      No obvious weak fields.
+                    </span>
+                  )}
+                </div>
                 <div className="button-row settings-actions">
                   <button
                     disabled={
                       isSavingCounterpartyPacks ||
-                      !counterpartyPackDraft.sourceId.trim() ||
-                      !counterpartyPackDraft.partnerName.trim() ||
-                      !counterpartyPackDraft.title.trim() ||
-                      !counterpartyPackDraft.summary.trim()
+                      !counterpartyPackReviewSurface.canSave
                     }
                     onClick={() => void stageCounterpartyPack()}
                     type="button"
                   >
-                    {counterpartyPackDraftingId ? 'Update pack' : 'Add pack'}
+                    {counterpartyPackDraftingId
+                      ? 'Update reviewed pack'
+                      : counterpartyPackReviewSurface.confirmationLabel}
                   </button>
                   <button
                     disabled={
