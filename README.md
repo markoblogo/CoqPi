@@ -49,6 +49,7 @@ CoqPi is a private local desktop application for stressful interview and profess
 - Selected pack IDs are revalidated in UI state, session save/load, and assistant analysis. Disabled, removed, duplicate, missing, or non-retrieval-ready packs are pruned before use.
 - A selected outreach draft is revalidated against Finder source truth before use. Missing or stale draft IDs are dropped or surfaced in prep quality instead of broadening context.
 - Assistant retrieval uses a strict allowlist: when selected pack IDs are provided, only those packs are candidates.
+- `retrievalProvider: future_vector` is vector-ready v0: it builds a metadata-only candidate set from the selected, eligible pack IDs, then runs the current local scorer inside that set. It does not add a vector database, broad source search, external fetch, or raw-content exposure.
 - Assistant quality fixtures inspect the provider prompt and verify that selected packs are included while unselected packs stay out of the answer path.
 
 ### Not implemented yet

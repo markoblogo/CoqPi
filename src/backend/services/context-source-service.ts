@@ -34,6 +34,7 @@ import {
   evaluateContextSourceReadiness
 } from '../../shared/knowledge-ingestion-quality'
 import { extractKnowledgeFieldsFromReadableText } from '../../shared/knowledge-extraction'
+import { buildVectorReadyRetrievalCandidateSet } from '../../shared/vector-ready-retrieval'
 import { getAppInfo } from './app-state'
 
 type IngressEvent =
@@ -1200,11 +1201,6 @@ export const getPersonalInterviewRetrieval = async (
   selectedPackIds?: string[],
   retrievalProvider: RetrievalProvider = 'legacy'
 ) => {
-  if (retrievalProvider === 'future_vector') {
-    // future_vector provider is intentionally not enabled yet.
-    // Keep the contract stable by routing to legacy retrieval for now.
-  }
-
   if (!['en', 'fr'].includes(answerLanguage) || !query.trim()) {
     return ''
   }
@@ -1220,6 +1216,25 @@ export const getPersonalInterviewRetrieval = async (
   const manifest = deriveManifest(events)
   const selectedPackIdSet = new Set(sanitizePackIds(selectedPackIds))
   const normalizedKinds = sanitizeContextPackRetrievalKinds(retrievalKinds)
+  const vectorCandidateSet =
+    retrievalProvider === 'future_vector'
+      ? buildVectorReadyRetrievalCandidateSet({
+          sources: manifest.sources,
+          counterpartyPacks: manifest.counterpartyPacks,
+          selectedPackIds,
+          retrievalKinds: normalizedKinds
+        })
+      : null
+  const vectorPackIds = new Set(
+    vectorCandidateSet?.candidates
+      .filter((candidate) => candidate.type === 'counterparty_pack')
+      .map((candidate) => candidate.id) ?? []
+  )
+  const vectorSourceIds = new Set(
+    vectorCandidateSet?.candidates
+      .filter((candidate) => candidate.type === 'context_source')
+      .map((candidate) => candidate.id) ?? []
+  )
   const terms = query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []
   const capturedTextById = new Map<string, string>()
   for (const event of events) {
@@ -1231,14 +1246,16 @@ export const getPersonalInterviewRetrieval = async (
   const counterpartyMatches = manifest.counterpartyPacks
     .filter(
       (pack) =>
-        (selectedPackIdSet.size > 0
-          ? selectedPackIdSet.has(pack.id)
-          : pack.selected) &&
-        pack.status === 'retrieval_ready' &&
-        pack.retrievalScopes.includes('coqpi_interview_en_fr') &&
-        (!Array.isArray(normalizedKinds) || normalizedKinds.length === 0
-          ? true
-          : normalizedKinds.includes(pack.kind))
+        retrievalProvider === 'future_vector'
+          ? vectorPackIds.has(pack.id)
+          : (selectedPackIdSet.size > 0
+              ? selectedPackIdSet.has(pack.id)
+              : pack.selected) &&
+            pack.status === 'retrieval_ready' &&
+            pack.retrievalScopes.includes('coqpi_interview_en_fr') &&
+            (!Array.isArray(normalizedKinds) || normalizedKinds.length === 0
+              ? true
+              : normalizedKinds.includes(pack.kind))
     )
     .map((pack) => {
       const packText = `${pack.partnerName}: ${pack.title}. ${pack.summary}. ${pack.context}`
@@ -1257,9 +1274,11 @@ export const getPersonalInterviewRetrieval = async (
   const sourceMatches = manifest.sources
     .filter(
       (source) =>
-        source.selected &&
-        source.status === 'retrieval_ready' &&
-        source.retrievalScopes.includes('coqpi_interview_en_fr') &&
+        (retrievalProvider === 'future_vector'
+          ? vectorSourceIds.has(source.id)
+          : source.selected &&
+            source.status === 'retrieval_ready' &&
+            source.retrievalScopes.includes('coqpi_interview_en_fr')) &&
         capturedTextById.has(source.id)
     )
     .map((source) => {

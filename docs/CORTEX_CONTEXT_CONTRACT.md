@@ -113,7 +113,9 @@ The EN/FR retrieval contract is now explicit:
 
 - `contextPackRetrievalKinds` is the strict allowlist for pack kind filtering.
 - `selectedCounterpartyPackIds`, when non-empty, is a strict candidate allowlist: retrieval may use only these packs and does not auto-expand to other selected packs.
-- `retrievalProvider` is a pluggable provider selector for the retrieval path with supported values `legacy | future_vector` (currently routed to `legacy`).
+- `retrievalProvider` is a pluggable provider selector for the retrieval path with supported values `legacy | future_vector`.
+- `legacy` keeps the current compact local keyword retrieval behavior.
+- `future_vector` is vector-ready v0, not a vector engine: it first builds a metadata-only candidate set from selected, eligible pack IDs and then runs the current local scorer only inside that set. When selected pack IDs are present, captured context sources cannot broaden the candidate set.
 
 Stored counterparty packs are also normalized as versioned compact records before they can enter retrieval:
 

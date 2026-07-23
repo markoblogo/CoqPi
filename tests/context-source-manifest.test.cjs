@@ -384,6 +384,69 @@ test('retrieves only explicitly selected pack ids when provided', async () => {
   }
 })
 
+test('future_vector retrieval uses only the strict selected candidate set', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-vector-candidates-'))
+  const filePath = path.join(directory, 'owner-profile.md')
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+  await fs.writeFile(
+    filePath,
+    [
+      'Owner profile: broad AI product strategy and investor readiness.',
+      'Role target: this source should not bypass a strict selected pack set.'
+    ].join('\n'),
+    'utf8'
+  )
+
+  try {
+    const addedSource = await service.addContextSource({
+      kind: 'owner_profile_file',
+      location: filePath
+    })
+    await service.captureAndClassifyContextSource(addedSource.manifest.sources[0].id)
+
+    const seeded = await service.addCounterpartyContextPacks([
+      {
+        sourceId: 'finder:job:strict-001',
+        kind: 'job',
+        partnerName: 'Selected Robotics',
+        title: 'AI Product Lead',
+        summary: 'Selected role mentions AI product strategy and investor readiness.'
+      },
+      {
+        sourceId: 'finder:investor:strict-002',
+        kind: 'investor',
+        partnerName: 'Unselected Capital',
+        title: 'Agri investor',
+        summary: 'Unselected investor also mentions AI product strategy.'
+      }
+    ])
+    const [selectedPackId] = seeded.manifest.counterpartyPacks.map((pack) => pack.id)
+
+    const retrieval = await service.getPersonalInterviewRetrieval(
+      'Discuss AI product strategy and investor readiness.',
+      'en',
+      undefined,
+      [selectedPackId],
+      'future_vector'
+    )
+
+    assert.match(retrieval, /Selected Robotics/)
+    assert.doesNotMatch(retrieval, /Unselected Capital/)
+    assert.doesNotMatch(retrieval, /broad AI product strategy/)
+    assert.doesNotMatch(retrieval, new RegExp(filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('rejects malformed counterparty packs', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-counterparty-invalid-'))
   const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
