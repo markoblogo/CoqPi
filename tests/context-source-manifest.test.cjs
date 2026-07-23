@@ -569,3 +569,77 @@ test('captures explicit owner profile files and keeps pointer sources no-read', 
     await fs.rm(directory, { recursive: true, force: true })
   }
 })
+
+test('records knowledge pack lifecycle chain without exposing raw source path', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-knowledge-lifecycle-'))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+  const manifestMarkdownPath = path.join(
+    directory,
+    'core',
+    'coqpi-context-pack.manifest.md'
+  )
+  const privatePath = '/Users/owner/private/materials.md'
+  const draft = {
+    sourceId: 'knowledge:source-lifecycle',
+    kind: 'job',
+    partnerName: 'Acme',
+    title: 'Senior Product Manager',
+    summary: 'Owner has relevant AI product strategy experience.',
+    context: 'Missing fields to review: salary range.',
+    links: ['https://example.com/job'],
+    selected: false
+  }
+
+  try {
+    await service.recordKnowledgePackLifecycle({
+      status: 'assembled',
+      sourceId: draft.sourceId,
+      reason: `assembled from ${privatePath}`,
+      selected: false,
+      weakFields: ['missing_links'],
+      draft
+    })
+    await service.recordKnowledgePackLifecycle({
+      status: 'reviewed',
+      sourceId: draft.sourceId,
+      reason: 'owner reviewed compact fields',
+      selected: false,
+      weakFields: [],
+      draft
+    })
+    const saved = await service.recordKnowledgePackLifecycle({
+      status: 'saved',
+      sourceId: draft.sourceId,
+      reason: 'owner saved reviewed pack',
+      selected: false,
+      weakFields: [],
+      draft
+    })
+
+    assert.deepEqual(
+      saved.manifest.knowledgePackLifecycle.map((entry) => entry.status),
+      ['assembled', 'reviewed', 'saved']
+    )
+    assert.equal(saved.manifest.knowledgePackLifecycle[0].sourceId, draft.sourceId)
+    assert.match(saved.manifest.knowledgePackLifecycle[0].draftHash, /^[a-f0-9]{64}$/)
+    assert.deepEqual(saved.manifest.knowledgePackLifecycle[0].weakFields, [
+      'missing_links'
+    ])
+
+    const manifestMarkdown = await fs.readFile(manifestMarkdownPath, 'utf8')
+    assert.match(manifestMarkdown, /Knowledge pack lifecycle events: 3/)
+    assert.match(manifestMarkdown, /## Knowledge pack lifecycle/)
+    assert.match(manifestMarkdown, /saved: knowledge:source-lifecycle/)
+    assert.doesNotMatch(manifestMarkdown, /private\/materials\.md/)
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})

@@ -9,6 +9,7 @@ import type {
   ContextSourceDraft,
   ContextSourceManifestResult,
   CounterpartyContextPackDraft,
+  KnowledgePackLifecycleDraft,
   DeleteOpenAIKeyResult,
   FinderCandidateResultDraft,
   FinderSourceAdapterPreviewResult,
@@ -71,6 +72,7 @@ import {
   captureAndClassifyContextSource,
   getContextSourceManifest,
   getCounterpartyContextPacks,
+  recordKnowledgePackLifecycle,
   removeCounterpartyContextPack,
   removeContextSource,
   setCounterpartyContextPackSelected,
@@ -175,6 +177,15 @@ const registerIpcHandlers = () => {
       packs: CounterpartyContextPackDraft[]
     ): Promise<ContextSourceManifestResult> =>
       addCounterpartyContextPacks(packs)
+  )
+
+  ipcMain.handle(
+    'coqpi:context-packs:record-knowledge-lifecycle',
+    async (
+      _event,
+      draft: KnowledgePackLifecycleDraft
+    ): Promise<ContextSourceManifestResult> =>
+      recordKnowledgePackLifecycle(draft)
   )
 
   ipcMain.handle(

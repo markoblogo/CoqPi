@@ -13,6 +13,7 @@ import type {
   FinderSearchJobDraft,
   FinderSearchJobStatus,
   FinderSearchStoreResult,
+  KnowledgePackLifecycleDraft,
   OpenAIKeyStatus,
   ProfileContextResult,
   RealtimeTranscriptionResponse,
@@ -94,6 +95,9 @@ declare global {
       contextPacks: {
         get: () => Promise<ContextSourceManifestResult>
         add: (packs: CounterpartyContextPackDraft[]) => Promise<ContextSourceManifestResult>
+        recordKnowledgeLifecycle: (
+          draft: KnowledgePackLifecycleDraft
+        ) => Promise<ContextSourceManifestResult>
         ingestFinderPayloadBatch: (
           candidatePacks: unknown[]
         ) => Promise<ContextSourceManifestResult>

@@ -4,6 +4,7 @@ import type {
   AssistantAnalysisRequest,
   ContextSourceDraft,
   CounterpartyContextPackDraft,
+  KnowledgePackLifecycleDraft,
   FinderCandidateResultDraft,
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
@@ -102,6 +103,8 @@ contextBridge.exposeInMainWorld('coqpi', {
     get: () => ipcRenderer.invoke('coqpi:context-packs:get'),
     add: (packs: CounterpartyContextPackDraft[]) =>
       ipcRenderer.invoke('coqpi:context-packs:add', packs),
+    recordKnowledgeLifecycle: (draft: KnowledgePackLifecycleDraft) =>
+      ipcRenderer.invoke('coqpi:context-packs:record-knowledge-lifecycle', draft),
     ingestFinderPayloadBatch: (candidatePacks: unknown[]) =>
       ipcRenderer.invoke(
         'coqpi:context-packs:ingest-finder-batch',

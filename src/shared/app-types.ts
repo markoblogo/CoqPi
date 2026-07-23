@@ -400,6 +400,7 @@ export interface CounterpartyContextPackManifestResult {
     version: 1
     sources: ContextSource[]
     counterpartyPacks: CounterpartyContextPack[]
+    knowledgePackLifecycle?: KnowledgePackLifecycleEntry[]
   }
 }
 
@@ -407,6 +408,30 @@ export interface ContextSourceManifest {
   version: 1
   sources: ContextSource[]
   counterpartyPacks?: CounterpartyContextPack[]
+  knowledgePackLifecycle?: KnowledgePackLifecycleEntry[]
+}
+
+export type KnowledgePackLifecycleStatus = 'assembled' | 'reviewed' | 'saved'
+
+export interface KnowledgePackLifecycleEntry {
+  version: 1
+  id: string
+  status: KnowledgePackLifecycleStatus
+  at: string
+  sourceId: string
+  draftHash: string
+  reason: string
+  selected: boolean
+  weakFields: string[]
+}
+
+export interface KnowledgePackLifecycleDraft {
+  status: KnowledgePackLifecycleStatus
+  sourceId: string
+  reason: string
+  selected?: boolean
+  weakFields?: string[]
+  draft: CounterpartyContextPackDraft
 }
 
 export interface CounterpartyPayloadIngestError {

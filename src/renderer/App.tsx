@@ -30,6 +30,7 @@ import {
   type FinderSearchJob,
   type FinderSearchJobDraft,
   type FinderSearchStore,
+  type KnowledgePackLifecycleEntry,
   type OpenAIKeyStatus,
   type RealtimeConnectionStatus,
   type SettingsMeta,
@@ -836,6 +837,12 @@ export const App = () => {
     setFinderOutreachDrafts(store.outreachDrafts ?? [])
   }
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
+  const [knowledgePackLifecycle, setKnowledgePackLifecycle] = useState<
+    KnowledgePackLifecycleEntry[]
+  >([])
+  const knowledgePackLifecycleForDraft = knowledgePackLifecycle
+    .filter((entry) => entry.sourceId === counterpartyPackReviewSurface.sourceId)
+    .slice(-5)
   const [contextSourceDraft, setContextSourceDraft] = useState(
     emptyContextSourceDraft
   )
@@ -986,6 +993,9 @@ export const App = () => {
         }
 
         setCounterpartyPacks(packs)
+        setKnowledgePackLifecycle(
+          contextSourcePayload.manifest.knowledgePackLifecycle ?? []
+        )
         setSessionContext(syncedSessionContext)
         setSessionContextDraft(syncedSessionContext)
         setSessionContextError(null)
@@ -1612,16 +1622,22 @@ export const App = () => {
     }
   }
 
-  const applyContextSourceManifest = (sources: ContextSource[]) => {
+  const applyContextSourceManifest = (
+    sources: ContextSource[],
+    lifecycle: KnowledgePackLifecycleEntry[] = knowledgePackLifecycle
+  ) => {
     setContextSources(sources)
+    setKnowledgePackLifecycle(lifecycle)
     setContextSourcesError(null)
   }
 
   const applyCounterpartyPackManifest = (
     packs: CounterpartyContextPack[],
-    importedCandidates: CounterpartyContextPackDraft[] = []
+    importedCandidates: CounterpartyContextPackDraft[] = [],
+    lifecycle: KnowledgePackLifecycleEntry[] = knowledgePackLifecycle
   ) => {
     setCounterpartyPacks(packs)
+    setKnowledgePackLifecycle(lifecycle)
     setCounterpartyPackDraftError(null)
     setSessionContext((current) =>
       getSessionContextWithImportedCandidates(current, packs, importedCandidates)
@@ -1726,15 +1742,45 @@ export const App = () => {
 
     try {
       const nextDraft = normalizeCounterpartyPackDraft(draft)
-      const payload = await window.coqpi.contextPacks.add([nextDraft])
+      const isKnowledgeDraft = nextDraft.sourceId.startsWith('knowledge:')
+      const reviewSurface = buildKnowledgePackReviewSurface(nextDraft)
+
+      if (isKnowledgeDraft) {
+        const reviewedPayload =
+          await window.coqpi.contextPacks.recordKnowledgeLifecycle({
+            status: 'reviewed',
+            sourceId: nextDraft.sourceId,
+            reason: 'owner reviewed assembled knowledge pack draft before save',
+            selected: nextDraft.selected === true,
+            weakFields: reviewSurface.weakFields.map((field) => field.id),
+            draft: nextDraft
+          })
+        setKnowledgePackLifecycle(
+          reviewedPayload.manifest.knowledgePackLifecycle ?? []
+        )
+      }
+
+      let payload = await window.coqpi.contextPacks.add([nextDraft])
 
       if (counterpartyPackDraftingId) {
         await window.coqpi.contextPacks.remove(counterpartyPackDraftingId)
       }
 
+      if (isKnowledgeDraft) {
+        payload = await window.coqpi.contextPacks.recordKnowledgeLifecycle({
+          status: 'saved',
+          sourceId: nextDraft.sourceId,
+          reason: 'owner saved reviewed knowledge pack into local manifest',
+          selected: nextDraft.selected === true,
+          weakFields: reviewSurface.weakFields.map((field) => field.id),
+          draft: nextDraft
+        })
+      }
+
       applyCounterpartyPackManifest(
         payload.manifest.counterpartyPacks ?? [],
-        nextDraft.selected === false ? [] : [nextDraft]
+        nextDraft.selected === false ? [] : [nextDraft],
+        payload.manifest.knowledgePackLifecycle ?? []
       )
 
       if (resetDraft) {
@@ -1924,7 +1970,8 @@ export const App = () => {
 
       applyCounterpartyPackManifest(
         nextPacks,
-        importedCandidates
+        importedCandidates,
+        payload.manifest.knowledgePackLifecycle ?? []
       )
       setSessionContext(nextSessionContext)
       setSessionContextDraft(nextSessionContext)
@@ -2306,7 +2353,11 @@ export const App = () => {
         [draft]
       )
 
-      applyCounterpartyPackManifest(nextPacks, [draft])
+      applyCounterpartyPackManifest(
+        nextPacks,
+        [draft],
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
       setSessionContext(nextSessionContext)
       setSessionContextDraft(nextSessionContext)
       const finderPayload = await window.coqpi.finderSearch.setCandidateStatus(
@@ -2350,7 +2401,11 @@ export const App = () => {
 
     try {
       const payload = await window.coqpi.contextPacks.setSelected(id, selected)
-      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+      applyCounterpartyPackManifest(
+        payload.manifest.counterpartyPacks ?? [],
+        [],
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
     } catch (error) {
       setCounterpartyPackDraftError(getCounterpartyPackErrorMessage(error))
     } finally {
@@ -2424,7 +2479,11 @@ export const App = () => {
 
     try {
       const payload = await window.coqpi.contextPacks.remove(id)
-      applyCounterpartyPackManifest(payload.manifest.counterpartyPacks ?? [])
+      applyCounterpartyPackManifest(
+        payload.manifest.counterpartyPacks ?? [],
+        [],
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
       setCounterpartyPackDraftNotice('Counterparty pack removed from manifest.')
 
       if (counterpartyPackDraftingId === id) {
@@ -2453,7 +2512,10 @@ export const App = () => {
 
     try {
       const payload = await window.coqpi.contextSources.add(draft)
-      applyContextSourceManifest(payload.manifest.sources)
+      applyContextSourceManifest(
+        payload.manifest.sources,
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
 
       if (resetDraft) {
         setContextSourceDraft(emptyContextSourceDraft)
@@ -2488,6 +2550,7 @@ export const App = () => {
       }
 
       let latestSources = contextSources
+      let latestLifecycle = knowledgePackLifecycle
       const selectedFileKind = fileContextSourceKinds.has(contextSourceDraft.kind)
         ? contextSourceDraft.kind
         : 'counterparty_material_file'
@@ -2498,9 +2561,10 @@ export const App = () => {
           location
         })
         latestSources = payload.manifest.sources
+        latestLifecycle = payload.manifest.knowledgePackLifecycle ?? []
       }
 
-      applyContextSourceManifest(latestSources)
+      applyContextSourceManifest(latestSources, latestLifecycle)
       setContextSourcesNotice(
         `${filePaths.length} file${filePaths.length === 1 ? '' : 's'} recorded for shared RAG classification. Contents were not read.`
       )
@@ -2533,7 +2597,10 @@ export const App = () => {
         kind: 'local_folder_manifest',
         location
       })
-      applyContextSourceManifest(payload.manifest.sources)
+      applyContextSourceManifest(
+        payload.manifest.sources,
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
       setContextSourcesNotice(
         'Folder recorded for shared RAG classification. It was not scanned.'
       )
@@ -2556,7 +2623,10 @@ export const App = () => {
 
     try {
       const payload = await window.coqpi.contextSources.setSelected(id, selected)
-      applyContextSourceManifest(payload.manifest.sources)
+      applyContextSourceManifest(
+        payload.manifest.sources,
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
     } catch (error) {
       setContextSourcesError(getContextSourceErrorMessage(error))
     } finally {
@@ -2576,7 +2646,10 @@ export const App = () => {
 
     try {
       const payload = await window.coqpi.contextSources.remove(id)
-      applyContextSourceManifest(payload.manifest.sources)
+      applyContextSourceManifest(
+        payload.manifest.sources,
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
       setContextSourcesNotice('Source removed from the local manifest.')
     } catch (error) {
       setContextSourcesError(getContextSourceErrorMessage(error))
@@ -2598,7 +2671,10 @@ export const App = () => {
 
     try {
       const payload = await window.coqpi.contextSources.captureAndClassify(id)
-      applyContextSourceManifest(payload.manifest.sources)
+      applyContextSourceManifest(
+        payload.manifest.sources,
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
       setContextSourcesNotice(
         'Local content hash captured. Retrieval is enabled only for supported text in EN/FR interview assistance.'
       )
@@ -2610,9 +2686,10 @@ export const App = () => {
     }
   }
 
-  const assembleKnowledgePackDraft = (source: ContextSource) => {
+  const assembleKnowledgePackDraft = async (source: ContextSource) => {
     try {
       const draft = buildContextPackDraftFromKnowledgeExtraction(source)
+      const reviewSurface = buildKnowledgePackReviewSurface(draft)
 
       setCounterpartyPackDraft({
         kind: draft.kind,
@@ -2631,6 +2708,17 @@ export const App = () => {
       )
       setContextSourcesNotice(
         'Draft assembled only from compact extracted fields. Raw source content was not promoted.'
+      )
+      const payload = await window.coqpi.contextPacks.recordKnowledgeLifecycle({
+        status: 'assembled',
+        sourceId: draft.sourceId,
+        reason: 'owner assembled pack draft from compact extracted fields',
+        selected: draft.selected === true,
+        weakFields: reviewSurface.weakFields.map((field) => field.id),
+        draft
+      })
+      setKnowledgePackLifecycle(
+        payload.manifest.knowledgePackLifecycle ?? []
       )
     } catch (error) {
       setContextSourcesError(getContextSourceErrorMessage(error))
@@ -6557,7 +6645,9 @@ export const App = () => {
                           {source.extraction ? (
                             <button
                               disabled={isSavingContextSources}
-                              onClick={() => assembleKnowledgePackDraft(source)}
+                              onClick={() =>
+                                void assembleKnowledgePackDraft(source)
+                              }
                               type="button"
                             >
                               Create pack draft
@@ -6899,6 +6989,23 @@ export const App = () => {
                   ) : (
                     <span className="knowledge-pack-review-ready">
                       No obvious weak fields.
+                    </span>
+                  )}
+                  {knowledgePackLifecycleForDraft.length > 0 ? (
+                    <div className="knowledge-pack-lifecycle">
+                      {knowledgePackLifecycleForDraft.map((entry) => (
+                        <div key={entry.id}>
+                          <span>{entry.status}</span>
+                          <strong>
+                            {entry.selected ? 'selected' : 'unselected'} ·{' '}
+                            {entry.weakFields.length} weak fields
+                          </strong>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="knowledge-pack-review-ready">
+                      Lifecycle: draft not recorded yet.
                     </span>
                   )}
                 </div>

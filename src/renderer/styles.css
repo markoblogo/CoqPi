@@ -1113,6 +1113,34 @@ button:disabled {
   font-size: var(--font-xs);
 }
 
+.knowledge-pack-lifecycle {
+  display: grid;
+  gap: 3px;
+}
+
+.knowledge-pack-lifecycle > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1);
+  padding: 4px 6px;
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #11171d;
+}
+
+.knowledge-pack-lifecycle span {
+  color: #79bbf6;
+  font-size: var(--font-xs);
+  font-weight: 700;
+}
+
+.knowledge-pack-lifecycle strong {
+  color: #99abbc;
+  font-size: var(--font-xs);
+  font-weight: 500;
+}
+
 .context-source-details .context-source-status-ready {
   color: #8fd9ac;
 }

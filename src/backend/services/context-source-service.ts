@@ -11,6 +11,8 @@ import type {
   ContextSourceManifestResult,
   CounterpartyContextPack,
   CounterpartyContextPackDraft,
+  KnowledgePackLifecycleDraft,
+  KnowledgePackLifecycleEntry,
   ContextPackRetrievalKind,
   RetrievalProvider,
   CounterpartyFinderPayloadPreviewCandidate,
@@ -54,6 +56,11 @@ type IngressEvent =
     }
   | {
       version: 1
+      type: 'knowledge_pack_lifecycle_recorded'
+      entry: KnowledgePackLifecycleEntry
+    }
+  | {
+      version: 1
       type: 'counterparty_pack_selection_changed'
       id: string
       selected: boolean
@@ -84,12 +91,14 @@ const readableExtensions = new Set(['.md', '.txt', '.csv', '.json'])
 
 type CounterpartyContextPackEventedManifest = ContextSourceManifest & {
   counterpartyPacks: CounterpartyContextPack[]
+  knowledgePackLifecycle: KnowledgePackLifecycleEntry[]
 }
 
 const emptyManifest = (): CounterpartyContextPackEventedManifest => ({
   version: 1,
   sources: [],
-  counterpartyPacks: []
+  counterpartyPacks: [],
+  knowledgePackLifecycle: []
 })
 
 const isPackKind = (value: unknown): value is (typeof allowedPackKinds)[number] =>
@@ -131,6 +140,12 @@ const getLegacyManifestPath = () =>
 
 const sanitizeText = (value: unknown) =>
   typeof value === 'string' ? value.trim() : ''
+
+const sanitizeOperationalReason = (value: unknown) =>
+  sanitizeText(value).replace(
+    /(?:\/Users|\/Volumes|\/private\/var|\/var|\/tmp|[A-Za-z]:\\)[^\s]+/gu,
+    '[local-path]'
+  )
 
 const sanitizeStringList = (value: unknown, maxItems = 10) =>
   Array.isArray(value)
@@ -308,6 +323,45 @@ const sanitizeCounterpartyPack = (
   }
 }
 
+const sanitizeKnowledgePackLifecycleEntry = (
+  value: unknown
+): KnowledgePackLifecycleEntry | null => {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const candidate = value as Partial<KnowledgePackLifecycleEntry>
+  const status = sanitizeText(candidate.status)
+  const id = sanitizeText(candidate.id)
+  const at = sanitizeText(candidate.at)
+  const sourceId = sanitizeText(candidate.sourceId)
+  const draftHash = sanitizeText(candidate.draftHash)
+  const reason = sanitizeOperationalReason(candidate.reason)
+
+  if (
+    candidate.version !== 1 ||
+    !id ||
+    !at ||
+    !sourceId ||
+    !/^[a-f0-9]{64}$/u.test(draftHash) ||
+    !['assembled', 'reviewed', 'saved'].includes(status)
+  ) {
+    return null
+  }
+
+  return {
+    version: 1,
+    id,
+    status: status as KnowledgePackLifecycleEntry['status'],
+    at,
+    sourceId,
+    draftHash,
+    reason,
+    selected: candidate.selected === true,
+    weakFields: sanitizeStringList(candidate.weakFields, 12)
+  }
+}
+
 const appendEvent = async (event: IngressEvent) => {
   const ledgerPath = getLedgerPath()
   await fs.mkdir(path.dirname(ledgerPath), { recursive: true })
@@ -332,6 +386,7 @@ const deriveManifest = (
 ): CounterpartyContextPackEventedManifest => {
   const sources = new Map<string, ContextSource>()
   const counterpartyPacks = new Map<string, CounterpartyContextPack>()
+  const knowledgePackLifecycle = new Map<string, KnowledgePackLifecycleEntry>()
 
   for (const event of events) {
     if (event.type === 'ingress_added') {
@@ -382,6 +437,11 @@ const deriveManifest = (
           context: sanitizeText(event.pack.context)
         })
       }
+    } else if (event.type === 'knowledge_pack_lifecycle_recorded') {
+      const entry = sanitizeKnowledgePackLifecycleEntry(event.entry)
+      if (entry) {
+        knowledgePackLifecycle.set(entry.id, entry)
+      }
     } else if (event.type === 'counterparty_pack_selection_changed') {
       const pack = counterpartyPacks.get(event.id)
       if (pack) {
@@ -395,7 +455,8 @@ const deriveManifest = (
   return {
     version: 1,
     sources: [...sources.values()],
-    counterpartyPacks: [...counterpartyPacks.values()]
+    counterpartyPacks: [...counterpartyPacks.values()],
+    knowledgePackLifecycle: [...knowledgePackLifecycle.values()]
   }
 }
 
@@ -519,6 +580,7 @@ const writeManifestArtifacts = async (
     `Reason: ${reason}`,
     `Sources: ${manifest.sources.length}`,
     `Counterparty packs: ${manifest.counterpartyPacks.length}`,
+    `Knowledge pack lifecycle events: ${manifest.knowledgePackLifecycle.length}`,
     `Pack kinds: ${Array.from(packKinds).sort().join(', ') || 'none'}`,
     `Statuses: ${activeStatuses.join(', ') || 'none'}`,
     `Scopes: ${activeScopes.join(', ') || 'none'}`,
@@ -561,6 +623,17 @@ const writeManifestArtifacts = async (
     '',
     '## Counterparty context packs',
     ...packStatusLines,
+    '',
+    '## Knowledge pack lifecycle',
+    ...manifest.knowledgePackLifecycle.flatMap((entry) => [
+      `### ${entry.status}: ${entry.sourceId}`,
+      `- id: ${entry.id}`,
+      `- at: ${formatDateShort(entry.at)}`,
+      `- draft_hash: ${entry.draftHash}`,
+      `- selected: ${entry.selected}`,
+      `- weak_fields: ${entry.weakFields.join(', ') || 'none'}`,
+      `- reason: ${entry.reason}`
+    ]),
     ''
   ].join('\n')
 
@@ -593,7 +666,12 @@ const migrateLegacyManifestIfNeeded = async () => {
 
     if (sources.length > 0) {
       await writeManifestArtifacts(
-        { version: 1, sources, counterpartyPacks: [] },
+        {
+          version: 1,
+          sources,
+          counterpartyPacks: [],
+          knowledgePackLifecycle: []
+        },
         'migrated legacy manifest into ledger'
       )
     }
@@ -866,6 +944,44 @@ export const addCounterpartyContextPacks = async (
   return persistAfterMutation(
     nextManifest,
     'ingest counterparty context packs'
+  )
+}
+
+export const recordKnowledgePackLifecycle = async (
+  draft: KnowledgePackLifecycleDraft
+): Promise<ContextSourceManifestResult> => {
+  const status = sanitizeText(draft.status)
+  if (!['assembled', 'reviewed', 'saved'].includes(status)) {
+    throw new Error('Knowledge pack lifecycle status is invalid.')
+  }
+
+  const sanitizedPack = validateCounterpartyDraft(draft.draft)
+  const sourceId = sanitizeText(draft.sourceId) || sanitizedPack.sourceId
+  const at = new Date().toISOString()
+  const entry: KnowledgePackLifecycleEntry = {
+    version: 1,
+    id: randomUUID(),
+    status: status as KnowledgePackLifecycleEntry['status'],
+    at,
+    sourceId,
+    draftHash: counterpartyPackContentHash(sanitizedPack),
+    reason:
+      sanitizeOperationalReason(draft.reason) ||
+      `knowledge pack ${status} from compact extracted fields`,
+    selected: draft.selected === true,
+    weakFields: sanitizeStringList(draft.weakFields, 12)
+  }
+
+  await appendEvent({
+    version: 1,
+    type: 'knowledge_pack_lifecycle_recorded',
+    entry
+  })
+
+  const nextManifest = await readManifest()
+  return persistAfterMutation(
+    nextManifest,
+    `knowledge pack lifecycle ${status}`
   )
 }
 
