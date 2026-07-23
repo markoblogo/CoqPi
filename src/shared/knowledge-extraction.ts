@@ -1,4 +1,9 @@
-import type { ContextSourceExtraction } from './app-types'
+import type {
+  ContextSource,
+  ContextSourceExtraction,
+  CounterpartyContextPackDraft,
+  CounterpartyContextPackKind
+} from './app-types'
 
 type ExtractionBucket = {
   ownerFacts: string[]
@@ -160,5 +165,75 @@ export const extractKnowledgeFieldsFromReadableText = (
     links,
     dates,
     missingFields
+  }
+}
+
+const inferPackKind = (source: ContextSource): CounterpartyContextPackKind => {
+  const text = [
+    source.kind,
+    source.label,
+    ...(source.extraction?.roleFacts ?? [])
+  ]
+    .join(' ')
+    .toLowerCase()
+
+  if (text.includes('investor') || text.includes('fund')) {
+    return 'investor'
+  }
+
+  if (text.includes('accelerator') || text.includes('incubator')) {
+    return 'accelerator'
+  }
+
+  if (text.includes('job') || text.includes('role') || text.includes('vacancy')) {
+    return 'job'
+  }
+
+  if (source.kind === 'owner_profile_file') {
+    return 'other'
+  }
+
+  return 'partner'
+}
+
+const fallbackTitle = (source: ContextSource) =>
+  source.kind === 'owner_profile_file'
+    ? 'Owner profile context'
+    : 'Counterparty context'
+
+export const buildContextPackDraftFromKnowledgeExtraction = (
+  source: ContextSource
+): CounterpartyContextPackDraft => {
+  if (!source.extraction) {
+    throw new Error('Knowledge pack assembly requires reviewed extracted fields.')
+  }
+
+  const ownerSummary = source.extraction.ownerFacts.slice(0, 3).join(' ')
+  const roleSummary = source.extraction.roleFacts.slice(0, 3).join(' ')
+  const summary =
+    [ownerSummary, roleSummary].filter(Boolean).join(' ') ||
+    `Reviewed compact extraction from ${source.label}.`
+  const contextLines = [
+    source.kind === 'owner_profile_file'
+      ? 'Owner-confirmed profile material assembled from local extraction.'
+      : 'Owner-confirmed counterparty material assembled from local extraction.',
+    source.extraction.dates.length > 0
+      ? `Dates/deadlines: ${source.extraction.dates.join(', ')}`
+      : '',
+    source.extraction.missingFields.length > 0
+      ? `Missing fields to review: ${source.extraction.missingFields.join(', ')}`
+      : ''
+  ].filter(Boolean)
+
+  return {
+    sourceId: `knowledge:${source.id}`,
+    kind: inferPackKind(source),
+    partnerName:
+      source.kind === 'owner_profile_file' ? 'Owner profile' : source.label,
+    title: source.label || fallbackTitle(source),
+    summary,
+    context: contextLines.join('\n'),
+    links: source.extraction.links,
+    selected: false
   }
 }

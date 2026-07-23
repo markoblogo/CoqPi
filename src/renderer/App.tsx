@@ -114,6 +114,9 @@ import {
   toggleSelectAllFinderCandidates as toggleSelectAllFinderCandidatesModel
 } from '@shared/finder-preview-state'
 import {
+  buildContextPackDraftFromKnowledgeExtraction
+} from '@shared/knowledge-extraction'
+import {
   createContextPackDraftFromFinderResult,
   createFinderOutreachPrepPack,
   createFinderPipelineView,
@@ -2591,6 +2594,33 @@ export const App = () => {
     } finally {
       contextSourceMutationRef.current = false
       setIsSavingContextSources(false)
+    }
+  }
+
+  const assembleKnowledgePackDraft = (source: ContextSource) => {
+    try {
+      const draft = buildContextPackDraftFromKnowledgeExtraction(source)
+
+      setCounterpartyPackDraft({
+        kind: draft.kind,
+        sourceId: draft.sourceId,
+        partnerName: draft.partnerName,
+        title: draft.title,
+        summary: draft.summary,
+        context: draft.context ?? '',
+        linksText: (draft.links ?? []).join('\n'),
+        selected: false
+      })
+      setCounterpartyPackDraftingId(null)
+      setCounterpartyPackDraftError(null)
+      setCounterpartyPackDraftNotice(
+        'Knowledge extraction assembled into an unselected pack draft. Review it, then click Add pack if you want to save it.'
+      )
+      setContextSourcesNotice(
+        'Draft assembled only from compact extracted fields. Raw source content was not promoted.'
+      )
+    } catch (error) {
+      setContextSourcesError(getContextSourceErrorMessage(error))
     }
   }
 
@@ -6509,6 +6539,15 @@ export const App = () => {
                               type="button"
                             >
                               Capture & classify
+                            </button>
+                          ) : null}
+                          {source.extraction ? (
+                            <button
+                              disabled={isSavingContextSources}
+                              onClick={() => assembleKnowledgePackDraft(source)}
+                              type="button"
+                            >
+                              Create pack draft
                             </button>
                           ) : null}
                           <button
