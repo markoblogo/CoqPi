@@ -1,4 +1,8 @@
-import type { CounterpartyContextPackDraft } from './app-types'
+import type {
+  CounterpartyContextPackDraft,
+  KnowledgePackLifecycleEntry,
+  KnowledgePackLifecycleStatus
+} from './app-types'
 
 export type KnowledgePackReviewWeakFieldId =
   | 'missing_source_id'
@@ -27,6 +31,43 @@ export type KnowledgePackReviewSurface = {
   selectedOnSave: boolean
   weakFields: KnowledgePackReviewWeakField[]
   confirmationLabel: string
+}
+
+export type KnowledgePackLifecycleStatusFilter =
+  | 'all'
+  | KnowledgePackLifecycleStatus
+
+export type KnowledgePackLifecycleVisibilityFilter =
+  | 'all'
+  | 'selected'
+  | 'unselected'
+
+export type KnowledgePackLifecycleQualityFilter =
+  | 'all'
+  | 'assistant_ready'
+  | 'weak'
+  | 'stale'
+
+export type KnowledgePackLifecycleReviewFilters = {
+  status: KnowledgePackLifecycleStatusFilter
+  visibility: KnowledgePackLifecycleVisibilityFilter
+  quality: KnowledgePackLifecycleQualityFilter
+}
+
+export type KnowledgePackLifecycleReviewItem = KnowledgePackLifecycleEntry & {
+  latestForSource: boolean
+  assistantReady: boolean
+  needsReview: boolean
+}
+
+export type KnowledgePackLifecycleReview = {
+  totalCount: number
+  sourceCount: number
+  assistantReadyCount: number
+  weakCount: number
+  staleCount: number
+  filteredItems: KnowledgePackLifecycleReviewItem[]
+  emptyLabel: string
 }
 
 const trimText = (value: unknown) =>
@@ -124,5 +165,77 @@ export const buildKnowledgePackReviewSurface = (
     confirmationLabel: selectedOnSave
       ? 'Save pack selected for retrieval'
       : 'Save reviewed pack'
+  }
+}
+
+export const defaultKnowledgePackLifecycleReviewFilters: KnowledgePackLifecycleReviewFilters =
+  {
+    status: 'all',
+    visibility: 'all',
+    quality: 'all'
+  }
+
+export const buildKnowledgePackLifecycleReview = (
+  entries: KnowledgePackLifecycleEntry[],
+  filters: KnowledgePackLifecycleReviewFilters =
+    defaultKnowledgePackLifecycleReviewFilters
+): KnowledgePackLifecycleReview => {
+  const latestEntryIdBySource = new Map<string, string>()
+
+  for (const entry of entries) {
+    latestEntryIdBySource.set(entry.sourceId, entry.id)
+  }
+
+  const items = entries
+    .slice()
+    .reverse()
+    .map((entry): KnowledgePackLifecycleReviewItem => {
+      const latestForSource = latestEntryIdBySource.get(entry.sourceId) === entry.id
+      const assistantReady =
+        latestForSource &&
+        entry.status === 'saved' &&
+        entry.selected &&
+        entry.weakFields.length === 0
+
+      return {
+        ...entry,
+        latestForSource,
+        assistantReady,
+        needsReview: !assistantReady
+      }
+    })
+
+  const filteredItems = items.filter((entry) => {
+    const statusOk =
+      filters.status === 'all' ? true : entry.status === filters.status
+    const visibilityOk =
+      filters.visibility === 'all'
+        ? true
+        : filters.visibility === 'selected'
+          ? entry.selected
+          : !entry.selected
+    const qualityOk =
+      filters.quality === 'all'
+        ? true
+        : filters.quality === 'assistant_ready'
+          ? entry.assistantReady
+          : filters.quality === 'weak'
+            ? entry.weakFields.length > 0
+            : !entry.latestForSource
+
+    return statusOk && visibilityOk && qualityOk
+  })
+
+  return {
+    totalCount: entries.length,
+    sourceCount: latestEntryIdBySource.size,
+    assistantReadyCount: items.filter((entry) => entry.assistantReady).length,
+    weakCount: items.filter((entry) => entry.weakFields.length > 0).length,
+    staleCount: items.filter((entry) => !entry.latestForSource).length,
+    filteredItems,
+    emptyLabel:
+      entries.length === 0
+        ? 'No lifecycle entries yet.'
+        : 'No lifecycle entries match the current filters.'
   }
 }

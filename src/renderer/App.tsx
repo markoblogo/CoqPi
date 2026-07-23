@@ -118,7 +118,11 @@ import {
   buildContextPackDraftFromKnowledgeExtraction
 } from '@shared/knowledge-extraction'
 import {
-  buildKnowledgePackReviewSurface
+  buildKnowledgePackLifecycleReview,
+  buildKnowledgePackReviewSurface,
+  type KnowledgePackLifecycleQualityFilter,
+  type KnowledgePackLifecycleStatusFilter,
+  type KnowledgePackLifecycleVisibilityFilter
 } from '@shared/knowledge-pack-review'
 import {
   createContextPackDraftFromFinderResult,
@@ -840,6 +844,26 @@ export const App = () => {
   const [knowledgePackLifecycle, setKnowledgePackLifecycle] = useState<
     KnowledgePackLifecycleEntry[]
   >([])
+  const [
+    knowledgePackLifecycleStatusFilter,
+    setKnowledgePackLifecycleStatusFilter
+  ] = useState<KnowledgePackLifecycleStatusFilter>('all')
+  const [
+    knowledgePackLifecycleVisibilityFilter,
+    setKnowledgePackLifecycleVisibilityFilter
+  ] = useState<KnowledgePackLifecycleVisibilityFilter>('all')
+  const [
+    knowledgePackLifecycleQualityFilter,
+    setKnowledgePackLifecycleQualityFilter
+  ] = useState<KnowledgePackLifecycleQualityFilter>('all')
+  const knowledgePackLifecycleReview = buildKnowledgePackLifecycleReview(
+    knowledgePackLifecycle,
+    {
+      status: knowledgePackLifecycleStatusFilter,
+      visibility: knowledgePackLifecycleVisibilityFilter,
+      quality: knowledgePackLifecycleQualityFilter
+    }
+  )
   const knowledgePackLifecycleForDraft = knowledgePackLifecycle
     .filter((entry) => entry.sourceId === counterpartyPackReviewSurface.sourceId)
     .slice(-5)
@@ -7008,6 +7032,114 @@ export const App = () => {
                       Lifecycle: draft not recorded yet.
                     </span>
                   )}
+                  <div className="knowledge-pack-lifecycle-review">
+                    <div className="knowledge-pack-review-header">
+                      <div>
+                        <span>Lifecycle review</span>
+                        <strong>
+                          {knowledgePackLifecycleReview.assistantReadyCount}{' '}
+                          assistant-ready sources
+                        </strong>
+                      </div>
+                      <span>
+                        {knowledgePackLifecycleReview.filteredItems.length}/
+                        {knowledgePackLifecycleReview.totalCount} shown
+                      </span>
+                    </div>
+                    <div className="knowledge-pack-review-grid">
+                      <div>
+                        <span>Sources</span>
+                        <strong>{knowledgePackLifecycleReview.sourceCount}</strong>
+                      </div>
+                      <div>
+                        <span>Weak</span>
+                        <strong>{knowledgePackLifecycleReview.weakCount}</strong>
+                      </div>
+                      <div>
+                        <span>Stale</span>
+                        <strong>{knowledgePackLifecycleReview.staleCount}</strong>
+                      </div>
+                      <div>
+                        <span>Assistant</span>
+                        <strong>
+                          {knowledgePackLifecycleReview.assistantReadyCount} ready
+                        </strong>
+                      </div>
+                    </div>
+                    <div className="knowledge-pack-lifecycle-filters">
+                      <label>
+                        <span>Status</span>
+                        <select
+                          onChange={(event) =>
+                            setKnowledgePackLifecycleStatusFilter(
+                              event.target.value as KnowledgePackLifecycleStatusFilter
+                            )
+                          }
+                          value={knowledgePackLifecycleStatusFilter}
+                        >
+                          <option value="all">All</option>
+                          <option value="assembled">Assembled</option>
+                          <option value="reviewed">Reviewed</option>
+                          <option value="saved">Saved</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Visibility</span>
+                        <select
+                          onChange={(event) =>
+                            setKnowledgePackLifecycleVisibilityFilter(
+                              event.target.value as KnowledgePackLifecycleVisibilityFilter
+                            )
+                          }
+                          value={knowledgePackLifecycleVisibilityFilter}
+                        >
+                          <option value="all">All</option>
+                          <option value="selected">Selected</option>
+                          <option value="unselected">Unselected</option>
+                        </select>
+                      </label>
+                      <label>
+                        <span>Quality</span>
+                        <select
+                          onChange={(event) =>
+                            setKnowledgePackLifecycleQualityFilter(
+                              event.target.value as KnowledgePackLifecycleQualityFilter
+                            )
+                          }
+                          value={knowledgePackLifecycleQualityFilter}
+                        >
+                          <option value="all">All</option>
+                          <option value="assistant_ready">Assistant-ready</option>
+                          <option value="weak">Weak fields</option>
+                          <option value="stale">Stale event</option>
+                        </select>
+                      </label>
+                    </div>
+                    {knowledgePackLifecycleReview.filteredItems.length > 0 ? (
+                      <div className="knowledge-pack-lifecycle">
+                        {knowledgePackLifecycleReview.filteredItems
+                          .slice(0, 8)
+                          .map((entry) => (
+                            <div key={`review-${entry.id}`}>
+                              <span>{entry.status}</span>
+                              <strong>
+                                {entry.assistantReady
+                                  ? 'can enter assistant'
+                                  : entry.latestForSource
+                                    ? 'needs review'
+                                    : 'stale'}{' '}
+                                · {entry.selected ? 'selected' : 'unselected'} ·{' '}
+                                {entry.weakFields.length} weak
+                              </strong>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <span className="knowledge-pack-review-ready">
+                        {knowledgePackLifecycleReview.emptyLabel}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="button-row settings-actions">
                   <button
