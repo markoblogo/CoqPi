@@ -120,6 +120,7 @@ import {
 import {
   buildKnowledgePackLifecycleReview,
   buildKnowledgePackReviewSurface,
+  buildKnowledgePackSessionHandoffCandidates,
   type KnowledgePackLifecycleQualityFilter,
   type KnowledgePackLifecycleStatusFilter,
   type KnowledgePackLifecycleVisibilityFilter
@@ -863,6 +864,18 @@ export const App = () => {
       visibility: knowledgePackLifecycleVisibilityFilter,
       quality: knowledgePackLifecycleQualityFilter
     }
+  )
+  const knowledgePackSessionHandoffCandidates =
+    buildKnowledgePackSessionHandoffCandidates(
+      knowledgePackLifecycle,
+      counterpartyPacks,
+      sessionContext
+    )
+  const knowledgePackSessionHandoffByEntryId = new Map(
+    knowledgePackSessionHandoffCandidates.map((candidate) => [
+      candidate.entryId,
+      candidate
+    ])
   )
   const knowledgePackLifecycleForDraft = knowledgePackLifecycle
     .filter((entry) => entry.sourceId === counterpartyPackReviewSurface.sourceId)
@@ -2488,6 +2501,61 @@ export const App = () => {
       setSessionContextError(message)
       setFinderSearchError(message)
     } finally {
+      setIsSavingSessionContext(false)
+    }
+  }
+
+  const attachKnowledgePackToSession = async (packId: string) => {
+    if (contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingCounterpartyPacks(true)
+    setIsSavingSessionContext(true)
+    setCounterpartyPackDraftError(null)
+    setCounterpartyPackDraftNotice(null)
+    setSessionContextError(null)
+    setSessionContextNotice(null)
+
+    try {
+      const currentPack = counterpartyPacks.find((pack) => pack.id === packId)
+      const manifestPayload =
+        currentPack && currentPack.selected
+          ? {
+              manifest: {
+                counterpartyPacks,
+                knowledgePackLifecycle
+              }
+            }
+          : await window.coqpi.contextPacks.setSelected(packId, true)
+      const nextPacks = manifestPayload.manifest.counterpartyPacks ?? []
+      const nextLifecycle =
+        manifestPayload.manifest.knowledgePackLifecycle ?? knowledgePackLifecycle
+      const nextSelectedIds = [
+        ...new Set([...sessionContext.selectedCounterpartyPackIds, packId])
+      ]
+      const nextContext = getSessionContextWithCounterpartyPacks(
+        {
+          ...sessionContext,
+          selectedCounterpartyPackIds: nextSelectedIds
+        },
+        nextPacks
+      )
+      const saved = await window.coqpi.session.saveContext(nextContext)
+
+      applyCounterpartyPackManifest(nextPacks, [], nextLifecycle)
+      setSessionContext(saved.context)
+      setSessionContextDraft(saved.context)
+      setCounterpartyPackDraftNotice('Knowledge pack attached to session prep.')
+      setSessionContextNotice('Knowledge pack attached to session prep.')
+    } catch (error) {
+      const message = getCounterpartyPackErrorMessage(error)
+      setCounterpartyPackDraftError(message)
+      setSessionContextError(message)
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
       setIsSavingSessionContext(false)
     }
   }
@@ -7119,20 +7187,49 @@ export const App = () => {
                       <div className="knowledge-pack-lifecycle">
                         {knowledgePackLifecycleReview.filteredItems
                           .slice(0, 8)
-                          .map((entry) => (
-                            <div key={`review-${entry.id}`}>
-                              <span>{entry.status}</span>
-                              <strong>
-                                {entry.assistantReady
-                                  ? 'can enter assistant'
-                                  : entry.latestForSource
-                                    ? 'needs review'
-                                    : 'stale'}{' '}
-                                · {entry.selected ? 'selected' : 'unselected'} ·{' '}
-                                {entry.weakFields.length} weak
-                              </strong>
-                            </div>
-                          ))}
+                          .map((entry) => {
+                            const handoff =
+                              knowledgePackSessionHandoffByEntryId.get(entry.id)
+
+                            return (
+                              <div key={`review-${entry.id}`}>
+                                <span>{entry.status}</span>
+                                <strong>
+                                  {entry.assistantReady
+                                    ? 'can enter assistant'
+                                    : entry.latestForSource
+                                      ? 'needs review'
+                                      : 'stale'}{' '}
+                                  · {entry.selected ? 'selected' : 'unselected'} ·{' '}
+                                  {entry.weakFields.length} weak
+                                </strong>
+                                {handoff?.packId ? (
+                                  <button
+                                    disabled={
+                                      isSavingCounterpartyPacks ||
+                                      isSavingSessionContext ||
+                                      !handoff.canAttach
+                                    }
+                                    onClick={() =>
+                                      handoff.packId
+                                        ? void attachKnowledgePackToSession(
+                                            handoff.packId
+                                          )
+                                        : undefined
+                                    }
+                                    title={handoff.packLabel}
+                                    type="button"
+                                  >
+                                    {handoff.alreadyInSession
+                                      ? 'In session'
+                                      : handoff.packSelected
+                                        ? 'Use in session'
+                                        : 'Select + use'}
+                                  </button>
+                                ) : null}
+                              </div>
+                            )
+                          })}
                       </div>
                     ) : (
                       <span className="knowledge-pack-review-ready">

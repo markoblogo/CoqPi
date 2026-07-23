@@ -3,7 +3,8 @@ const test = require('node:test')
 
 const {
   buildKnowledgePackLifecycleReview,
-  buildKnowledgePackReviewSurface
+  buildKnowledgePackReviewSurface,
+  buildKnowledgePackSessionHandoffCandidates
 } = require('../dist-electron/shared/knowledge-pack-review.js')
 
 const makeDraft = (overrides = {}) => ({
@@ -73,6 +74,46 @@ const makeLifecycleEntry = (overrides = {}) => ({
   ...overrides
 })
 
+const makePack = (overrides = {}) => ({
+  version: 1,
+  id: 'pack-1',
+  sourceId: 'knowledge:source-1',
+  kind: 'job',
+  partnerName: 'Acme',
+  title: 'Senior Product Manager',
+  summary: 'Owner has relevant AI product strategy experience.',
+  context: '',
+  links: [],
+  selected: false,
+  status: 'retrieval_ready',
+  createdAt: '2026-07-23T10:00:00.000Z',
+  ownerId: 'owner',
+  provenance: {
+    sourceId: 'knowledge:source-1',
+    locatorSha256: 'b'.repeat(64)
+  },
+  contentHash: 'c'.repeat(64),
+  classification: 'private',
+  retention: {
+    mode: 'manual_deletion_required',
+    maxAgeDays: 30,
+    expiresAt: '2026-08-22T10:00:00.000Z'
+  },
+  retrievalScopes: ['coqpi_interview_en_fr'],
+  promotion: 'explicit_audit_required',
+  ...overrides
+})
+
+const makeSession = (selectedCounterpartyPackIds = []) => ({
+  company: 'Acme',
+  role: 'Interview',
+  context: '',
+  goal: '',
+  notes: '',
+  selectedCounterpartyPackIds,
+  selectedFinderOutreachDraftId: ''
+})
+
 test('knowledge pack lifecycle review filters stale weak and assistant-ready entries', () => {
   const entries = [
     makeLifecycleEntry({
@@ -133,4 +174,69 @@ test('knowledge pack lifecycle review filters stale weak and assistant-ready ent
     staleOnly.filteredItems.map((entry) => entry.id),
     ['assembled-old']
   )
+})
+
+test('knowledge pack session handoff exposes only saved weak-free pack matches', () => {
+  const entries = [
+    makeLifecycleEntry({
+      id: 'assembled-old',
+      status: 'assembled',
+      sourceId: 'knowledge:source-1',
+      weakFields: []
+    }),
+    makeLifecycleEntry({
+      id: 'saved-current',
+      status: 'saved',
+      sourceId: 'knowledge:source-1',
+      selected: true,
+      weakFields: []
+    }),
+    makeLifecycleEntry({
+      id: 'saved-weak',
+      status: 'saved',
+      sourceId: 'knowledge:source-2',
+      selected: true,
+      weakFields: ['missing_links']
+    })
+  ]
+
+  const candidates = buildKnowledgePackSessionHandoffCandidates(
+    entries,
+    [
+      makePack({
+        id: 'pack-1',
+        sourceId: 'knowledge:source-1',
+        selected: false
+      }),
+      makePack({
+        id: 'pack-2',
+        sourceId: 'knowledge:source-2',
+        selected: true
+      })
+    ],
+    makeSession()
+  )
+
+  const current = candidates.find((candidate) => candidate.entryId === 'saved-current')
+  const stale = candidates.find((candidate) => candidate.entryId === 'assembled-old')
+  const weak = candidates.find((candidate) => candidate.entryId === 'saved-weak')
+
+  assert.equal(current.canAttach, true)
+  assert.equal(current.packId, 'pack-1')
+  assert.equal(current.packSelected, false)
+  assert.equal(current.reason, 'ready_for_session')
+  assert.equal(stale.canAttach, false)
+  assert.equal(stale.reason, 'not_latest_saved_review')
+  assert.equal(weak.canAttach, false)
+  assert.equal(weak.reason, 'weak_fields')
+
+  const alreadyAttached = buildKnowledgePackSessionHandoffCandidates(
+    entries,
+    [makePack({ id: 'pack-1', sourceId: 'knowledge:source-1', selected: true })],
+    makeSession(['pack-1'])
+  ).find((candidate) => candidate.entryId === 'saved-current')
+
+  assert.equal(alreadyAttached.canAttach, false)
+  assert.equal(alreadyAttached.alreadyInSession, true)
+  assert.equal(alreadyAttached.reason, 'already_in_session')
 })

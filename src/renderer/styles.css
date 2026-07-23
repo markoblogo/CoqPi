@@ -1177,6 +1177,13 @@ button:disabled {
   font-weight: 500;
 }
 
+.knowledge-pack-lifecycle button {
+  flex: 0 0 auto;
+  min-height: 24px;
+  padding: 3px 7px;
+  font-size: var(--font-xs);
+}
+
 .context-source-details .context-source-status-ready {
   color: #8fd9ac;
 }

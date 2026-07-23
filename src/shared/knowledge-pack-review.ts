@@ -1,7 +1,9 @@
 import type {
+  CounterpartyContextPack,
   CounterpartyContextPackDraft,
   KnowledgePackLifecycleEntry,
-  KnowledgePackLifecycleStatus
+  KnowledgePackLifecycleStatus,
+  SessionContext
 } from './app-types'
 
 export type KnowledgePackReviewWeakFieldId =
@@ -70,11 +72,32 @@ export type KnowledgePackLifecycleReview = {
   emptyLabel: string
 }
 
+export type KnowledgePackSessionHandoffCandidate = {
+  entryId: string
+  sourceId: string
+  packId: string | null
+  packLabel: string
+  canAttach: boolean
+  alreadyInSession: boolean
+  packSelected: boolean
+  reason:
+    | 'ready_for_session'
+    | 'already_in_session'
+    | 'missing_saved_pack'
+    | 'pack_not_retrieval_ready'
+    | 'pack_wrong_scope'
+    | 'not_latest_saved_review'
+    | 'weak_fields'
+}
+
 const trimText = (value: unknown) =>
   typeof value === 'string' ? value.trim() : ''
 
 const normalizeLinks = (links?: string[]) =>
   Array.from(new Set((links ?? []).map(trimText).filter(Boolean)))
+
+const hasInterviewScope = (pack: CounterpartyContextPack) =>
+  pack.retrievalScopes.includes('coqpi_interview_en_fr')
 
 export const buildKnowledgePackReviewSurface = (
   draft: CounterpartyContextPackDraft
@@ -238,4 +261,103 @@ export const buildKnowledgePackLifecycleReview = (
         ? 'No lifecycle entries yet.'
         : 'No lifecycle entries match the current filters.'
   }
+}
+
+export const buildKnowledgePackSessionHandoffCandidates = (
+  entries: KnowledgePackLifecycleEntry[],
+  packs: CounterpartyContextPack[],
+  sessionContext: SessionContext
+): KnowledgePackSessionHandoffCandidate[] => {
+  const review = buildKnowledgePackLifecycleReview(entries)
+  const packBySourceId = new Map(packs.map((pack) => [pack.sourceId, pack]))
+  const sessionPackIds = new Set(sessionContext.selectedCounterpartyPackIds)
+
+  return review.filteredItems.map((entry) => {
+    const pack = packBySourceId.get(entry.sourceId) ?? null
+    const packLabel = pack
+      ? `${pack.partnerName}: ${pack.title}`
+      : entry.sourceId
+
+    if (!entry.latestForSource || entry.status !== 'saved') {
+      return {
+        entryId: entry.id,
+        sourceId: entry.sourceId,
+        packId: pack?.id ?? null,
+        packLabel,
+        canAttach: false,
+        alreadyInSession: false,
+        packSelected: pack?.selected === true,
+        reason: 'not_latest_saved_review'
+      }
+    }
+
+    if (entry.weakFields.length > 0) {
+      return {
+        entryId: entry.id,
+        sourceId: entry.sourceId,
+        packId: pack?.id ?? null,
+        packLabel,
+        canAttach: false,
+        alreadyInSession: false,
+        packSelected: pack?.selected === true,
+        reason: 'weak_fields'
+      }
+    }
+
+    if (!pack) {
+      return {
+        entryId: entry.id,
+        sourceId: entry.sourceId,
+        packId: null,
+        packLabel,
+        canAttach: false,
+        alreadyInSession: false,
+        packSelected: false,
+        reason: 'missing_saved_pack'
+      }
+    }
+
+    if (
+      pack.status !== 'retrieval_ready' ||
+      pack.ownerId !== 'owner' ||
+      pack.classification !== 'private'
+    ) {
+      return {
+        entryId: entry.id,
+        sourceId: entry.sourceId,
+        packId: pack.id,
+        packLabel,
+        canAttach: false,
+        alreadyInSession: false,
+        packSelected: pack.selected === true,
+        reason: 'pack_not_retrieval_ready'
+      }
+    }
+
+    if (!hasInterviewScope(pack)) {
+      return {
+        entryId: entry.id,
+        sourceId: entry.sourceId,
+        packId: pack.id,
+        packLabel,
+        canAttach: false,
+        alreadyInSession: false,
+        packSelected: pack.selected === true,
+        reason: 'pack_wrong_scope'
+      }
+    }
+
+    const alreadyInSession = sessionPackIds.has(pack.id)
+
+    return {
+      entryId: entry.id,
+      sourceId: entry.sourceId,
+      packId: pack.id,
+      packLabel,
+      canAttach: !alreadyInSession,
+      alreadyInSession,
+      packSelected: pack.selected === true,
+      reason: alreadyInSession ? 'already_in_session' : 'ready_for_session'
+    }
+  })
 }
