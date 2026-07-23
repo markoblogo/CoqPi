@@ -5,6 +5,7 @@ import path from 'node:path'
 import type {
   ContextSource,
   ContextSourceDraft,
+  ContextSourceExtraction,
   ContextSourceKind,
   ContextSourceManifest,
   ContextSourceManifestResult,
@@ -30,6 +31,7 @@ import {
   buildKnowledgeIngestionSummary,
   evaluateContextSourceReadiness
 } from '../../shared/knowledge-ingestion-quality'
+import { extractKnowledgeFieldsFromReadableText } from '../../shared/knowledge-extraction'
 import { getAppInfo } from './app-state'
 
 type IngressEvent =
@@ -42,6 +44,7 @@ type IngressEvent =
       id: string
       contentHash: string
       capturedText: string | null
+      extraction?: ContextSourceExtraction | null
       retrievalReady: boolean
     }
   | {
@@ -128,6 +131,38 @@ const getLegacyManifestPath = () =>
 
 const sanitizeText = (value: unknown) =>
   typeof value === 'string' ? value.trim() : ''
+
+const sanitizeStringList = (value: unknown, maxItems = 10) =>
+  Array.isArray(value)
+    ? value.map(sanitizeText).filter(Boolean).slice(0, maxItems)
+    : []
+
+const sanitizeExtraction = (value: unknown): ContextSourceExtraction | null => {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+
+  const candidate = value as Partial<ContextSourceExtraction>
+  const sourceFormat = sanitizeText(candidate.sourceFormat)
+  if (
+    candidate.version !== 1 ||
+    !['markdown', 'text', 'json', 'csv'].includes(sourceFormat) ||
+    !sanitizeText(candidate.extractedAt)
+  ) {
+    return null
+  }
+
+  return {
+    version: 1,
+    sourceFormat: sourceFormat as ContextSourceExtraction['sourceFormat'],
+    extractedAt: sanitizeText(candidate.extractedAt),
+    ownerFacts: sanitizeStringList(candidate.ownerFacts, 8),
+    roleFacts: sanitizeStringList(candidate.roleFacts, 8),
+    links: sanitizeStringList(candidate.links, 10),
+    dates: sanitizeStringList(candidate.dates, 10),
+    missingFields: sanitizeStringList(candidate.missingFields, 8)
+  }
+}
 
 const sanitizePackIds = (packIds?: string[]) =>
   [...new Set((packIds ?? []).map(sanitizeText).filter(Boolean))]
@@ -221,6 +256,7 @@ const sanitizeSource = (value: unknown): ContextSource | null => {
       locatorSha256: locatorSha256(kind, location)
     },
     contentHash: null,
+    extraction: sanitizeExtraction(candidate.extraction),
     classification: 'pending',
     retention: retentionFor(createdAt),
     retrievalScopes: ['coqpi_pending_classification'],
@@ -316,6 +352,7 @@ const deriveManifest = (
         sources.set(event.id, {
           ...source,
           contentHash: event.contentHash,
+          extraction: event.extraction ?? null,
           classification: 'private',
           status: event.retrievalReady ? 'retrieval_ready' : 'hash_captured',
           retrievalScopes: event.retrievalReady
@@ -512,6 +549,12 @@ const writeManifestArtifacts = async (
       `- created: ${formatDateShort(source.createdAt)}`,
       `- classification: ${source.classification}`,
       `- content_hash: ${source.contentHash ?? 'pending'}`,
+      `- extraction_format: ${source.extraction?.sourceFormat ?? 'not_extracted'}`,
+      `- extraction_missing: ${source.extraction?.missingFields.join(', ') || 'none'}`,
+      `- extraction_owner_facts: ${source.extraction?.ownerFacts.length ?? 0}`,
+      `- extraction_role_facts: ${source.extraction?.roleFacts.length ?? 0}`,
+      `- extraction_links: ${source.extraction?.links.length ?? 0}`,
+      `- extraction_dates: ${source.extraction?.dates.length ?? 0}`,
       `- retention: ${source.retention.maxAgeDays}d (manual_deletion_required)`,
       `- readiness: ${evaluateContextSourceReadiness(source).label}`
     ]),
@@ -740,6 +783,7 @@ export const addContextSource = async (
         locatorSha256: locatorSha256(sanitized.kind, sanitized.location)
       },
       contentHash: null,
+      extraction: null,
       classification: 'pending',
       retention: retentionFor(createdAt),
       retrievalScopes: ['coqpi_pending_classification'],
@@ -1016,12 +1060,16 @@ export const captureAndClassifyContextSource = async (
 
   const bytes = await fs.readFile(source.location)
   const capturedText = captureReadableText(source, bytes)
+  const extraction = capturedText
+    ? extractKnowledgeFieldsFromReadableText(capturedText, source.location)
+    : null
   await appendEvent({
     version: 1,
     type: 'content_captured',
     id,
     contentHash: createHash('sha256').update(bytes).digest('hex'),
     capturedText,
+    extraction,
     retrievalReady: Boolean(capturedText)
   })
 

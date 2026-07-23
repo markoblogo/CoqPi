@@ -1014,6 +1014,33 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.knowledge-extraction-fields {
+  display: grid;
+  gap: 2px;
+  padding: 5px 6px;
+  border-left: 2px solid #446078;
+  background: #151b22;
+}
+
+.knowledge-extraction-fields span {
+  color: #7f93a5 !important;
+  font-size: 10px !important;
+  text-transform: uppercase;
+}
+
+.knowledge-extraction-fields ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding-left: 14px;
+}
+
+.knowledge-extraction-fields li {
+  color: #c7d2dc;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
 .context-source-details .context-source-status-ready {
   color: #8fd9ac;
 }

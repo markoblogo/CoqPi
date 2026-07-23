@@ -6427,7 +6427,8 @@ export const App = () => {
                                 {extractionPreview.extractionMode.replaceAll(
                                   '_',
                                   ' '
-                                )}
+                                )}{' '}
+                                · {extractionPreview.sourceFormatLabel}
                               </strong>
                             </div>
                           </div>
@@ -6447,6 +6448,34 @@ export const App = () => {
                               ? extractionPreview.missingFields.join(', ')
                               : 'none'}
                           </span>
+                          {extractionPreview.ownerFacts.length > 0 ? (
+                            <div className="knowledge-extraction-fields">
+                              <span>owner facts</span>
+                              <ul>
+                                {extractionPreview.ownerFacts.slice(0, 3).map((fact) => (
+                                  <li key={fact}>{fact}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {extractionPreview.roleFacts.length > 0 ? (
+                            <div className="knowledge-extraction-fields">
+                              <span>role/respondent facts</span>
+                              <ul>
+                                {extractionPreview.roleFacts.slice(0, 3).map((fact) => (
+                                  <li key={fact}>{fact}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {extractionPreview.links.length > 0 ||
+                          extractionPreview.dates.length > 0 ? (
+                            <span>
+                              extracted links/dates:{' '}
+                              {extractionPreview.links.length} links ·{' '}
+                              {extractionPreview.dates.length} dates
+                            </span>
+                          ) : null}
                           <code>{extractionPreview.provenanceLabel}</code>
                           <span>
                             scope: {source.retrievalScopes[0] ?? 'none'} ·

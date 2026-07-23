@@ -176,6 +176,7 @@ export interface ContextSource {
     locatorSha256: string
   }
   contentHash: string | null
+  extraction: ContextSourceExtraction | null
   classification: 'pending' | 'private'
   retention: {
     mode: 'manual_deletion_required'
@@ -184,6 +185,17 @@ export interface ContextSource {
   }
   retrievalScopes: string[]
   promotion: 'explicit_audit_required'
+}
+
+export interface ContextSourceExtraction {
+  version: 1
+  sourceFormat: 'markdown' | 'text' | 'json' | 'csv'
+  extractedAt: string
+  ownerFacts: string[]
+  roleFacts: string[]
+  links: string[]
+  dates: string[]
+  missingFields: string[]
 }
 
 export interface CounterpartyContextPackDraft {

@@ -24,6 +24,7 @@ const makeSource = (overrides = {}) => ({
     locatorSha256: 'a'.repeat(64)
   },
   contentHash: null,
+  extraction: null,
   classification: 'pending',
   retention: {
     mode: 'manual_deletion_required',
@@ -146,6 +147,16 @@ test('knowledge extraction preview exposes metadata without raw source content',
     label: 'Owner CV',
     status: 'retrieval_ready',
     contentHash: 'e'.repeat(64),
+    extraction: {
+      version: 1,
+      sourceFormat: 'markdown',
+      extractedAt: '2026-07-22T00:00:00.000Z',
+      ownerFacts: ['Owner profile: AI product strategy in France.'],
+      roleFacts: ['Role: Senior product leadership.'],
+      links: ['https://example.com/profile'],
+      dates: ['2026-07-22'],
+      missingFields: []
+    },
     classification: 'private',
     retrievalScopes: ['coqpi_interview_en_fr']
   })
@@ -163,7 +174,12 @@ test('knowledge extraction preview exposes metadata without raw source content',
   assert.equal(readyPreview.sourceTypeLabel, 'Owner profile/CV file')
   assert.equal(readyPreview.classificationLabel, 'private')
   assert.equal(readyPreview.extractionMode, 'retrieval_context')
+  assert.equal(readyPreview.sourceFormatLabel, 'markdown')
   assert.equal(readyPreview.retrievalReady, true)
+  assert.deepEqual(readyPreview.ownerFacts, [
+    'Owner profile: AI product strategy in France.'
+  ])
+  assert.deepEqual(readyPreview.roleFacts, ['Role: Senior product leadership.'])
   assert.deepEqual(readyPreview.missingFields, [])
   assert.doesNotMatch(JSON.stringify(readyPreview), /private\/cv\.md/)
 

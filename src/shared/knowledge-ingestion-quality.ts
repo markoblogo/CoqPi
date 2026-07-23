@@ -53,7 +53,12 @@ export type KnowledgeExtractionPreview = {
   retrievalReadinessLabel: string
   retrievalReady: boolean
   extractionMode: 'metadata_only' | 'hash_only' | 'retrieval_context'
+  sourceFormatLabel: string
   provenanceLabel: string
+  ownerFacts: string[]
+  roleFacts: string[]
+  links: string[]
+  dates: string[]
   missingFields: string[]
 }
 
@@ -290,6 +295,12 @@ export const buildKnowledgeExtractionPreview = (
     missingFields.push('readable local file adapter')
   }
 
+  if (source.extraction) {
+    missingFields.push(...source.extraction.missingFields)
+  } else if (readableFileSourceKinds.has(source.kind)) {
+    missingFields.push('extracted compact fields')
+  }
+
   if (readiness.daysUntilExpiry !== null && readiness.daysUntilExpiry < 0) {
     missingFields.push('fresh retention window')
   }
@@ -310,7 +321,12 @@ export const buildKnowledgeExtractionPreview = (
     retrievalReadinessLabel: readiness.label,
     retrievalReady: readiness.retrievalReady,
     extractionMode,
+    sourceFormatLabel: source.extraction?.sourceFormat ?? 'not extracted',
     provenanceLabel: `${source.provenance.sourceId} · locator ${source.provenance.locatorSha256.slice(0, 12)}`,
+    ownerFacts: source.extraction?.ownerFacts ?? [],
+    roleFacts: source.extraction?.roleFacts ?? [],
+    links: source.extraction?.links ?? [],
+    dates: source.extraction?.dates ?? [],
     missingFields: Array.from(new Set(missingFields))
   }
 }

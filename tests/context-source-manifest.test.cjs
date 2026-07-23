@@ -438,7 +438,12 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
   await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
   await fs.writeFile(
     filePath,
-    'I lead AI product strategy and digital transformation projects.',
+    [
+      'Owner profile: I lead AI product strategy and digital transformation projects.',
+      'Role target: Senior product leadership interviews in France.',
+      'Portfolio: https://example.com/profile',
+      'Updated: 2026-07-22'
+    ].join('\n'),
     'utf8'
   )
   const coreDirectory = path.join(directory, 'core')
@@ -460,6 +465,21 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
     assert.equal(classified.status, 'retrieval_ready')
     assert.equal(classified.classification, 'private')
     assert.match(classified.contentHash, /^[a-f0-9]{64}$/)
+    assert.equal(classified.extraction.sourceFormat, 'markdown')
+    assert.equal(
+      classified.extraction.ownerFacts.some((fact) =>
+        /AI product strategy/.test(fact)
+      ),
+      true
+    )
+    assert.equal(
+      classified.extraction.roleFacts.some((fact) =>
+        /Senior product leadership/.test(fact)
+      ),
+      true
+    )
+    assert.deepEqual(classified.extraction.links, ['https://example.com/profile'])
+    assert.deepEqual(classified.extraction.dates, ['2026-07-22'])
     assert.deepEqual(classified.retrievalScopes, ['coqpi_interview_en_fr'])
 
     const historyLines = (await fs.readFile(manifestHistoryPath, 'utf8'))
@@ -481,6 +501,8 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
     assert.match(manifestMarkdown, /## Knowledge ingestion quality/)
     assert.match(manifestMarkdown, /Knowledge readiness: 1\/1 sources ready/)
     assert.match(manifestMarkdown, /Vector contract: legacy-only/)
+    assert.match(manifestMarkdown, /extraction_format: markdown/)
+    assert.match(manifestMarkdown, /extraction_owner_facts: [1-9]/)
 
     const retrieval = await service.getPersonalInterviewRetrieval(
       'Tell me about your AI product strategy experience.',
