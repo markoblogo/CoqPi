@@ -685,18 +685,26 @@ test('analyzeRecentTranscript assistant prompt matches session payload inspector
   )
 
   const expectedPromptPackTokens = inspector.includedPacks.map(
-    (pack) => `retrieval-item:${pack.id}`
+    (pack) => pack.sourceId
   )
   const droppedPromptPackTokens = inspector.droppedPacks
     .filter((pack) => pack.sourceId !== 'missing')
-    .map((pack) => `retrieval-item:${pack.id}`)
+    .map((pack) => pack.sourceId)
 
   for (const token of expectedPromptPackTokens) {
-    assert.match(observed.capturedPrompt, new RegExp(token))
+    assert.equal(
+      observed.capturedPrompt.includes(token),
+      true,
+      `prompt should include retained pack source ${token}`
+    )
   }
 
   for (const token of droppedPromptPackTokens) {
-    assert.notMatch(observed.capturedPrompt, new RegExp(token))
+    assert.equal(
+      observed.capturedPrompt.includes(token),
+      false,
+      `prompt should not include dropped pack source ${token}`
+    )
   }
 
   assert.match(
@@ -712,6 +720,138 @@ test('analyzeRecentTranscript assistant prompt matches session payload inspector
     /Opening message already drafted: /
   )
 
+  assert.deepEqual(
+    observed.capturedSelectedPackIds,
+    inspector.includedPacks.map((pack) => pack.id)
+  )
+})
+
+test('analyzeRecentTranscript excludes stale selected outreach draft while keeping selected pack audit', async () => {
+  const observed = {
+    capturedPrompt: '',
+    capturedSelectedPackIds: undefined,
+    requestContext: null
+  }
+
+  let preparedPacks = []
+  const staleDraftId = 'finder:draft:payload-audit-stale'
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:payload-audit-keep-2',
+              partnerName: 'Stale Draft Co',
+              title: 'Interview lead v2',
+              summary: 'Included pack for stale draft check.'
+            },
+            {
+              kind: 'partner',
+              sourceId: 'finder:partner:payload-audit-drop-2',
+              partnerName: 'Stale Draft Blocked',
+              title: 'Dropped pack',
+              summary: 'Must stay out of assistant payload.',
+              selected: false
+            }
+          ])
+
+        preparedPacks = importResult.manifest.counterpartyPacks
+
+        const keepPack = preparedPacks.find(
+          (pack) => pack.sourceId === 'finder:job:payload-audit-keep-2'
+        )
+
+        const dropPack = preparedPacks.find(
+          (pack) => pack.sourceId === 'finder:partner:payload-audit-drop-2'
+        )
+
+        const selectedCounterpartyPackIds = [
+          keepPack?.id,
+          dropPack?.id
+        ].filter(Boolean)
+
+        await services.sessionContextService.saveSessionContext({
+          company: 'PayloadAudit Corp',
+          role: 'Senior Product Lead',
+          context: 'Stale draft audit check',
+          goal: 'Prompt should reflect inspector dropped draft.',
+          notes: 'No missing draft content should leak.',
+          selectedCounterpartyPackIds,
+          selectedFinderOutreachDraftId: staleDraftId
+        })
+
+        const reloadedSession = await services.sessionContextService.getSessionContext()
+        observed.requestContext = reloadedSession.context
+      },
+      requestOverrides: () => observed.requestContext,
+      onSelectedPackIds: (selectedCounterpartyPackIds) => {
+        observed.capturedSelectedPackIds = [...selectedCounterpartyPackIds]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = init.body ? JSON.parse(init.body) : {}
+        observed.capturedPrompt = body?.messages?.[1]?.content || ''
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Сценарий со stale draft прошёл.',
+              detectedQuestion: 'Is the draft still available?',
+              intent: 'draft freshness check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I will continue without stale draft context.',
+                  answerMeaningRu: 'Буду продолжать без просроченного черновика.'
+                }
+              ],
+              keywordsToRemember: ['stale', 'draft'],
+              openingPhrase: 'OK.'
+            })
+          }
+        })
+      },
+      onAnalyzeRequest: () => undefined
+    })
+  })
+
+  const inspector = buildSessionPayloadInspector({
+    context: observed.requestContext,
+    availablePacks: preparedPacks,
+    availableOutreachDrafts: [],
+    includeProfileContext: false,
+    profileChars: 0
+  })
+
+  assert.equal(inspector.includedOutreachDraft, null)
+  assert.equal(inspector.droppedOutreachDraft?.id, staleDraftId)
+
+  assert.equal(inspector.includedPacks.map((pack) => pack.id).length, 1)
+  assert.equal(inspector.droppedPacks.map((pack) => pack.id).length, 2)
+
+  assert.equal(
+    observed.capturedPrompt.includes('finder:job:payload-audit-keep-2'),
+    true
+  )
+  assert.equal(
+    observed.capturedPrompt.includes('finder:partner:payload-audit-drop-2'),
+    false
+  )
+
+  assert.equal(
+    observed.capturedPrompt.includes('Selected outreach draft for this counterpart'),
+    false
+  )
+
+  assert.equal(
+    observed.capturedSelectedPackIds?.length,
+    inspector.includedPacks.length,
+    'retrieval ids should match inspector-included pack count'
+  )
   assert.deepEqual(
     observed.capturedSelectedPackIds,
     inspector.includedPacks.map((pack) => pack.id)
