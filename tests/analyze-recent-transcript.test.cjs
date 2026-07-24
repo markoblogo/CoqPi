@@ -5,6 +5,9 @@ const path = require('node:path')
 const os = require('node:os')
 const fs = require('node:fs/promises')
 const { buildAutoAnalysisSchedule } = require('../dist-electron/shared/live-loop.js')
+const {
+  buildSessionPayloadInspector
+} = require('../dist-electron/shared/session-payload-inspector.js')
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -526,6 +529,192 @@ test('finder-imported pack selection persists through session reload and is sent
   assert.deepEqual(
     observed.retrievalSelectedCounterpartyPackIds,
     observed.contextSelectedCounterpartyPackIds
+  )
+})
+
+test('analyzeRecentTranscript assistant prompt matches session payload inspector included/dropped', async () => {
+  const observed = {
+    capturedPrompt: '',
+    capturedSelectedPackIds: undefined,
+    requestContext: null
+  }
+
+  let preparedPacks = []
+  let preparedDraft = null
+  let requestedPackIds = []
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:payload-audit-keep',
+              partnerName: 'Payload Audit Co',
+              title: 'Interview lead',
+              summary: 'Candidate pack that should stay in payload.'
+            },
+            {
+              kind: 'partner',
+              sourceId: 'finder:partner:payload-audit-drop',
+              partnerName: 'Payload Audit Drop',
+              title: 'Partner pack that must be dropped',
+              summary: 'Should not go to assistant payload.',
+              selected: false
+            }
+          ])
+
+        preparedPacks = importResult.manifest.counterpartyPacks
+
+        const keepPack = preparedPacks.find(
+          (pack) => pack.sourceId === 'finder:job:payload-audit-keep'
+        )
+
+        const dropPack = preparedPacks.find(
+          (pack) => pack.sourceId === 'finder:partner:payload-audit-drop'
+        )
+
+        requestedPackIds = [
+          keepPack?.id,
+          dropPack?.id,
+          'missing-payload-pack-id'
+        ].filter(Boolean)
+
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'job',
+          label: 'Payload audit job',
+          query: 'senior product lead france'
+        })
+        const job = afterJob.store.jobs[0]
+        const afterCandidate =
+          await services.finderSearchService.addFinderCandidateResult(job.id, {
+            sourceId: 'finder:job:payload-audit-candidate',
+            partnerName: 'Payload Audit Co',
+            title: 'Interview lead',
+            summary: 'Source for outreach draft',
+            fitScore: 89,
+            whyRelevant: 'Context-ready draft for prompt confirmation',
+            missingInfo: 'Nothing critical',
+            nextAction: 'Use the prepared draft text in the first reply.'
+          })
+
+        const candidate = afterCandidate.store.results[0]
+        const afterDraft = await services.finderSearchService.saveFinderOutreachDraft(
+          candidate.id
+        )
+
+        preparedDraft = afterDraft.store.outreachDrafts[0]
+      },
+      requestOverrides: async (services) => {
+        const sessionContext = {
+          company: 'PayloadAudit Corp',
+          role: 'Senior Product Lead',
+          context: 'Payload audit check',
+          goal: 'Keep prompt in selected-only scope.',
+          notes: 'No silent pack leakage.',
+          selectedCounterpartyPackIds: requestedPackIds,
+          selectedFinderOutreachDraftId: preparedDraft?.id ?? ''
+        }
+
+        const persisted = await services.sessionContextService.saveSessionContext(
+          sessionContext
+        )
+
+        observed.requestContext = persisted.context
+
+        return {
+          ...makeRequest(),
+          sessionContext: persisted.context,
+          selectedCounterpartyPackIds: persisted.context.selectedCounterpartyPackIds,
+          selectedFinderOutreachDraftId: persisted.context.selectedFinderOutreachDraftId
+        }
+      },
+      onSelectedPackIds: (selectedCounterpartyPackIds) => {
+        observed.capturedSelectedPackIds = [...selectedCounterpartyPackIds]
+      },
+      onRetrievalCall: () => {
+        return
+      },
+      fetchHandler: async (_url, init) => {
+        const body = init.body ? JSON.parse(init.body) : {}
+        observed.capturedPrompt = body?.messages?.[1]?.content || ''
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Контрольный проход по аудит-пакетам пройден.',
+              detectedQuestion: 'Which packs are active?',
+              intent: 'payload audit',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I will use only the selected interview context.',
+                  answerMeaningRu: 'Я использую только выбранный контекст интервью.'
+                }
+              ],
+              keywordsToRemember: ['selected', 'payload'],
+              openingPhrase: 'Noted.'
+            })
+          }
+        })
+      },
+      onAnalyzeRequest: (request) => {
+        if (!observed.requestContext) {
+          observed.requestContext = request.sessionContext
+        }
+      },
+      onProviderProfiles: () => undefined
+    })
+  })
+
+  const inspector = buildSessionPayloadInspector({
+    context: observed.requestContext,
+    availablePacks: preparedPacks,
+    availableOutreachDrafts: preparedDraft ? [preparedDraft] : [],
+    includeProfileContext: false,
+    profileChars: 0
+  })
+
+  assert.equal(
+    observed.capturedSelectedPackIds?.length,
+    inspector.includedPacks.length,
+    'retrieval ids should match inspector-included pack count'
+  )
+
+  const expectedPromptPackTokens = inspector.includedPacks.map(
+    (pack) => `retrieval-item:${pack.id}`
+  )
+  const droppedPromptPackTokens = inspector.droppedPacks
+    .filter((pack) => pack.sourceId !== 'missing')
+    .map((pack) => `retrieval-item:${pack.id}`)
+
+  for (const token of expectedPromptPackTokens) {
+    assert.match(observed.capturedPrompt, new RegExp(token))
+  }
+
+  for (const token of droppedPromptPackTokens) {
+    assert.notMatch(observed.capturedPrompt, new RegExp(token))
+  }
+
+  assert.match(
+    observed.capturedPrompt,
+    /Selected outreach draft for this counterpart \(private local source, already used or planned by owner\):/
+  )
+  assert.match(
+    observed.capturedPrompt,
+    /Payload Audit Co/
+  )
+  assert.match(
+    observed.capturedPrompt,
+    /Opening message already drafted: /
+  )
+
+  assert.deepEqual(
+    observed.capturedSelectedPackIds,
+    inspector.includedPacks.map((pack) => pack.id)
   )
 })
 
