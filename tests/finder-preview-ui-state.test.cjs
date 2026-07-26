@@ -8,12 +8,15 @@ const contextSourceService = require('../dist-electron/backend/services/context-
 const {
   buildFinderPreviewImportNotice,
   createFinderPreviewItems,
+  createFinderOwnerSourcePreviewItems,
   getFinderPreviewItemCanImport,
   getFinderPreviewControls,
   getFinderPreviewSelectionStats,
   setFinderPreviewItemSelected,
   toggleSelectAllFinderCandidates: toggleSelectAllFinderCandidatesModel
 } = require('../dist-electron/shared/finder-preview-state.js')
+const { getFinderPreviewImportDecision } =
+  require('../dist-electron/shared/finder-search-module.js')
 
 const withCoreDirectory = async (operation) => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-finder-ui-state-'))
@@ -138,6 +141,256 @@ test('finder preview UI state keeps stable select defaults after clear/edit reop
     assert.equal(repeatedStats.selected, 1)
     assert.equal(repeatedStats.areAllSelected, true)
   })
+})
+
+test('finder owner-source preview applies ready/usable/weak decision tiers with batch selection semantics', () => {
+  const ownerPreview = {
+    jobId: 'job-owner-01',
+    mode: 'owner_paste_v0',
+    requestedCount: 3,
+    validCount: 3,
+    duplicateCount: 0,
+    detectedFormats: [
+      { format: 'url', count: 2 },
+      { format: 'freeform_text', count: 1 }
+    ],
+    candidates: [
+      {
+        index: 0,
+        duplicate: false,
+        detectedFormat: 'url',
+        draft: {
+          sourceId: 'owner:ready:001',
+          partnerName: 'Clear Labs',
+          title: 'Lead Engineer',
+          summary: 'Product leadership role with measurable impact.',
+          context:
+            'Contact: head@clearlabs.com. Shared interest in AI-enabled operations.',
+          links: ['https://clearlabs.example/careers'],
+          whyRelevant: 'Very good fit and same stack.',
+          missingInfo: 'Clarify salary range and start date.',
+          nextAction: 'Prepare a tailored first message.',
+          score: 92,
+          fitScore: 92
+        }
+      },
+      {
+        index: 1,
+        duplicate: false,
+        detectedFormat: 'url',
+        draft: {
+          sourceId: 'owner:usable:001',
+          partnerName: 'PartnerHub',
+          title: 'Strategic partner outreach',
+          summary: 'Strong potential for pilot collaboration.',
+          context:
+            'Contact: team@partnerhub.example. They requested initial intro.',
+          links: ['https://partnerhub.example'],
+          whyRelevant: '',
+          missingInfo: 'Add why relevant.',
+          nextAction: 'Prepare intro with shared goals.',
+          score: 78,
+          fitScore: 78
+        }
+      },
+      {
+        index: 2,
+        duplicate: false,
+        detectedFormat: 'freeform_text',
+        draft: {
+          sourceId: 'owner:weak:001',
+          partnerName: 'Sparse Node',
+          title: '',
+          summary: 'Short note only.',
+          context: 'Some conversation context.',
+          links: [],
+          whyRelevant: '',
+          missingInfo: '',
+          nextAction: '',
+          score: 50,
+          fitScore: 50
+        }
+      }
+    ],
+    errors: [],
+    reason: 'owner-preview test'
+  }
+
+  const items = createFinderOwnerSourcePreviewItems(ownerPreview, 'partner')
+
+  assert.equal(items.length, 3)
+
+  const readyItem = items.find((item) => item.draft.sourceId === 'owner:ready:001')
+  const usableItem = items.find((item) => item.draft.sourceId === 'owner:usable:001')
+  const weakItem = items.find((item) => item.draft.sourceId === 'owner:weak:001')
+
+  assert.equal(readyItem?.selected, true)
+  assert.equal(usableItem?.selected, true)
+  assert.equal(weakItem?.selected, false)
+
+  assert.equal(
+    getFinderPreviewItemCanImport({
+      ...readyItem,
+      selected: true,
+      weakConfirmed: false
+    }),
+    true
+  )
+  assert.equal(
+    getFinderPreviewItemCanImport({
+      ...usableItem,
+      selected: true,
+      weakConfirmed: false
+    }),
+    true
+  )
+  assert.equal(
+    getFinderPreviewItemCanImport({
+      ...weakItem,
+      selected: true,
+      weakConfirmed: false
+    }),
+    false
+  )
+
+  assert.equal(
+    getFinderPreviewItemCanImport({
+      ...weakItem,
+      selected: true,
+      weakConfirmed: true
+    }),
+    true
+  )
+
+  const readyDecision = (item) =>
+    getFinderPreviewImportDecision({
+      review: item.qualityReview,
+      selected: item.selected,
+      confirmed: item.weakConfirmed
+    })
+
+  const selectReadyItems = items.map((item) =>
+    readyDecision(item).tier === 'ready'
+      ? { ...item, selected: true }
+      : { ...item, selected: false }
+  )
+  const selectUsableItems = items.map((item) =>
+    readyDecision(item).tier === 'usable'
+      ? { ...item, selected: true }
+      : { ...item, selected: false }
+  )
+  const selectWeakItems = items.map((item) =>
+    readyDecision(item).tier === 'weak'
+      ? { ...item, selected: true, weakConfirmed: false }
+      : { ...item, selected: false }
+  )
+  const selectWeakItemsWithConfirm = selectWeakItems.map((item) =>
+    item.qualityReview.level === 'weak'
+      ? { ...item, weakConfirmed: true }
+      : item
+  )
+
+  assert.equal(selectReadyItems.filter((item) => item.selected).length, 1)
+  assert.equal(selectUsableItems.filter((item) => item.selected).length, 1)
+  assert.equal(selectWeakItems.filter((item) => item.selected).length, 1)
+  assert.equal(
+    selectUsableItems.filter((item) => getFinderPreviewItemCanImport(item)).length,
+    1
+  )
+  assert.equal(
+    selectWeakItems.filter((item) => getFinderPreviewItemCanImport(item)).length,
+    0
+  )
+  assert.equal(
+    selectWeakItemsWithConfirm.filter((item) =>
+      getFinderPreviewItemCanImport(item)
+    ).length,
+    1
+  )
+})
+
+test('finder owner-source weak confirmation preserves weak import gate', () => {
+  const ownerPreview = {
+    jobId: 'job-owner-02',
+    mode: 'owner_paste_v0',
+    requestedCount: 2,
+    validCount: 2,
+    duplicateCount: 0,
+    detectedFormats: [
+      { format: 'url', count: 1 },
+      { format: 'url', count: 1 }
+    ],
+    candidates: [
+      {
+        index: 0,
+        duplicate: false,
+        detectedFormat: 'url',
+        draft: {
+          sourceId: 'owner:ready-002',
+          partnerName: 'Clear Labs',
+          title: 'Lead Engineer',
+          summary: 'Product leadership role with measurable impact.',
+          context:
+            'Contact: head@clearlabs.com. Shared interest in AI-enabled operations.',
+          links: ['https://clearlabs.example/careers'],
+          whyRelevant: 'Very good fit and same stack.',
+          missingInfo: 'Clarify salary range and start date.',
+          nextAction: 'Prepare a tailored first message.',
+          score: 92,
+          fitScore: 92
+        }
+      },
+      {
+        index: 1,
+        duplicate: false,
+        detectedFormat: 'url',
+        draft: {
+          sourceId: 'owner:weak-002',
+          partnerName: 'Sparse Node',
+          title: '',
+          summary: 'Short note only.',
+          context: 'Some conversation context.',
+          links: [],
+          whyRelevant: '',
+          missingInfo: '',
+          nextAction: '',
+          score: 50,
+          fitScore: 50
+        }
+      }
+    ],
+    errors: [],
+    reason: 'owner-preview weak confirm test'
+  }
+
+  const items = createFinderOwnerSourcePreviewItems(ownerPreview, 'partner')
+  assert.equal(items[0].qualityReview.level, 'ready')
+  assert.equal(items[1].qualityReview.level, 'weak')
+
+  assert.equal(
+    getFinderPreviewItemCanImport({
+      ...items[1],
+      selected: true,
+      weakConfirmed: false
+    }),
+    false
+  )
+  assert.equal(
+    getFinderPreviewItemCanImport({
+      ...items[1],
+      selected: true,
+      weakConfirmed: true
+    }),
+    true
+  )
+
+  const confirmedWeak = items.map((item) =>
+    item.qualityReview.level === 'weak'
+      ? { ...item, selected: true, weakConfirmed: true }
+      : item
+  )
+  const importable = confirmedWeak.filter((item) => getFinderPreviewItemCanImport(item))
+  assert.equal(importable.length, 2)
 })
 
 test('finder preview UI controls and partial import summary stay consistent across select/deselect', async () => {

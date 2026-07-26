@@ -127,10 +127,12 @@ import {
 import {
   buildFinderPreviewImportNotice,
   createFinderPreviewItems,
+  createFinderOwnerSourcePreviewItems,
   getFinderPreviewControls,
   getFinderPreviewSelectionStats,
   getFinderPreviewItemCanImport,
   type CounterpartyFinderPreviewItem,
+  type FinderOwnerSourcePreviewItem,
   setFinderPreviewItemSelected,
   toggleSelectAllFinderCandidates as toggleSelectAllFinderCandidatesModel
 } from '@shared/finder-preview-state'
@@ -286,17 +288,6 @@ const emptyFinderSearchJobDraft: FinderSearchJobDraft = {
 
 type FinderCandidateFormDraft = FinderCandidateResultDraft & {
   linksText: string
-}
-
-type FinderOwnerSourcePreviewItem = {
-  index: number
-  selected: boolean
-  weakConfirmed: boolean
-  duplicate: boolean
-  detectedFormat: NonNullable<
-    FinderSourceAdapterPreviewResult['candidates'][number]
-  >['detectedFormat']
-  draft: FinderCandidateFormDraft
 }
 
 const fileContextSourceKinds = new Set<ContextSourceKind>([
@@ -837,6 +828,8 @@ export const App = () => {
   ] = useState(false)
   const [focusedFinderCandidateResultId, setFocusedFinderCandidateResultId] =
     useState<string | null>(null)
+  const selectedFinderSearchJob =
+    finderSearchJobs.find((job) => job.id === selectedFinderSearchJobId) ?? null
   const finderPayloadCandidatesCount = counterpartyFinderPayloadItems.length
   const finderPayloadSelectionStats =
     getFinderPreviewSelectionStats(counterpartyFinderPayloadItems)
@@ -851,30 +844,46 @@ export const App = () => {
     finderPayloadSelectionStats.areAllSelected
   const finderPayloadWeakConfirmationsPending =
     finderPayloadSelectionStats.pendingWeakConfirmations
+  const selectedFinderSearchJobKind = selectedFinderSearchJob?.kind ?? 'other'
+  const getOwnerSourceDecision = (item: FinderOwnerSourcePreviewItem) => {
+    const qualityReview = reviewFinderPreviewCandidateQuality({
+      ...item.draft,
+      links: normalizeLinksText(item.draft.linksText),
+      kind: selectedFinderSearchJobKind
+    })
+
+    return {
+      qualityReview,
+      decision: getFinderPreviewImportDecision({
+        review: qualityReview,
+        selected: item.selected,
+        confirmed: item.weakConfirmed
+      })
+    }
+  }
+
   const finderSearchStatusCounts =
     getFinderSearchStatusCounts(finderSearchJobs)
   const finderOwnerSourceDecisionItems = finderOwnerSourcePreviewItems.map(
     (item) => {
-      const review = reviewFinderPreviewCandidateQuality({
-        ...item.draft,
-        links: normalizeLinksText(item.draft.linksText),
-        kind: selectedFinderSearchJob?.kind ?? 'other'
-      })
-      const decision = getFinderPreviewImportDecision({
-        review,
-        selected: item.selected,
-        confirmed: item.weakConfirmed
-      })
-
+      const { decision } = getOwnerSourceDecision(item)
       return {
         item,
-        review,
         decision
       }
     }
   )
   const selectableFinderOwnerSourceCount = finderOwnerSourceDecisionItems.filter(
     ({ item }) => !item.duplicate
+  ).length
+  const finderOwnerSourceReadyCount = finderOwnerSourceDecisionItems.filter(
+    ({ decision, item }) => !item.duplicate && decision.tier === 'ready'
+  ).length
+  const finderOwnerSourceUsableCount = finderOwnerSourceDecisionItems.filter(
+    ({ decision, item }) => !item.duplicate && decision.tier === 'usable'
+  ).length
+  const finderOwnerSourceWeakCount = finderOwnerSourceDecisionItems.filter(
+    ({ decision, item }) => !item.duplicate && decision.tier === 'weak'
   ).length
   const selectedFinderOwnerSourceCount = finderOwnerSourceDecisionItems.filter(
     ({ item, decision }) =>
@@ -893,8 +902,6 @@ export const App = () => {
     finderOwnerSourceDecisionItems
       .filter(({ item }) => !item.duplicate)
       .every(({ item }) => item.selected)
-  const selectedFinderSearchJob =
-    finderSearchJobs.find((job) => job.id === selectedFinderSearchJobId) ?? null
   const selectedFinderSearchResultsRaw = selectedFinderSearchJob
     ? finderCandidateResults.filter(
         (result) => result.jobId === selectedFinderSearchJob.id
@@ -2640,30 +2647,7 @@ export const App = () => {
       )
       setFinderOwnerSourcePreview(preview)
       setFinderOwnerSourcePreviewItems(
-        preview.candidates.map((candidate) => {
-          const draft = {
-            ...candidate.draft,
-            linksText: (candidate.draft.links ?? []).join('\n')
-          }
-          const review = reviewFinderPreviewCandidateQuality({
-            ...draft,
-            kind: selectedFinderSearchJob.kind
-          })
-          const decision = getFinderPreviewImportDecision({
-            review,
-            selected: true,
-            confirmed: false
-          })
-
-          return {
-            index: candidate.index,
-            selected: !candidate.duplicate && decision.canAutoSelect,
-            weakConfirmed: false,
-            duplicate: candidate.duplicate,
-            detectedFormat: candidate.detectedFormat,
-            draft
-          }
-        })
+        createFinderOwnerSourcePreviewItems(preview, selectedFinderSearchJob.kind)
       )
       setFinderSearchNotice(
         `Source preview: ${preview.validCount} valid of ${preview.requestedCount}. ${preview.duplicateCount} duplicate skipped by default.`
@@ -2692,18 +2676,7 @@ export const App = () => {
           return false
         }
 
-        const review = reviewFinderPreviewCandidateQuality({
-          ...item.draft,
-          links: normalizeLinksText(item.draft.linksText),
-          kind: selectedFinderSearchJob.kind
-        })
-        const decision = getFinderPreviewImportDecision({
-          review,
-          selected: item.selected,
-          confirmed: item.weakConfirmed
-        })
-
-        return decision.canImport
+        return getOwnerSourceDecision(item).decision.canImport
       })
       .map((item) => ({
         sourceId: item.draft.sourceId,
@@ -2768,18 +2741,7 @@ export const App = () => {
           return false
         }
 
-        const review = reviewFinderPreviewCandidateQuality({
-          ...item.draft,
-          links: normalizeLinksText(item.draft.linksText),
-          kind: selectedFinderSearchJob.kind
-        })
-        const decision = getFinderPreviewImportDecision({
-          review,
-          selected: item.selected,
-          confirmed: item.weakConfirmed
-        })
-
-        return decision.canImport
+        return getOwnerSourceDecision(item).decision.canImport
       })
       .map((item) => ({
         sourceId: item.draft.sourceId,
@@ -6538,11 +6500,115 @@ export const App = () => {
                                   ? `${finderOwnerSourcePreview.duplicateCount} duplicate.`
                                   : 'No duplicates.'}
                                 {' '}
+                                {finderOwnerSourceReadyCount} ready /{' '}
+                                {finderOwnerSourceUsableCount} usable /{' '}
+                                {finderOwnerSourceWeakCount} weak.
+                                {' '}
                                 {pendingFinderOwnerSourceConfirmationsCount > 0
                                   ? `${pendingFinderOwnerSourceConfirmationsCount} weak awaiting confirm.`
                                   : ''}
                               </div>
                               <div className="button-row settings-actions">
+                                <button
+                                  className="button-small"
+                                  disabled={
+                                    isImportingFinderOwnerSource ||
+                                    finderOwnerSourceUsableCount === 0
+                                  }
+                                  onClick={() => {
+                                    setFinderOwnerSourcePreviewItems((current) =>
+                                      current.map((item) => {
+                                        const { decision } =
+                                          getOwnerSourceDecision(item)
+
+                                        return {
+                                          ...item,
+                                          selected:
+                                            item.duplicate || decision.tier !== 'usable'
+                                              ? false
+                                              : true,
+                                          weakConfirmed: false
+                                        }
+                                      })
+                                    )
+                                  }}
+                                  type="button"
+                                >
+                                  Select usable
+                                </button>
+                                <button
+                                  className="button-small"
+                                  disabled={
+                                    isImportingFinderOwnerSource ||
+                                    finderOwnerSourceReadyCount === 0
+                                  }
+                                  onClick={() => {
+                                    setFinderOwnerSourcePreviewItems((current) =>
+                                      current.map((item) => {
+                                        const { decision } =
+                                          getOwnerSourceDecision(item)
+
+                                        return {
+                                          ...item,
+                                          selected:
+                                            item.duplicate || decision.tier !== 'ready'
+                                              ? false
+                                              : true,
+                                          weakConfirmed: false
+                                        }
+                                      })
+                                    )
+                                  }}
+                                  type="button"
+                                >
+                                  Select ready
+                                </button>
+                                <button
+                                  className="button-small"
+                                  disabled={
+                                    isImportingFinderOwnerSource ||
+                                    finderOwnerSourceWeakCount === 0
+                                  }
+                                  onClick={() => {
+                                    setFinderOwnerSourcePreviewItems((current) =>
+                                      current.map((item) => {
+                                        const { decision } =
+                                          getOwnerSourceDecision(item)
+
+                                        return {
+                                          ...item,
+                                          selected:
+                                            item.duplicate || decision.tier !== 'weak'
+                                              ? false
+                                              : true,
+                                          weakConfirmed: false
+                                        }
+                                      })
+                                    )
+                                  }}
+                                  type="button"
+                                >
+                                  Select weak
+                                </button>
+                                <button
+                                  className="button-small"
+                                  disabled={
+                                    isImportingFinderOwnerSource ||
+                                    finderOwnerSourcePreviewItems.length === 0
+                                  }
+                                  onClick={() => {
+                                    setFinderOwnerSourcePreviewItems((current) =>
+                                      current.map((candidate) => ({
+                                        ...candidate,
+                                        selected: false,
+                                        weakConfirmed: false
+                                      }))
+                                    )
+                                  }}
+                                  type="button"
+                                >
+                                  Clear selection
+                                </button>
                                 <button
                                   className="button-small"
                                   disabled={
@@ -6597,11 +6663,8 @@ export const App = () => {
                                 ...item.draft,
                                 kind: selectedFinderSearchJob.kind
                               })
-                              const qualityReview = reviewFinderPreviewCandidateQuality({
-                                ...item.draft,
-                                links: normalizeLinksText(item.draft.linksText),
-                                kind: selectedFinderSearchJob.kind
-                              })
+                              const { qualityReview, decision } =
+                                getOwnerSourceDecision(item)
                               const completionActions =
                                 buildFinderPreviewCompletionActions(
                                   {
@@ -6611,11 +6674,6 @@ export const App = () => {
                                   },
                                   qualityReview
                                 )
-                              const importDecision = getFinderPreviewImportDecision({
-                                review: qualityReview,
-                                selected: item.selected,
-                                confirmed: item.weakConfirmed
-                              })
 
                               return (
                               <div className="finder-preview-item" key={item.draft.sourceId}>
@@ -6658,7 +6716,7 @@ export const App = () => {
                                       ? ' · not session-ready'
                                       : ''}
                                   </span>
-                                  <span>import: {importDecision.label}</span>
+                                  <span>import: {decision.label}</span>
                                   <span>
                                     format:{' '}
                                     {
@@ -6689,7 +6747,7 @@ export const App = () => {
                                     </span>
                                   ) : null}
                                 </div>
-                                {importDecision.requiresConfirmation ? (
+                                {decision.requiresConfirmation ? (
                                   <label className="settings-row settings-row-inline">
                                     <input
                                       checked={item.weakConfirmed}

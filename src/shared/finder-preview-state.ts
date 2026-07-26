@@ -1,18 +1,39 @@
 import type { CounterpartyFinderPayloadPreviewCandidate } from './app-types'
 import type { CounterpartyFinderPayloadPreviewResult } from './app-types'
+import type {
+  CounterpartyContextPackKind,
+  FinderCandidateResultDraft,
+  FinderSourceAdapterDetectedFormat,
+  FinderSourceAdapterPreviewCandidate,
+  FinderSourceAdapterPreviewResult
+} from './app-types'
 import {
   getFinderPreviewImportDecision,
   reviewFinderPreviewCandidateQuality,
   type FinderPreviewQualityReview
 } from './finder-search-module'
 
+type FinderPreviewSelectionBase = {
+  index: number
+  selected: boolean
+  weakConfirmed: boolean
+  duplicate: boolean
+  qualityReview: FinderPreviewQualityReview
+  canAutoSelect: boolean
+}
+
 export type CounterpartyFinderPreviewItem =
-  CounterpartyFinderPayloadPreviewCandidate & {
-    selected: boolean
-    weakConfirmed: boolean
-    qualityReview: FinderPreviewQualityReview
-    canAutoSelect: boolean
+  CounterpartyFinderPayloadPreviewCandidate &
+  FinderPreviewSelectionBase
+
+export type FinderOwnerSourcePreviewItem = {
+  draft: FinderCandidateResultDraft & {
+    kind: CounterpartyContextPackKind
+    linksText: string
+    links?: string[]
   }
+  detectedFormat: FinderSourceAdapterDetectedFormat
+} & FinderPreviewSelectionBase
 
 export type FinderPreviewSelectionStats = {
   total: number
@@ -34,8 +55,10 @@ export type FinderPreviewControls = {
   toggleLabel: 'Select all' | 'Deselect all'
 }
 
-export const getFinderPreviewItemCanImport = (
-  item: CounterpartyFinderPreviewItem,
+export const getFinderPreviewItemCanImport = <
+  T extends FinderPreviewSelectionBase
+>(
+  item: T,
   overrides?: { selected?: boolean; confirmed?: boolean }
 ): boolean => {
   const selected = overrides?.selected ?? item.selected
@@ -50,7 +73,7 @@ export const getFinderPreviewItemCanImport = (
 
 const buildFinderCandidateDefaults = (
   candidate: CounterpartyFinderPayloadPreviewCandidate
-) => {
+): CounterpartyFinderPreviewItem => {
   const qualityReview = reviewFinderPreviewCandidateQuality(candidate.draft)
   const selectedByInput = candidate.draft.selected !== false
   const canAutoSelect = getFinderPreviewImportDecision({
@@ -69,13 +92,51 @@ const buildFinderCandidateDefaults = (
   }
 }
 
+const buildFinderOwnerSourceItemDefaults = (
+  candidate: FinderSourceAdapterPreviewCandidate,
+  selectedByInput: boolean,
+  defaultKind: CounterpartyContextPackKind
+): FinderOwnerSourcePreviewItem => {
+  const draft = {
+    ...candidate.draft,
+    kind: defaultKind,
+    linksText: (candidate.draft.links ?? []).join('\n')
+  }
+
+  const qualityReview = reviewFinderPreviewCandidateQuality(draft)
+  const canAutoSelect = getFinderPreviewImportDecision({
+    review: qualityReview,
+    selected: selectedByInput,
+    confirmed: false
+  }).canAutoSelect
+
+  return {
+    draft,
+    detectedFormat: candidate.detectedFormat,
+    index: candidate.index,
+    duplicate: candidate.duplicate,
+    selected: !candidate.duplicate && selectedByInput && canAutoSelect,
+    weakConfirmed: false,
+    qualityReview,
+    canAutoSelect
+  }
+}
+
 export const createFinderPreviewItems = (
   preview: CounterpartyFinderPayloadPreviewResult
 ): CounterpartyFinderPreviewItem[] =>
   preview.candidates.map((candidate) => buildFinderCandidateDefaults(candidate))
 
+export const createFinderOwnerSourcePreviewItems = (
+  preview: FinderSourceAdapterPreviewResult,
+  defaultKind: CounterpartyContextPackKind
+): FinderOwnerSourcePreviewItem[] =>
+  preview.candidates.map((candidate) =>
+    buildFinderOwnerSourceItemDefaults(candidate, true, defaultKind)
+  )
+
 export const getFinderPreviewSelectionStats = (
-  items: readonly CounterpartyFinderPreviewItem[]
+  items: readonly FinderPreviewSelectionBase[]
 ): FinderPreviewSelectionStats => {
   const nonDuplicateItems = items.filter((item) => !item.duplicate)
   const selectedItems = nonDuplicateItems.filter((item) => item.selected)
@@ -103,7 +164,7 @@ export const getFinderPreviewSelectionStats = (
 }
 
 export const getFinderPreviewControls = (
-  items: readonly CounterpartyFinderPreviewItem[],
+  items: readonly FinderPreviewSelectionBase[],
   isSaving = false
 ): FinderPreviewControls => {
   const stats = getFinderPreviewSelectionStats(items)
@@ -119,19 +180,21 @@ export const getFinderPreviewControls = (
   }
 }
 
-export const clearFinderPreviewWeakConfirmations = (
-  items: readonly CounterpartyFinderPreviewItem[]
-): CounterpartyFinderPreviewItem[] =>
+export const clearFinderPreviewWeakConfirmations = <
+  T extends FinderPreviewSelectionBase
+>(
+  items: readonly T[]
+): T[] =>
   items.map((item) => ({
     ...item,
     weakConfirmed: item.duplicate || !item.canAutoSelect ? false : item.weakConfirmed
   }))
 
-export const setFinderPreviewItemSelected = (
-  items: readonly CounterpartyFinderPreviewItem[],
+export const setFinderPreviewItemSelected = <T extends FinderPreviewSelectionBase>(
+  items: readonly T[],
   index: number,
   selected: boolean
-): CounterpartyFinderPreviewItem[] =>
+): T[] =>
   items.map((item) =>
     item.index === index
       ? {
@@ -157,8 +220,8 @@ export const buildFinderPreviewImportNotice = ({
 
   const duplicateSuffix =
     duplicateCount > 0
-      ? ` ${duplicateCount} duplicate/recorded entr${
-          duplicateCount === 1 ? 'y' : 'ies'
+      ? ` ${duplicateCount} duplicate/recorded ${
+          duplicateCount === 1 ? 'entry' : 'entries'
         } skipped.`
       : ''
   const errorSuffix =
@@ -171,10 +234,12 @@ export const buildFinderPreviewImportNotice = ({
   return `${base}${duplicateSuffix}${errorSuffix}`.trim()
 }
 
-export const toggleSelectAllFinderCandidates = (
-  items: readonly CounterpartyFinderPreviewItem[],
+export const toggleSelectAllFinderCandidates = <
+  T extends FinderPreviewSelectionBase
+>(
+  items: readonly T[],
   areAllSelected: boolean
-): CounterpartyFinderPreviewItem[] =>
+): T[] =>
   items.length === 0
     ? []
     : items.map((item) => ({
