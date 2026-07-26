@@ -2,6 +2,8 @@
 
 CoqPi applies the shared agent-operations pattern only to concrete external provider seams and retained operation evidence. It is not an agent runtime, scheduler, knowledge-base appliance, or autonomous assistant team.
 
+Selected `12-factor-agents` ideas are adapted separately in [`docs/AGENT_EVENT_THREAD_CONTRACT.md`](AGENT_EVENT_THREAD_CONTRACT.md): owned context, typed local outputs, unified event-thread state, pause/resume around review boundaries, compact error packets, focused assistant scope, and stateless-resume checks.
+
 ## Agent card boundary
 
 The current application identity is a local call assistant owned by the device user. Its effective authority is `read` plus local UI `proposal`: transcribe active audio, analyze an approved transcript path, and display suggestions. It has no authority to send messages, join calls, control other applications, mutate external systems, or perform transactions.

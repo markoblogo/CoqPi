@@ -67,6 +67,8 @@ External AI-engineering examples are tracked in [`docs/AI_ENGINEERING_REFERENCE_
 
 Russian editorial behavior is scoped by [`docs/RU_EDITORIAL_CONTRACT.md`](docs/RU_EDITORIAL_CONTRACT.md). It is a local reference/review layer for Russian explanations and UI copy only; it does not change provider routing, transcript capture, or production logic.
 
+Selected `12-factor-agents` principles are adapted in [`docs/AGENT_EVENT_THREAD_CONTRACT.md`](docs/AGENT_EVENT_THREAD_CONTRACT.md) for CoqPi's local event-thread, selected-context, pause/resume, focused-assistant, and compact-error boundaries. This remains a product contract, not a framework runtime.
+
 ## Local installation
 
 1. Install [pnpm](https://pnpm.io/).
