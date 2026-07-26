@@ -3,6 +3,7 @@ import type {
   FinderOutreachDraft,
   SessionContext
 } from './app-types'
+import { buildFinderRelationshipMemory } from './finder-relationship-memory'
 import {
   counterpartyPackSessionIneligibilityReasonLabels,
   getCounterpartyPackSessionEligibility
@@ -21,6 +22,9 @@ export type SessionPayloadDraftItem = {
   label: string
   status: 'included' | 'dropped'
   reason: string
+  relationshipStatusLabel?: string
+  lastContactLabel?: string
+  followUpContextLabel?: string
 }
 
 export type SessionPayloadInspector = {
@@ -185,12 +189,19 @@ export const buildSessionPayloadInspector = ({
     ? availableOutreachDrafts.find((draft) => draft.id === selectedDraftId)
     : null
   const includedOutreachDraft: SessionPayloadDraftItem | null = selectedDraft
-    ? {
-        id: selectedDraft.id,
-        label: formatDraftLabel(selectedDraft),
-        status: 'included',
-        reason: 'selected local outreach draft'
-      }
+    ? (() => {
+        const relationshipMemory = buildFinderRelationshipMemory(selectedDraft)
+
+        return {
+          id: selectedDraft.id,
+          label: formatDraftLabel(selectedDraft),
+          status: 'included',
+          reason: 'selected local outreach draft',
+          relationshipStatusLabel: relationshipMemory.statusLabel,
+          lastContactLabel: relationshipMemory.lastContactLabel,
+          followUpContextLabel: relationshipMemory.followUpContextLabel
+        }
+      })()
     : null
   const droppedOutreachDraft: SessionPayloadDraftItem | null =
     selectedDraftId && !selectedDraft

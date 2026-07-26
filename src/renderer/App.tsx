@@ -136,6 +136,7 @@ import {
 import {
   buildContextPackDraftFromKnowledgeExtraction
 } from '@shared/knowledge-extraction'
+import { finderOutreachDraftStatusLabels } from '@shared/finder-relationship-memory'
 import {
   buildKnowledgePackLifecycleReview,
   buildKnowledgePackReviewSurface,
@@ -210,6 +211,32 @@ const defaultSettings: AppUserSettings = {
   defaultAnswerLanguage: 'English',
   includeProfileContextByDefault: true,
   saveTranscriptByDefault: false
+}
+
+const getNextFinderOutreachDraftStatus = (
+  status: FinderOutreachDraft['status']
+): FinderOutreachDraft['status'] => {
+  if (status === 'draft') {
+    return 'ready_for_contact'
+  }
+
+  if (status === 'ready_for_contact') {
+    return 'contacted'
+  }
+
+  if (status === 'contacted') {
+    return 'waiting'
+  }
+
+  if (status === 'waiting') {
+    return 'follow_up'
+  }
+
+  if (status === 'follow_up') {
+    return 'closed'
+  }
+
+  return 'draft'
 }
 
 const emptySessionContext: SessionContext = {
@@ -336,6 +363,8 @@ const finderSourceDetectedFormatLabels: Record<
 > = {
   url: 'URL',
   structured_fields: 'Structured',
+  partner_export: 'Partner export',
+  investor_list: 'Investor list',
   linkedin_job: 'LinkedIn',
   accelerator_snippet: 'Accelerator',
   csv_row: 'CSV/export',
@@ -2425,9 +2454,7 @@ export const App = () => {
       )
       applyFinderSearchStore(payload.store)
       setFinderSearchNotice(
-        status === 'ready_for_contact'
-          ? 'Draft marked ready for contact locally.'
-          : 'Draft returned to working state.'
+        `Draft moved to ${finderOutreachDraftStatusLabels[status]}.`
       )
     } catch (error) {
       setFinderSearchError(
@@ -2449,9 +2476,7 @@ export const App = () => {
 
     if (targetDrafts.length === 0) {
       setFinderSearchNotice(
-        status === 'ready_for_contact'
-          ? 'All visible drafts are already marked ready for contact.'
-          : 'Visible drafts are already back in working state.'
+        `All visible drafts are already ${finderOutreachDraftStatusLabels[status]}.`
       )
       return
     }
@@ -2472,9 +2497,9 @@ export const App = () => {
       }
 
       setFinderSearchNotice(
-        status === 'ready_for_contact'
-          ? `${targetDrafts.length} draft${targetDrafts.length === 1 ? '' : 's'} marked ready for contact.`
-          : `${targetDrafts.length} draft${targetDrafts.length === 1 ? '' : 's'} moved back to working state.`
+        `${targetDrafts.length} draft${
+          targetDrafts.length === 1 ? '' : 's'
+        } moved to ${finderOutreachDraftStatusLabels[status]}.`
       )
     } catch (error) {
       setFinderSearchError(
@@ -4596,6 +4621,21 @@ export const App = () => {
             <div className="session-payload-entry session-payload-entry-included">
               <strong>{inspector.includedOutreachDraft.label}</strong>
               <span>{inspector.includedOutreachDraft.reason}</span>
+              {inspector.includedOutreachDraft.relationshipStatusLabel ? (
+                <span>
+                  Status: {inspector.includedOutreachDraft.relationshipStatusLabel}
+                </span>
+              ) : null}
+              {inspector.includedOutreachDraft.lastContactLabel ? (
+                <span>
+                  Last contact: {inspector.includedOutreachDraft.lastContactLabel}
+                </span>
+              ) : null}
+              {inspector.includedOutreachDraft.followUpContextLabel ? (
+                <span>
+                  Follow-up: {inspector.includedOutreachDraft.followUpContextLabel}
+                </span>
+              ) : null}
             </div>
           ) : (
             <strong>none</strong>
@@ -5901,6 +5941,18 @@ export const App = () => {
                     <div>
                       <span>Outreach draft</span>
                       <strong>{manualPrepPreview.selectedOutreachDraftLabel}</strong>
+                    </div>
+                    <div>
+                      <span>Draft relationship</span>
+                      <strong>{manualPrepPreview.selectedOutreachDraftStatusLabel}</strong>
+                    </div>
+                    <div>
+                      <span>Last contact</span>
+                      <strong>{manualPrepPreview.selectedOutreachDraftLastContactLabel}</strong>
+                    </div>
+                    <div>
+                      <span>Follow-up context</span>
+                      <strong>{manualPrepPreview.selectedOutreachDraftFollowUpLabel}</strong>
                     </div>
                     <div>
                       <span>Assistant payload</span>
@@ -7243,6 +7295,9 @@ export const App = () => {
                                 const readyForContactCount = laneDrafts.filter(
                                   (draft) => draft.status === 'ready_for_contact'
                                 ).length
+                                const activeContactCount = laneDrafts.filter((draft) =>
+                                  ['contacted', 'waiting', 'follow_up'].includes(draft.status)
+                                ).length
 
                                 return (
                               <div className="finder-queue-column-header">
@@ -7264,6 +7319,9 @@ export const App = () => {
                                     <span>
                                       ready for contact {readyForContactCount} / {laneDrafts.length}
                                     </span>
+                                  ) : null}
+                                  {laneDrafts.length > 0 ? (
+                                    <span>active contact {activeContactCount}</span>
                                   ) : null}
                                 </div>
                                 <div className="button-row settings-actions">
@@ -7438,10 +7496,10 @@ export const App = () => {
                                                 : 'auto review'}
                                             </span>
                                             <span>
-                                              {outreachDraft
-                                                ? outreachDraft.status === 'ready_for_contact'
-                                                  ? 'draft ready for contact'
-                                                  : 'draft ready'
+                                          {outreachDraft
+                                                ? finderOutreachDraftStatusLabels[
+                                                    outreachDraft.status
+                                                  ]
                                                 : 'draft missing'}
                                             </span>
                                           </div>
@@ -7450,6 +7508,23 @@ export const App = () => {
                                             <span>Opening message</span>
                                             <code>{openingPreview}</code>
                                           </div>
+                                          {outreachDraft ? (
+                                            <div className="finder-queue-opening">
+                                              <span>Target history</span>
+                                              <code>
+                                                {outreachDraft.statusHistory
+                                                  .slice(0, 3)
+                                                  .map(
+                                                    (entry) =>
+                                                      `${finderOutreachDraftStatusLabels[entry.status]} · ${entry.at.slice(
+                                                        0,
+                                                        10
+                                                      )}`
+                                                  )
+                                                  .join(' -> ')}
+                                              </code>
+                                            </div>
+                                          ) : null}
                                           <div className="button-row settings-actions">
                                             <button
                                               className="button-small"
@@ -7492,17 +7567,26 @@ export const App = () => {
                                                   onClick={() =>
                                                     void setFinderOutreachDraftStatus(
                                                       outreachDraft.id,
-                                                      outreachDraft.status ===
-                                                        'ready_for_contact'
-                                                        ? 'draft'
-                                                        : 'ready_for_contact'
+                                                      getNextFinderOutreachDraftStatus(
+                                                        outreachDraft.status
+                                                      )
                                                     )
                                                   }
                                                   type="button"
                                                 >
-                                                  {outreachDraft.status === 'ready_for_contact'
-                                                    ? 'Back to working'
-                                                    : 'Ready for contact'}
+                                                  Next contact step
+                                                </button>
+                                                <button
+                                                  className="button-small"
+                                                  onClick={() =>
+                                                    void setFinderOutreachDraftStatus(
+                                                      outreachDraft.id,
+                                                      'draft'
+                                                    )
+                                                  }
+                                                  type="button"
+                                                >
+                                                  Reset contact
                                                 </button>
                                               </>
                                             ) : (

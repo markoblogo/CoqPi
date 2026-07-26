@@ -280,7 +280,9 @@ test('owner pasted source adapter normalizes urls and text blocks', () => {
   assert.equal(parsed.errors.length, 0)
   assert.equal(parsed.candidates.length, 2)
   assert.match(parsed.candidates[0].sourceId, /^coqpi:source-adapter:job:/)
-  assert.equal(parsed.candidates[0].partnerName, 'example')
+  assert.equal(parsed.candidates[0].partnerName, 'Example')
+  assert.equal(parsed.candidates[0].title, 'Product Lead')
+  assert.equal(parsed.candidates[0].detectedFormat, 'url')
   assert.deepEqual(parsed.candidates[0].links, [
     'https://example.com/jobs/product-lead'
   ])
@@ -354,6 +356,7 @@ test('owner pasted source adapter extracts partner export fields before preview'
 
   assert.equal(candidate.partnerName, 'AgroTrade France')
   assert.equal(candidate.title, 'Pilot distribution partner')
+  assert.equal(candidate.detectedFormat, 'partner_export')
   assert.match(candidate.summary, /Lyon, France/)
   assert.match(candidate.context, /Marie Dupont/)
   assert.match(candidate.missingInfo, /decision maker and pilot budget/)
@@ -382,6 +385,7 @@ test('owner pasted source adapter parses LinkedIn-style job snippets', () => {
 
   assert.equal(candidate.partnerName, 'Northfield Labs')
   assert.equal(candidate.title, 'Senior Product Manager')
+  assert.equal(candidate.detectedFormat, 'linkedin_job')
   assert.match(candidate.summary, /Paris, Île-de-France, France/)
   assert.deepEqual(candidate.links, ['https://www.linkedin.com/jobs/view/12345'])
   assert.match(candidate.missingInfo, /contact/)
@@ -410,6 +414,7 @@ test('owner pasted source adapter parses accelerator-style snippets', () => {
 
   assert.equal(candidate.partnerName, 'AgriTech Europe Accelerator')
   assert.equal(candidate.title, 'Accelerator program')
+  assert.equal(candidate.detectedFormat, 'accelerator_snippet')
   assert.match(candidate.summary, /September 30, 2026/)
   assert.match(candidate.summary, /Paris \/ Remote/)
   assert.match(candidate.whyRelevant, /agricultural infrastructure/)
@@ -437,10 +442,45 @@ test('owner pasted source adapter parses CSV-like investor lists as multiple can
   assert.equal(parsed.candidates.length, 2)
   assert.equal(parsed.candidates[0].partnerName, 'Green Seed Capital')
   assert.equal(parsed.candidates[0].title, 'Agri infrastructure')
+  assert.equal(parsed.candidates[0].detectedFormat, 'investor_list')
   assert.match(parsed.candidates[0].summary, /Europe/)
   assert.match(parsed.candidates[0].context, /intro@greenseed\.example/)
   assert.equal(parsed.candidates[1].partnerName, 'Blue Fields Fund')
   assert.deepEqual(parsed.candidates[1].links, ['https://bluefields.example/'])
+})
+
+test('owner pasted source adapter enriches investor entries with stage ticket size and thesis', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'investor',
+      label: 'Agri seed funds',
+      query: 'agri commodity seed funds europe'
+    },
+    { id: 'investor-structured-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Fund: Green Seed Capital',
+      'Focus: Agri infrastructure',
+      'Geography: Europe',
+      'Stage: Pre-seed / Seed',
+      'Ticket size: €250k-€1m',
+      'Thesis: Backs agricultural workflow infrastructure and commodity tooling.',
+      'Website: https://greenseed.example',
+      'Contact: intro@greenseed.example'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'investor_list')
+  assert.equal(candidate.partnerName, 'Green Seed Capital')
+  assert.equal(candidate.title, 'Agri infrastructure')
+  assert.match(candidate.whyRelevant, /Pre-seed \/ Seed/)
+  assert.match(candidate.whyRelevant, /€250k-€1m/)
+  assert.match(candidate.context, /Stage: Pre-seed \/ Seed/)
+  assert.match(candidate.context, /Ticket size: €250k-€1m/)
+  assert.match(candidate.context, /Thesis: Backs agricultural workflow infrastructure/)
 })
 
 test('owner pasted source adapter scores job candidates by interview readiness', () => {

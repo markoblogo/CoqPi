@@ -3,6 +3,7 @@ import type {
   FinderOutreachDraft,
   SessionContext
 } from './app-types'
+import { buildFinderRelationshipMemory } from './finder-relationship-memory'
 import {
   evaluateCounterpartyPackQuality,
   type CounterpartyPackQualityLevel
@@ -35,6 +36,9 @@ export type ManualPrepPreview = {
   selectedPackCount: number
   selectedPackLabel: string
   selectedOutreachDraftLabel: string
+  selectedOutreachDraftStatusLabel: string
+  selectedOutreachDraftLastContactLabel: string
+  selectedOutreachDraftFollowUpLabel: string
   selectedPackQualityLabel: string
   selectedPackQualityLevel: CounterpartyPackQualityLevel | 'none'
   assistantPayloadLabel: string
@@ -110,6 +114,9 @@ export const buildManualPrepPreview = ({
     ? availableOutreachDrafts.find(
         (draft) => draft.id === context.selectedFinderOutreachDraftId
       )
+    : null
+  const selectedOutreachRelationshipMemory = selectedOutreachDraft
+    ? buildFinderRelationshipMemory(selectedOutreachDraft)
     : null
   const worstQuality = selectedPackQualities
     .map(({ quality }) => quality)
@@ -217,6 +224,21 @@ export const buildManualPrepPreview = ({
       : context.selectedFinderOutreachDraftId
         ? 'Missing selected draft'
         : 'No selected outreach draft',
+    selectedOutreachDraftStatusLabel: selectedOutreachRelationshipMemory
+      ? selectedOutreachRelationshipMemory.statusLabel
+      : selectedOutreachDraft
+        ? 'working draft'
+        : 'none',
+    selectedOutreachDraftLastContactLabel: selectedOutreachRelationshipMemory
+      ? selectedOutreachRelationshipMemory.lastContactLabel
+      : context.selectedFinderOutreachDraftId
+        ? 'Draft missing from local Finder source truth.'
+        : 'No contact recorded yet.',
+    selectedOutreachDraftFollowUpLabel: selectedOutreachRelationshipMemory
+      ? selectedOutreachRelationshipMemory.followUpContextLabel
+      : context.selectedFinderOutreachDraftId
+        ? 'Select a valid draft to restore follow-up context.'
+        : 'No follow-up context selected.',
     selectedPackQualityLabel,
     selectedPackQualityLevel,
     assistantPayloadLabel: `session ${sessionChars} chars · packs ${packSummary.includedCount} · profile ${

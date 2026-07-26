@@ -4,6 +4,7 @@ import path from 'node:path'
 import type {
   FinderCandidateDecisionState,
   FinderCandidateResultDraft,
+  FinderOutreachDraftStatus,
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
@@ -152,8 +153,27 @@ const withOutreachDraftSourceTruth = (
     questionsToAsk: draft.questionsToAsk,
     openingMessage: draft.openingMessage,
     nextAction: draft.nextAction,
-    warnings: draft.warnings
+    warnings: draft.warnings,
+    status: draft.status
   })
+})
+
+const normalizeStoredOutreachDraft = (
+  draft: StoredFinderOutreachDraft
+): StoredFinderOutreachDraft => ({
+  ...draft,
+  status: draft.status ?? 'draft',
+  statusHistory:
+    Array.isArray((draft as StoredFinderOutreachDraft & { statusHistory?: unknown }).statusHistory) &&
+    (draft as StoredFinderOutreachDraft & { statusHistory?: unknown[] }).statusHistory?.length
+      ? draft.statusHistory
+      : [
+          {
+            status: draft.status ?? 'draft',
+            at: draft.createdAt,
+            reason: 'draft recorded'
+          }
+        ]
 })
 
 const applyEvent = (
@@ -254,7 +274,8 @@ const getFinderSearchStoreRaw = async (): Promise<FinderSearchStore> => {
   const store = events.reduce(applyEvent, emptyStore())
   const normalizedStore: FinderSearchStore = {
     ...store,
-    results: store.results.map(normalizeStoredResult)
+    results: store.results.map(normalizeStoredResult),
+    outreachDrafts: store.outreachDrafts.map(normalizeStoredOutreachDraft)
   }
 
   await writeManifest(normalizedStore)
@@ -789,7 +810,15 @@ export const setFinderOutreachDraftStatus = async (
 
   const draft: StoredFinderOutreachDraft = {
     ...current,
-    status
+    status,
+    statusHistory: [
+      {
+        status,
+        at: new Date().toISOString(),
+        reason: `status moved to ${status}`
+      },
+      ...current.statusHistory
+    ]
   }
 
   return mutateStore([

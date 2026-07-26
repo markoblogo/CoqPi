@@ -599,6 +599,86 @@ const getEmailsFromText = (text: string) =>
     (match) => match[0]
   ).filter((email, index, list) => list.indexOf(email) === index)
 
+const humanizeSlugText = (value: string) =>
+  sanitizeText(
+    value
+      .replace(/\.[a-z0-9]{2,4}$/i, '')
+      .replace(/[-_]+/g, ' ')
+      .replace(/\b[a-z]/g, (char) => char.toUpperCase()),
+    180
+  )
+
+const formatLocationLabel = (...parts: Array<string | undefined>) =>
+  parts
+    .map((value) => sanitizeText(value, 160))
+    .filter(Boolean)
+    .filter((value, index, list) => list.indexOf(value) === index)
+    .join(', ')
+
+const getDeadlineFromText = (text: string) =>
+  sanitizeText(
+    text.match(
+      /(?:applications?|apply|deadline|closes?|closing)\s+(?:close|by|date|on)?\s*:?\s*(.+)$/i
+    )?.[1] ?? '',
+    180
+  )
+
+const getNonUrlLines = (lines: string[]) =>
+  lines.filter((line) => !parseMaybeUrl(line))
+
+const inferEntityNameFromDomain = (url: URL | null) => {
+  const domain = url?.hostname.replace(/^www\./, '') ?? ''
+
+  if (!domain) {
+    return ''
+  }
+
+  return humanizeSlugText(domain.split('.')[0] ?? domain)
+}
+
+const inferTitleFromUrl = (url: URL | null, kind: CounterpartyContextPackKind) => {
+  if (!url) {
+    return ''
+  }
+
+  const pathnameParts = url.pathname
+    .split('/')
+    .map((part) => sanitizeText(part))
+    .filter(Boolean)
+    .filter((part) => !/^(jobs?|careers?|opportunities?|apply|program|funds?)$/i.test(part))
+  const leaf = pathnameParts[pathnameParts.length - 1] ?? ''
+  const prettyLeaf = humanizeSlugText(leaf)
+
+  if (!prettyLeaf) {
+    return ''
+  }
+
+  if (kind === 'accelerator' && !/accelerator|program/i.test(prettyLeaf)) {
+    return `${prettyLeaf} program`
+  }
+
+  return prettyLeaf
+}
+
+const parseLinkedInCompanyLocationLine = (line: string) => {
+  const parts = line
+    .split('·')
+    .map((part) => sanitizeText(part, 180))
+    .filter(Boolean)
+  const company = parts[0] ?? ''
+  const location = parts.find((part, index) => {
+    if (index === 0) {
+      return false
+    }
+
+    return /remote|france|paris|lyon|berlin|brussels|amsterdam|europe|uk|london|new york|san francisco/i.test(
+      part
+    )
+  }) ?? ''
+
+  return { company, location, parts }
+}
+
 const extractOwnerSourceFields = (lines: string[]) => {
   const fields = new Map<string, string>()
 
@@ -622,7 +702,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
       .map((alias) => fields.get(alias))
       .find((value): value is string => Boolean(value)) ?? ''
 
-  const nonUrlLines = lines.filter((line) => !parseMaybeUrl(line))
+  const nonUrlLines = getNonUrlLines(lines)
   const bulletLine = nonUrlLines.find((line) => line.includes('·')) ?? ''
   const bulletParts = bulletLine
     .split('·')
@@ -635,9 +715,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
       )
     ) ?? ''
   const inferredDeadline =
-    deadlineLine.match(
-      /(?:applications?|apply|deadline|closes?|closing)\s+(?:close|by|date|on)?\s*:?\s*(.+)$/i
-    )?.[1] ?? ''
+    getDeadlineFromText(deadlineLine)
   const inferredLocation =
     nonUrlLines.find(
       (line) =>
@@ -713,6 +791,15 @@ const extractOwnerSourceFields = (lines: string[]) => {
   ])
   const nextAction = firstOf(['next action', 'action', 'todo', 'follow up'])
   const explicitLink = firstOf(['url', 'link', 'website', 'source'])
+  const stage = firstOf(['stage', 'investment stage', 'round', 'program stage'])
+  const ticketSize = firstOf(['ticket size', 'check size', 'ticket', 'investment size'])
+  const programTerms = firstOf(['program terms', 'terms', 'equity', 'fees'])
+  const selectionCriteria = firstOf([
+    'selection criteria',
+    'criteria',
+    'admission criteria'
+  ])
+  const thesis = firstOf(['thesis', 'focus thesis', 'investment thesis'])
   const inferredProgramTitle =
     role ||
     (lines.some((line) => /accelerator|incubator|program/i.test(line))
@@ -728,7 +815,317 @@ const extractOwnerSourceFields = (lines: string[]) => {
     whyRelevant,
     missingInfo,
     nextAction,
-    explicitLink
+    explicitLink,
+    stage,
+    ticketSize,
+    programTerms,
+    selectionCriteria,
+    thesis
+  }
+}
+
+type OwnerSourceFields = ReturnType<typeof extractOwnerSourceFields>
+
+const detectOwnerSourceFormat = ({
+  job,
+  lines,
+  fields,
+  firstUrl
+}: {
+  job: FinderSearchJob
+  lines: string[]
+  fields: OwnerSourceFields
+  firstUrl: URL | null
+}): FinderSourceAdapterDetectedFormat => {
+  const hasStructuredFields = lines.some(
+    (line) =>
+      !parseMaybeUrl(line) &&
+      /^([A-Za-z][A-Za-z0-9 /_-]{1,40})\s*:\s*(.+)$/.test(line)
+  )
+
+  if (firstUrl && lines.length === 1) {
+    return 'url'
+  }
+
+  if (
+    lines.some((line) => /linkedin\.com\/jobs\//i.test(line)) ||
+    (lines.length >= 2 &&
+      lines[1].includes('·') &&
+      /full[- ]time|part[- ]time|reposted|applicants?|mid-senior|entry level/i.test(
+        lines.slice(0, 3).join(' ')
+      ))
+  ) {
+    return 'linkedin_job'
+  }
+
+  if (
+    /accelerator|incubator|program/i.test(lines.join('\n')) ||
+    Boolean(fields.programTerms || fields.selectionCriteria)
+  ) {
+    return 'accelerator_snippet'
+  }
+
+  if (
+    hasStructuredFields &&
+    (job.kind === 'investor' ||
+      Boolean(
+        fields.company &&
+          (fields.ticketSize ||
+            fields.stage ||
+            fields.thesis ||
+            /fund|capital|ventures|angel|investor/i.test(
+              `${fields.company} ${fields.role} ${fields.whyRelevant}`
+            ))
+      ))
+  ) {
+    return 'investor_list'
+  }
+
+  if (
+    hasStructuredFields &&
+    (job.kind === 'partner' ||
+      Boolean(
+        fields.company &&
+          (/partner|distribution|pilot|implementation|integration/i.test(
+            `${fields.company} ${fields.role} ${fields.whyRelevant}`
+          ) ||
+            /partner|opportunity/i.test(fields.role))
+      ))
+  ) {
+    return 'partner_export'
+  }
+
+  if (
+    lines.some((line) =>
+      /fund:|focus:|geography:|investor:|website:|contact:|ticket size:|stage:/i.test(
+        line
+      )
+    )
+  ) {
+    return 'csv_row'
+  }
+
+  if (hasStructuredFields) {
+    return 'structured_fields'
+  }
+
+  return 'freeform_text'
+}
+
+const buildOwnerSourceParsedView = ({
+  job,
+  index,
+  normalizedEntry,
+  lines,
+  headline,
+  fields,
+  firstUrl,
+  links,
+  contact
+}: {
+  job: FinderSearchJob
+  index: number
+  normalizedEntry: string
+  lines: string[]
+  headline: string
+  fields: OwnerSourceFields
+  firstUrl: URL | null
+  links: string[]
+  contact: string
+}) => {
+  const detectedFormat = detectOwnerSourceFormat({
+    job,
+    lines,
+    fields,
+    firstUrl
+  })
+  const nonUrlLines = getNonUrlLines(lines)
+  const body = nonUrlLines.slice(1).join(' ').trim()
+  const inferredEntityName = inferEntityNameFromDomain(firstUrl)
+  const inferredTitleFromUrl = inferTitleFromUrl(firstUrl, job.kind)
+  const defaultPartnerName =
+    fields.company ||
+    inferredEntityName ||
+    headline.split(/[|,–-]/)[0]?.trim() ||
+    `Source candidate ${index + 1}`
+  const defaultTitle =
+    fields.role ||
+    inferredTitleFromUrl ||
+    (firstUrl && headline && !parseMaybeUrl(headline)
+      ? headline
+      : `${job.label} source ${index + 1}`)
+  const defaultLocation = fields.location
+  const defaultDeadline = fields.deadline
+  const defaultRelevance =
+    fields.whyRelevant ||
+    `Owner pasted this ${job.kind} source for the "${job.label}" Finder job; evidence should be reviewed before outreach.`
+  const parserEvidence: string[] = []
+
+  if (detectedFormat === 'linkedin_job') {
+    const companyLine = lines.find((line) => line.includes('·')) ?? lines[1] ?? ''
+    const parsed = parseLinkedInCompanyLocationLine(companyLine)
+    const role =
+      fields.role ||
+      sanitizeText(nonUrlLines[0] ?? headline, 180) ||
+      inferredTitleFromUrl ||
+      defaultTitle
+
+    return {
+      detectedFormat,
+      partnerName: parsed.company || defaultPartnerName,
+      title: role,
+      location: fields.location || parsed.location || defaultLocation,
+      deadline: defaultDeadline,
+      whyRelevant:
+        fields.whyRelevant ||
+        body ||
+        `LinkedIn-style job snippet for "${role}" under the "${job.label}" search.`,
+      body,
+      parserEvidence: [
+        companyLine ? `LinkedIn line: ${sanitizeText(companyLine, 220)}` : ''
+      ].filter(Boolean)
+    }
+  }
+
+  if (detectedFormat === 'accelerator_snippet') {
+    const entityLine =
+      fields.company ||
+      nonUrlLines.find((line) => /accelerator|incubator/i.test(line)) ||
+      defaultPartnerName
+    const deadlineLine =
+      fields.deadline ||
+      nonUrlLines.find((line) => /applications?|deadline|closing|apply/i.test(line)) ||
+      ''
+    const relevanceLine =
+      fields.whyRelevant ||
+      nonUrlLines.find(
+        (line) =>
+          line !== entityLine &&
+          line !== deadlineLine &&
+          /for |climate|agri|agro|startup|commodity|infrastructure|ecosystem/i.test(
+            line
+          )
+      ) ||
+      body
+
+    return {
+      detectedFormat,
+      partnerName: sanitizeText(entityLine, 220) || defaultPartnerName,
+      title:
+        fields.role ||
+        inferredTitleFromUrl ||
+        'Accelerator program',
+      location:
+        fields.location ||
+        nonUrlLines.find(
+          (line) =>
+            /remote|paris|lyon|berlin|brussels|amsterdam|france|europe/i.test(line)
+        ) ||
+        defaultLocation,
+      deadline: fields.deadline || getDeadlineFromText(deadlineLine) || defaultDeadline,
+      whyRelevant:
+        sanitizeText(relevanceLine, 420) ||
+        defaultRelevance,
+      body,
+      parserEvidence: [
+        fields.programTerms ? `Program terms: ${fields.programTerms}` : '',
+        fields.selectionCriteria
+          ? `Selection criteria: ${fields.selectionCriteria}`
+          : ''
+      ].filter(Boolean)
+    }
+  }
+
+  if (detectedFormat === 'investor_list') {
+    const partnerName = fields.company || defaultPartnerName
+    const title =
+      fields.role ||
+      fields.thesis ||
+      inferredTitleFromUrl ||
+      'Investor thesis match'
+    const location =
+      fields.location || defaultLocation
+    const enrichedInvestorRationale = [
+      fields.role,
+      fields.thesis,
+      fields.stage,
+      fields.ticketSize
+    ]
+      .filter(Boolean)
+      .join('. ')
+    const whyRelevant =
+      enrichedInvestorRationale ||
+      fields.whyRelevant ||
+      body ||
+      defaultRelevance
+
+    parserEvidence.push(
+      fields.stage ? `Stage: ${fields.stage}` : '',
+      fields.ticketSize ? `Ticket size: ${fields.ticketSize}` : '',
+      fields.thesis ? `Thesis: ${fields.thesis}` : ''
+    )
+
+    return {
+      detectedFormat,
+      partnerName,
+      title,
+      location,
+      deadline: defaultDeadline,
+      whyRelevant,
+      body,
+      parserEvidence: parserEvidence.filter(Boolean)
+    }
+  }
+
+  if (detectedFormat === 'partner_export') {
+    const partnerName = fields.company || defaultPartnerName
+    const title =
+      fields.role ||
+      inferredTitleFromUrl ||
+      'Partnership opportunity'
+
+    return {
+      detectedFormat,
+      partnerName,
+      title,
+      location: fields.location || defaultLocation,
+      deadline: defaultDeadline,
+      whyRelevant:
+        fields.whyRelevant ||
+        body ||
+        `Partner export entry selected for "${job.label}".`,
+      body,
+      parserEvidence: [
+        contact ? `Contact: ${contact}` : '',
+        fields.missingInfo ? `Known gap: ${fields.missingInfo}` : ''
+      ].filter(Boolean)
+    }
+  }
+
+  if (detectedFormat === 'url') {
+    return {
+      detectedFormat,
+      partnerName: defaultPartnerName,
+      title: defaultTitle,
+      location: defaultLocation,
+      deadline: defaultDeadline,
+      whyRelevant:
+        fields.whyRelevant ||
+        `Owner pasted the source URL directly for the "${job.label}" Finder job.`,
+      body,
+      parserEvidence: firstUrl ? [`Source URL path: ${firstUrl.pathname}`] : []
+    }
+  }
+
+  return {
+    detectedFormat,
+    partnerName: defaultPartnerName,
+    title: defaultTitle,
+    location: defaultLocation,
+    deadline: defaultDeadline,
+    whyRelevant: defaultRelevance,
+    body,
+    parserEvidence
   }
 }
 
@@ -901,49 +1298,27 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       [normalizedEntry, fields.contact].filter(Boolean).join('\n')
     )
     const contact = fields.contact || contactEmails.join(', ')
-    const domain = firstUrl?.hostname.replace(/^www\./, '') ?? ''
-    const partnerName = fields.company
-      ? fields.company
-      : domain
-      ? domain.split('.')[0]?.replace(/[-_]+/g, ' ') || domain
-      : headline.split(/[|,–-]/)[0]?.trim() || `Source candidate ${index + 1}`
-    const title = fields.role
-      ? fields.role
-      : domain
-      ? headline && !parseMaybeUrl(headline)
-        ? headline
-        : `${job.label} source ${index + 1}`
-      : headline
     const sourceHash = stableTextHash(`${job.id}\n${normalizedEntry}`)
-    const body = lines.slice(1).join(' ').trim()
-    const hasStructuredFields = lines.some(
-      (line) =>
-        !parseMaybeUrl(line) &&
-        /^([A-Za-z][A-Za-z0-9 /_-]{1,40})\s*:\s*(.+)$/.test(line)
-    )
-    const detectedFormat: FinderSourceAdapterDetectedFormat = firstUrl &&
-      lines.length === 1
-      ? 'url'
-      : hasStructuredFields
-        ? 'structured_fields'
-        : lines.some((line) => /linkedin\.com\/jobs\//i.test(line))
-          ? 'linkedin_job'
-          : lines.some((line) => /accelerator|incubator|applications close|program/i.test(line))
-            ? 'accelerator_snippet'
-            : lines.some((line) =>
-                  /fund:|focus:|geography:|investor:|website:|contact:/i.test(line)
-                )
-              ? 'csv_row'
-              : 'freeform_text'
+    const parsed = buildOwnerSourceParsedView({
+      job,
+      index,
+      normalizedEntry,
+      lines,
+      headline,
+      fields,
+      firstUrl,
+      links,
+      contact
+    })
     const summary = [
       `Owner-provided source for ${job.label}.`,
-      fields.company ? `Company/partner: ${fields.company}.` : '',
-      fields.role ? `Role/opportunity: ${fields.role}.` : '',
-      fields.location ? `Location: ${fields.location}.` : '',
+      parsed.partnerName ? `Company/partner: ${parsed.partnerName}.` : '',
+      parsed.title ? `Role/opportunity: ${parsed.title}.` : '',
+      parsed.location ? `Location: ${parsed.location}.` : '',
       contact ? `Contact: ${contact}.` : '',
-      fields.deadline ? `Deadline: ${fields.deadline}.` : '',
+      parsed.deadline ? `Deadline: ${parsed.deadline}.` : '',
       headline && !parseMaybeUrl(headline) ? `Headline: ${headline}.` : '',
-      body ? `Excerpt: ${sanitizeText(body, 420)}.` : '',
+      parsed.body ? `Excerpt: ${sanitizeText(parsed.body, 420)}.` : '',
       links.length > 0 ? `URL: ${links[0]}` : ''
     ]
       .filter(Boolean)
@@ -953,42 +1328,41 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       getScenarioMissingInfo(job.kind, {
         links,
         contact,
-        deadline: fields.deadline,
-        location: fields.location,
-        whyRelevant: fields.whyRelevant
+        deadline: parsed.deadline,
+        location: parsed.location,
+        whyRelevant: parsed.whyRelevant
       })
     const nextAction =
       fields.nextAction ||
       getScenarioNextAction(job.kind, contact)
-    const relevance =
-      fields.whyRelevant ||
-      `Owner pasted this ${job.kind} source for the "${job.label}" Finder job; evidence should be reviewed before outreach.`
+    const relevance = parsed.whyRelevant
     const scores = scoreOwnerSourceCandidate(job, {
       links,
       contact,
-      deadline: fields.deadline,
-      location: fields.location,
-      partnerName,
-      title,
+      deadline: parsed.deadline,
+      location: parsed.location,
+      partnerName: parsed.partnerName,
+      title: parsed.title,
       whyRelevant: relevance
     })
 
     candidates.push({
-      detectedFormat,
+      detectedFormat: parsed.detectedFormat,
       sourceId: `coqpi:source-adapter:${job.kind}:${jobSlug}:${sourceHash}`,
-      partnerName,
-      title,
+      partnerName: parsed.partnerName,
+      title: parsed.title,
       summary,
       context: [
         'Imported through owner_paste_v0 from owner-provided URL/text/export.',
-        `Detected source format: ${detectedFormat}.`,
+        `Detected source format: ${parsed.detectedFormat}.`,
         'No web fetch, scraping, search API, scheduler, or outbound action was performed.',
         `Original job query: ${job.query}.`,
         job.goal ? `Job goal: ${job.goal}.` : '',
-        fields.location ? `Extracted location: ${fields.location}.` : '',
+        parsed.location ? `Extracted location: ${parsed.location}.` : '',
         contact ? `Extracted contact: ${contact}.` : '',
-        fields.deadline ? `Extracted deadline: ${fields.deadline}.` : '',
-        body ? `Owner pasted excerpt: ${sanitizeText(body, 900)}` : ''
+        parsed.deadline ? `Extracted deadline: ${parsed.deadline}.` : '',
+        ...parsed.parserEvidence,
+        parsed.body ? `Owner pasted excerpt: ${sanitizeText(parsed.body, 900)}` : ''
       ]
         .filter(Boolean)
         .join('\n'),
@@ -1758,10 +2132,17 @@ export const createFinderOutreachDraft = (
     knownContext: prep.knownContext,
     questionsToAsk: prep.questionsToAsk,
     openingMessage: prep.openingMessage,
-    nextAction: prep.nextAction,
+   nextAction: prep.nextAction,
     warnings: prep.warnings,
     status: 'draft',
-    createdAt: options.now
+    createdAt: options.now,
+    statusHistory: [
+      {
+        status: 'draft',
+        at: options.now,
+        reason: 'draft recorded'
+      }
+    ]
   }
 }
 

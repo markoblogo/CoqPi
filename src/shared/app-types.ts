@@ -279,6 +279,8 @@ export type FinderSourceAdapterMode = 'owner_paste_v0'
 export type FinderSourceAdapterDetectedFormat =
   | 'url'
   | 'structured_fields'
+  | 'partner_export'
+  | 'investor_list'
   | 'linkedin_job'
   | 'accelerator_snippet'
   | 'csv_row'
@@ -325,6 +327,20 @@ export interface FinderOwnerSourceSessionIngressResult {
   importedCandidateCount: number
 }
 
+export type FinderOutreachDraftStatus =
+  | 'draft'
+  | 'ready_for_contact'
+  | 'contacted'
+  | 'waiting'
+  | 'follow_up'
+  | 'closed'
+
+export interface FinderOutreachStatusHistoryEntry {
+  status: FinderOutreachDraftStatus
+  at: string
+  reason: string
+}
+
 export interface FinderOutreachDraft {
   version: 1
   id: string
@@ -341,8 +357,9 @@ export interface FinderOutreachDraft {
   openingMessage: string
   nextAction: string
   warnings: string[]
-  status: 'draft' | 'ready_for_contact'
+  status: FinderOutreachDraftStatus
   createdAt: string
+  statusHistory: FinderOutreachStatusHistoryEntry[]
 }
 
 export interface FinderRecordProvenance {

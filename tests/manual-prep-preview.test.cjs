@@ -97,7 +97,42 @@ test('manual prep preview shows selected outreach draft label', () => {
   })
 
   assert.equal(preview.selectedOutreachDraftLabel, 'Acme · Senior Product Manager')
+  assert.equal(preview.selectedOutreachDraftStatusLabel, 'working draft')
+  assert.match(preview.selectedOutreachDraftLastContactLabel, /No contact recorded/)
+  assert.match(preview.selectedOutreachDraftFollowUpLabel, /Use this context before the call/)
   assert.deepEqual(preview.weakFields, [])
+})
+
+test('manual prep preview shows relationship memory for selected outreach draft', () => {
+  const preview = buildManualPrepPreview({
+    context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
+    availablePacks: [makePack()],
+    availableOutreachDrafts: [
+      makeDraft({
+        status: 'follow_up',
+        statusHistory: [
+          {
+            status: 'follow_up',
+            at: '2026-07-26T18:15:00.000Z',
+            reason: 'follow-up due after first contact'
+          },
+          {
+            status: 'contacted',
+            at: '2026-07-25T09:30:00.000Z',
+            reason: 'owner sent the intro'
+          }
+        ],
+        nextAction: 'Send a brief follow-up if no answer by Tuesday.',
+        questionsToAsk: ['Should we align on the next conversation format?']
+      })
+    ],
+    includeProfileContext: true,
+    profileChars: 1234
+  })
+
+  assert.equal(preview.selectedOutreachDraftStatusLabel, 'follow-up')
+  assert.match(preview.selectedOutreachDraftLastContactLabel, /follow-up · 2026-07-26 18:15:00Z/)
+  assert.match(preview.selectedOutreachDraftFollowUpLabel, /Send a brief follow-up/)
 })
 
 test('manual prep preview flags stale selected outreach draft', () => {

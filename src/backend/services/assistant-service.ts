@@ -12,6 +12,7 @@ import {
   getPersonalInterviewRetrieval,
   resolveSessionSelectedCounterpartyPackIds
 } from './context-source-service'
+import { buildFinderRelationshipMemory } from '../../shared/finder-relationship-memory'
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
 import { getSessionContext } from './session-context-service'
@@ -366,11 +367,14 @@ const compactSelectedOutreachDraft = async (
     return ''
   }
 
+  const relationshipMemory = buildFinderRelationshipMemory(draft)
+
   const lines = [
     `Target: ${draft.targetName}`,
     `Opportunity: ${draft.opportunity}`,
     `Fit: ${draft.fitLabel}`,
     `Why relevant: ${draft.whyRelevant}`,
+    ...relationshipMemory.assistantContextLines,
     `Opening message already drafted: ${draft.openingMessage}`,
     `Next action: ${draft.nextAction}`,
     draft.questionsToAsk.length

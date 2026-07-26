@@ -379,7 +379,7 @@ test('finder search service saves outreach draft handoff locally', async () => {
   })
 })
 
-test('finder search service updates outreach draft local ready-for-contact state', async () => {
+test('finder search service updates outreach draft local contact pipeline state and history', async () => {
   await withFinderWorkspace(async (service) => {
     const afterJob = await service.addFinderSearchJob({
       kind: 'partner',
@@ -401,10 +401,31 @@ test('finder search service updates outreach draft local ready-for-contact state
       draft.id,
       'ready_for_contact'
     )
-    const restored = await service.setFinderOutreachDraftStatus(draft.id, 'draft')
+    const contacted = await service.setFinderOutreachDraftStatus(
+      draft.id,
+      'contacted'
+    )
+    const waiting = await service.setFinderOutreachDraftStatus(draft.id, 'waiting')
+    const followUp = await service.setFinderOutreachDraftStatus(
+      draft.id,
+      'follow_up'
+    )
+    const closed = await service.setFinderOutreachDraftStatus(draft.id, 'closed')
 
     assert.equal(markedReady.store.outreachDrafts[0].status, 'ready_for_contact')
-    assert.equal(restored.store.outreachDrafts[0].status, 'draft')
+    assert.equal(contacted.store.outreachDrafts[0].status, 'contacted')
+    assert.equal(waiting.store.outreachDrafts[0].status, 'waiting')
+    assert.equal(followUp.store.outreachDrafts[0].status, 'follow_up')
+    assert.equal(closed.store.outreachDrafts[0].status, 'closed')
+    assert.equal(closed.store.outreachDrafts[0].statusHistory[0].status, 'closed')
+    assert.equal(closed.store.outreachDrafts[0].statusHistory[1].status, 'follow_up')
+    assert.equal(closed.store.outreachDrafts[0].statusHistory[2].status, 'waiting')
+    assert.equal(closed.store.outreachDrafts[0].statusHistory[3].status, 'contacted')
+    assert.equal(
+      closed.store.outreachDrafts[0].statusHistory[4].status,
+      'ready_for_contact'
+    )
+    assert.equal(closed.store.outreachDrafts[0].statusHistory[5].status, 'draft')
   })
 })
 

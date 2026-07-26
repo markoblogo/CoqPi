@@ -94,10 +94,51 @@ test('session payload inspector separates included and dropped context', () => {
   assert.match(inspector.droppedPacks[0].reason, /not selected/)
   assert.match(inspector.droppedPacks[1].reason, /missing/)
   assert.equal(inspector.includedOutreachDraft.label, 'Acme · Senior Product Manager')
+  assert.equal(inspector.includedOutreachDraft.relationshipStatusLabel, 'working draft')
+  assert.match(inspector.includedOutreachDraft.lastContactLabel, /No contact recorded/)
+  assert.match(inspector.includedOutreachDraft.followUpContextLabel, /Use before call/)
   assert.equal(inspector.droppedOutreachDraft, null)
   assert.equal(inspector.profileLabel, 'profile 123 chars')
   assert.equal(inspector.warningCount, 2)
   assert.match(inspector.summaryLabel, /included packs 1/)
+})
+
+test('session payload inspector includes relationship memory for contacted outreach draft', () => {
+  const inspector = buildSessionPayloadInspector({
+    context: makeContext({
+      selectedCounterpartyPackIds: ['pack-ready'],
+      selectedFinderOutreachDraftId: 'draft-A'
+    }),
+    availablePacks: [makePack()],
+    availableOutreachDrafts: [
+      makeDraft({
+        status: 'waiting',
+        statusHistory: [
+          {
+            status: 'waiting',
+            at: '2026-07-26T11:00:00.000Z',
+            reason: 'waiting for recruiter reply'
+          },
+          {
+            status: 'contacted',
+            at: '2026-07-25T09:30:00.000Z',
+            reason: 'owner sent the intro'
+          }
+        ],
+        nextAction: 'Prepare short follow-up for the recruiter.',
+        questionsToAsk: ['What is the timeline for next steps?']
+      })
+    ],
+    includeProfileContext: true,
+    profileChars: 123
+  })
+
+  assert.equal(inspector.includedOutreachDraft.relationshipStatusLabel, 'waiting')
+  assert.match(inspector.includedOutreachDraft.lastContactLabel, /waiting · 2026-07-26 11:00:00Z/)
+  assert.match(
+    inspector.includedOutreachDraft.followUpContextLabel,
+    /Prepare short follow-up/
+  )
 })
 
 test('session payload inspector reports stale outreach draft and profile off', () => {
