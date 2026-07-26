@@ -60,3 +60,11 @@ CoqPi is used during stressful interviews and professional calls. The interface 
 - The renderer should never receive secrets.
 - Audio is sent only during active realtime listening.
 - Audio is not saved by default.
+
+## Russian copy
+
+- Russian live-assist text is an orientation aid, not editorial prose.
+- Prefer one short sentence that clarifies intent over a polished paragraph.
+- Preserve precise English/French terms when Russian translation would blur meaning.
+- Errors and status lines should say what happened and what to do next.
+- Avoid bureaucratic wording, blame, fake urgency, and decorative empathy.

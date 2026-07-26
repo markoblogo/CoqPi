@@ -65,6 +65,8 @@ Prompt/skill improvement is governed by an optional local skill-quality pipeline
 
 External AI-engineering examples are tracked in [`docs/AI_ENGINEERING_REFERENCE_INDEX.md`](docs/AI_ENGINEERING_REFERENCE_INDEX.md) as references only. They do not install code, change realtime behavior, add providers, or authorize use on live calls.
 
+Russian editorial behavior is scoped by [`docs/RU_EDITORIAL_CONTRACT.md`](docs/RU_EDITORIAL_CONTRACT.md). It is a local reference/review layer for Russian explanations and UI copy only; it does not change provider routing, transcript capture, or production logic.
+
 ## Local installation
 
 1. Install [pnpm](https://pnpm.io/).
