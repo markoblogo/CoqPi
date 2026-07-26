@@ -95,6 +95,8 @@ External AI-engineering examples are tracked in [`docs/AI_ENGINEERING_REFERENCE_
 
 Selected-context retrieval now has a compact tiering contract in [`docs/SELECTED_CONTEXT_TIERS_CONTRACT.md`](docs/SELECTED_CONTEXT_TIERS_CONTRACT.md): `L0/L1/L2` loading, explicit retrieval receipts, and selected/dropped/stale context observability without adding a context runtime.
 
+Optional continuous code review is allowed in this repository because provider, retrieval, and session-state changes can compound quickly. It stays local/opt-in only: manual, pre-push, and optional post-commit modes are allowed, while daemon-for-everyone, automatic PR comments, and auto-fix-as-policy are not. See [`docs/CONTINUOUS_REVIEW_BOUNDARY.md`](docs/CONTINUOUS_REVIEW_BOUNDARY.md).
+
 Russian editorial behavior is scoped by [`docs/RU_EDITORIAL_CONTRACT.md`](docs/RU_EDITORIAL_CONTRACT.md). It is a local reference/review layer for Russian explanations and UI copy only; it does not change provider routing, transcript capture, or production logic.
 
 Selected `12-factor-agents` principles are adapted in [`docs/AGENT_EVENT_THREAD_CONTRACT.md`](docs/AGENT_EVENT_THREAD_CONTRACT.md) for CoqPi's local event-thread, selected-context, pause/resume, focused-assistant, and compact-error boundaries. This remains a product contract, not a framework runtime.
