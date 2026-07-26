@@ -88,16 +88,19 @@ const normalizeSessionContextForActivePacks = async (
 export const getSessionContext = async (): Promise<SessionContextResult> => {
   try {
     const raw = await fs.readFile(getSessionContextPath(), 'utf8')
+    const persistedContext = sanitizeSessionContext(JSON.parse(raw))
     const context = await normalizeSessionContextForActivePacks(
-      sanitizeSessionContext(JSON.parse(raw))
+      persistedContext
     )
 
     return {
-      context
+      context,
+      persistedContext
     }
   } catch {
     return {
-      context: emptySessionContext
+      context: emptySessionContext,
+      persistedContext: emptySessionContext
     }
   }
 }
@@ -114,6 +117,7 @@ export const saveSessionContext = async (
   await fs.writeFile(filePath, JSON.stringify(sanitized, null, 2), 'utf8')
 
   return {
-    context: sanitized
+    context: sanitized,
+    persistedContext: sanitized
   }
 }

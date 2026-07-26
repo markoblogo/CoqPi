@@ -7,6 +7,11 @@ import {
   evaluateCounterpartyPackQuality,
   type CounterpartyPackQualityLevel
 } from './context-pack-quality'
+import {
+  buildSessionPayloadInspector,
+  buildSessionPayloadPackSummary,
+  type SessionPayloadPackItem
+} from './session-payload-inspector'
 
 export type ManualPrepWeakField = {
   id:
@@ -73,18 +78,29 @@ export const buildManualPrepPreview = ({
   context,
   availablePacks,
   availableOutreachDrafts = [],
+  auditedDroppedPacks = [],
   includeProfileContext,
   profileChars
 }: {
   context: SessionContext
   availablePacks: CounterpartyContextPack[]
   availableOutreachDrafts?: FinderOutreachDraft[]
+  auditedDroppedPacks?: SessionPayloadPackItem[]
   includeProfileContext: boolean
   profileChars: number
 }): ManualPrepPreview => {
+  const payloadInspector = buildSessionPayloadInspector({
+    context,
+    availablePacks,
+    availableOutreachDrafts,
+    auditedDroppedPacks,
+    includeProfileContext,
+    profileChars
+  })
+  const packSummary = buildSessionPayloadPackSummary(payloadInspector)
   const weakFields: ManualPrepWeakField[] = []
-  const selectedPacks = context.selectedCounterpartyPackIds
-    .map((id) => availablePacks.find((pack) => pack.id === id))
+  const selectedPacks = payloadInspector.includedPacks
+    .map((item) => availablePacks.find((pack) => pack.id === item.id))
     .filter((pack): pack is CounterpartyContextPack => Boolean(pack))
   const selectedPackQualities = selectedPacks.map((pack) => ({
     pack,
@@ -139,11 +155,17 @@ export const buildManualPrepPreview = ({
     })
   }
 
-  if (selectedPacks.length === 0) {
+  if (packSummary.state === 'none') {
     weakFields.push({
       id: 'missing_pack',
       label: 'no selected pack',
       fix: 'Select one counterparty pack for this call.'
+    })
+  } else if (packSummary.state === 'dropped') {
+    weakFields.push({
+      id: 'blocked_pack',
+      label: 'selected pack dropped',
+      fix: 'Restore or replace the dropped selected pack before the live call.'
     })
   }
 
@@ -171,24 +193,24 @@ export const buildManualPrepPreview = ({
     }
   }
 
-  const selectedPackLabel =
-    selectedPacks.length === 0
-      ? 'No selected pack'
-      : selectedPacks
-          .map((pack) => `${pack.partnerName} · ${pack.title}`)
-          .slice(0, 3)
-          .join(', ')
-  const selectedPackQualityLevel = worstQuality?.level ?? 'none'
-  const selectedPackQualityLabel = worstQuality
-    ? `${worstQuality.label}${selectedPacks.length > 1 ? ' worst' : ''}`
-    : 'none'
+  const selectedPackLabel = packSummary.detailLabel
+  const selectedPackQualityLevel =
+    packSummary.state === 'dropped'
+      ? 'blocked'
+      : worstQuality?.level ?? 'none'
+  const selectedPackQualityLabel =
+    packSummary.state === 'dropped'
+      ? 'dropped from assistant payload'
+      : worstQuality
+        ? `${worstQuality.label}${selectedPacks.length > 1 ? ' worst' : ''}`
+        : 'none'
   const sessionChars = getSessionTextLength(context)
 
   return {
     sessionLabel: getSessionLabel(context),
     goalLabel: context.goal.trim() || 'No goal',
     contextLabel: context.context.trim() || 'No context',
-    selectedPackCount: selectedPacks.length,
+    selectedPackCount: packSummary.includedCount,
     selectedPackLabel,
     selectedOutreachDraftLabel: selectedOutreachDraft
       ? `${selectedOutreachDraft.targetName} · ${selectedOutreachDraft.opportunity}`
@@ -197,7 +219,7 @@ export const buildManualPrepPreview = ({
         : 'No selected outreach draft',
     selectedPackQualityLabel,
     selectedPackQualityLevel,
-    assistantPayloadLabel: `session ${sessionChars} chars · packs ${selectedPacks.length} · profile ${
+    assistantPayloadLabel: `session ${sessionChars} chars · packs ${packSummary.includedCount} · profile ${
       includeProfileContext ? `${profileChars} chars` : 'off'
     }`,
     weakFields

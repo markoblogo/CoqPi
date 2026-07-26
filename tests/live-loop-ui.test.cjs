@@ -403,6 +403,144 @@ test('selected change during in-flight analysis retries with latest pack after s
   assert.equal(assistantState, 'done')
 })
 
+test('outreach draft change during in-flight analysis retries with latest draft after status error', async () => {
+  const latestFinal = makeUtterance({ id: 'u-9-draft' })
+  const analysisText = latestFinal.text + ' Need to align opening message.'
+  const capturedRequests = []
+  let autoAnalysisTimeoutId = null
+  let scheduledAutoAnalysisFingerprint = null
+  let lastAutoAnalyzedFingerprint = null
+  let assistantState = 'idle'
+  let selectedCounterpartyPackIds = ['pack-A']
+  let selectedFinderOutreachDraftId = 'draft-A'
+  let firstRunResolver = null
+
+  const firstPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: Date.now() + 20,
+    selectedCounterpartyPackIds,
+    selectedFinderOutreachDraftId
+  })
+
+  const secondPlan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestFinal,
+    transcriptText: analysisText,
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: firstPlan.fingerprint,
+    assistantState: 'error',
+    analysisCooldownUntil: Date.now() + 20,
+    selectedCounterpartyPackIds,
+    selectedFinderOutreachDraftId: 'draft-B'
+  })
+
+  assert.equal(firstPlan.shouldRun, true)
+  assert.equal(secondPlan.shouldRun, true)
+  assert.notEqual(firstPlan.fingerprint, secondPlan.fingerprint)
+
+  const runAssistantAnalysis = () =>
+    new Promise((resolve) => {
+      capturedRequests.push({
+        selectedCounterpartyPackIds: [...selectedCounterpartyPackIds],
+        selectedFinderOutreachDraftId
+      })
+
+      if (selectedFinderOutreachDraftId === 'draft-A') {
+        firstRunResolver = resolve
+        return
+      }
+
+      assistantState = 'done'
+      resolve(true)
+    })
+
+  const schedule = () => {
+    const plan = buildAutoAnalysisSchedule({
+      latestFinalUtterance: latestFinal,
+      transcriptText: analysisText,
+      lastAutoAnalyzedFingerprint,
+      scheduledAutoAnalysisFingerprint,
+      assistantState,
+      analysisCooldownUntil: Date.now() + 20,
+      selectedCounterpartyPackIds,
+      selectedFinderOutreachDraftId
+    })
+
+    if (!plan.shouldRun || plan.fingerprint === null) {
+      return false
+    }
+
+    if (autoAnalysisTimeoutId !== null) {
+      clearTimeout(autoAnalysisTimeoutId)
+    }
+
+    autoAnalysisTimeoutId = setTimeout(() => {
+      const activeFingerprint = plan.fingerprint
+
+      if (activeFingerprint === null) {
+        return
+      }
+
+      scheduledAutoAnalysisFingerprint = activeFingerprint
+      assistantState = 'analyzing'
+
+      void runAssistantAnalysis().then((didRun) => {
+        if (didRun) {
+          lastAutoAnalyzedFingerprint = activeFingerprint
+        }
+
+        if (scheduledAutoAnalysisFingerprint === activeFingerprint) {
+          scheduledAutoAnalysisFingerprint = null
+        }
+
+        assistantState = didRun ? 'done' : 'error'
+      })
+    }, plan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS)
+
+    return true
+  }
+
+  assert.equal(schedule(), true)
+  await new Promise((resolve) =>
+    setTimeout(resolve, (firstPlan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS) + 60)
+  )
+
+  assert.equal(capturedRequests.length, 1)
+  assert.deepEqual(capturedRequests[0], {
+    selectedCounterpartyPackIds: ['pack-A'],
+    selectedFinderOutreachDraftId: 'draft-A'
+  })
+  assert.equal(assistantState, 'analyzing')
+
+  selectedFinderOutreachDraftId = 'draft-B'
+  assistantState = 'error'
+  assert.equal(schedule(), true)
+
+  assert.equal(firstRunResolver !== null, true)
+  firstRunResolver(false)
+  firstRunResolver = null
+
+  await new Promise((resolve) =>
+    setTimeout(resolve, (secondPlan.delayMs ?? AUTO_ANALYSIS_DEBOUNCE_MS) + 120)
+  )
+
+  if (autoAnalysisTimeoutId !== null) {
+    clearTimeout(autoAnalysisTimeoutId)
+    autoAnalysisTimeoutId = null
+  }
+
+  assert.equal(capturedRequests.length, 2)
+  assert.deepEqual(capturedRequests[1], {
+    selectedCounterpartyPackIds: ['pack-A'],
+    selectedFinderOutreachDraftId: 'draft-B'
+  })
+  assert.equal(lastAutoAnalyzedFingerprint, secondPlan.fingerprint)
+  assert.equal(assistantState, 'done')
+})
+
 test('retry now bypasses cooldown and uses latest selected packs', async () => {
   let assistantState = 'error'
   let selectedCounterpartyPackIds = ['pack-A']

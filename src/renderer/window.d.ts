@@ -8,7 +8,10 @@ import type {
   ContextSourceManifestResult,
   ConfigStatus,
   DeleteOpenAIKeyResult,
+  FinderCandidateDecisionState,
   FinderCandidateResultDraft,
+  FinderOutreachDraft,
+  FinderOwnerSourceSessionIngressResult,
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
@@ -60,6 +63,11 @@ declare global {
           id: string,
           status: 'ready' | 'imported' | 'rejected'
         ) => Promise<FinderSearchStoreResult>
+        setCandidateDecision: (
+          id: string,
+          state: FinderCandidateDecisionState,
+          reason?: string
+        ) => Promise<FinderSearchStoreResult>
         ingestRunnerPayload: (
           payloadText: string
         ) => Promise<FinderSearchStoreResult>
@@ -76,8 +84,16 @@ declare global {
           jobId: string,
           drafts: FinderCandidateResultDraft[]
         ) => Promise<FinderSearchStoreResult>
+        ingestOwnerSourceToSession: (
+          jobId: string,
+          drafts: FinderCandidateResultDraft[]
+        ) => Promise<FinderOwnerSourceSessionIngressResult>
         saveOutreachDraft: (
           candidateResultId: string
+        ) => Promise<FinderSearchStoreResult>
+        setOutreachDraftStatus: (
+          draftId: string,
+          status: FinderOutreachDraft['status']
         ) => Promise<FinderSearchStoreResult>
       }
       contextSources: {

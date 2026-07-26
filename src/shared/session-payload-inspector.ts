@@ -33,6 +33,79 @@ export type SessionPayloadInspector = {
   warningCount: number
 }
 
+export type SessionPayloadPackSummary = {
+  state: 'included' | 'dropped' | 'none'
+  includedCount: number
+  droppedCount: number
+  label: string
+  detailLabel: string
+}
+
+const mergeDroppedPacks = (
+  droppedPacks: SessionPayloadPackItem[],
+  auditedDroppedPacks: SessionPayloadPackItem[] = [],
+  includedPacks: SessionPayloadPackItem[] = []
+) => {
+  const includedIds = new Set(includedPacks.map((pack) => pack.id))
+  const merged = new Map<string, SessionPayloadPackItem>()
+
+  for (const pack of droppedPacks) {
+    merged.set(pack.id, pack)
+  }
+
+  for (const pack of auditedDroppedPacks) {
+    if (!pack.id || includedIds.has(pack.id) || merged.has(pack.id)) {
+      continue
+    }
+
+    merged.set(pack.id, pack)
+  }
+
+  return [...merged.values()]
+}
+
+export const buildSessionPayloadPackSummary = (
+  inspector: SessionPayloadInspector
+): SessionPayloadPackSummary => {
+  if (inspector.includedPacks.length > 0) {
+    const detailLabel = inspector.includedPacks
+      .slice(0, 3)
+      .map((pack) => pack.label)
+      .join(', ')
+
+    return {
+      state: 'included',
+      includedCount: inspector.includedPacks.length,
+      droppedCount: inspector.droppedPacks.length,
+      label: `Packs: ${detailLabel}`,
+      detailLabel
+    }
+  }
+
+  if (inspector.droppedPacks.length > 0) {
+    const detailLabel = inspector.droppedPacks
+      .slice(0, 3)
+      .map((pack) => pack.label)
+      .join(', ')
+
+    return {
+      state: 'dropped',
+      includedCount: 0,
+      droppedCount: inspector.droppedPacks.length,
+      label: `Dropped: ${detailLabel}`,
+      detailLabel
+    }
+  }
+
+  return {
+    state: 'none',
+    includedCount: 0,
+    droppedCount: 0,
+    label: 'No packs selected',
+    detailLabel: 'No pack selected'
+  }
+}
+
 const formatPackLabel = (pack: CounterpartyContextPack) =>
   `${pack.partnerName} · ${pack.title}`
 
@@ -52,12 +125,14 @@ export const buildSessionPayloadInspector = ({
   context,
   availablePacks,
   availableOutreachDrafts = [],
+  auditedDroppedPacks = [],
   includeProfileContext,
   profileChars
 }: {
   context: SessionContext
   availablePacks: CounterpartyContextPack[]
   availableOutreachDrafts?: FinderOutreachDraft[]
+  auditedDroppedPacks?: SessionPayloadPackItem[]
   includeProfileContext: boolean
   profileChars: number
 }): SessionPayloadInspector => {
@@ -126,8 +201,13 @@ export const buildSessionPayloadInspector = ({
           reason: 'draft missing from local Finder source truth'
         }
       : null
+  const mergedDroppedPacks = mergeDroppedPacks(
+    droppedPacks,
+    auditedDroppedPacks,
+    includedPacks
+  )
   const warningCount =
-    droppedPacks.length + (droppedOutreachDraft ? 1 : 0)
+    mergedDroppedPacks.length + (droppedOutreachDraft ? 1 : 0)
   const profileLabel = includeProfileContext
     ? profileChars > 0
       ? `profile ${profileChars} chars`
@@ -135,11 +215,11 @@ export const buildSessionPayloadInspector = ({
     : 'profile off'
 
   return {
-    summaryLabel: `included packs ${includedPacks.length} · dropped ${droppedPacks.length} · draft ${
+    summaryLabel: `included packs ${includedPacks.length} · dropped ${mergedDroppedPacks.length} · draft ${
       includedOutreachDraft ? 'included' : droppedOutreachDraft ? 'dropped' : 'none'
     } · ${profileLabel}`,
     includedPacks,
-    droppedPacks,
+    droppedPacks: mergedDroppedPacks,
     includedOutreachDraft,
     droppedOutreachDraft,
     profileLabel,

@@ -156,3 +156,14 @@ export const getSessionContextWithCounterpartyPacks = (
     importedCandidates
   )
 })
+
+export const getSessionContextWithImportedCounterpartyPacks = (
+  context: SessionContext,
+  availablePacks: CounterpartyContextPack[],
+  importedCandidates: CounterpartyContextPackDraft[] = []
+) =>
+  getSessionContextWithCounterpartyPacks(
+    context,
+    availablePacks,
+    importedCandidates
+  )

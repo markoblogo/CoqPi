@@ -1,8 +1,10 @@
 import type {
+  FinderCandidateDecisionState,
   CounterpartyContextPackDraft,
   CounterpartyContextPackKind,
   FinderCandidateResult,
   FinderCandidateResultDraft,
+  FinderSourceAdapterDetectedFormat,
   FinderOutreachDraft,
   FinderSearchJob,
   FinderSearchJobDraft,
@@ -13,15 +15,18 @@ import type {
 } from './app-types'
 
 export type FinderPipelineStatusFilter = 'all' | FinderCandidateResult['status']
+export type FinderPipelineDecisionFilter = 'all' | 'import' | 'hold' | 'reject'
 
 export type FinderPipelineSortMode =
   | 'fit_desc'
   | 'fit_asc'
   | 'status'
+  | 'decision'
   | 'next_action'
 
 export interface FinderPipelineFilters {
   status?: FinderPipelineStatusFilter
+  decision?: FinderPipelineDecisionFilter
   sortMode?: FinderPipelineSortMode
   minFitScore?: number
   requiresNextAction?: boolean
@@ -38,6 +43,40 @@ export interface FinderOutreachPrepPack {
   openingMessage: string
   nextAction: string
   warnings: string[]
+}
+
+export interface FinderDecisionQueueItem {
+  recommendation: 'import' | 'hold' | 'reject'
+  priority: 'now' | 'soon' | 'later'
+  score: number
+  summary: string
+  reasons: string[]
+}
+
+export interface FinderDecisionQueueSummary {
+  importCount: number
+  holdCount: number
+  rejectCount: number
+  nowCount: number
+  soonCount: number
+  laterCount: number
+}
+
+export type FinderQueueReviewLane = 'import' | 'hold' | 'reject'
+
+export interface FinderQueueReviewItem {
+  result: FinderCandidateResult
+  decision: FinderDecisionQueueItem
+  lane: FinderQueueReviewLane
+  explicitState: FinderCandidateDecisionState
+  isExplicit: boolean
+}
+
+export interface FinderQueueReviewColumn {
+  lane: FinderQueueReviewLane
+  label: string
+  items: FinderQueueReviewItem[]
+  explicitCount: number
 }
 
 const sanitizeText = (value: unknown, maxLength = 1200) =>
@@ -229,6 +268,10 @@ export const createFinderCandidateResult = (
     missingInfo: normalized.missingInfo,
     nextAction: normalized.nextAction,
     status: 'ready',
+    decision: {
+      state: 'auto',
+      updatedAt: options.now
+    },
     createdAt: options.now
   }
 }
@@ -816,11 +859,19 @@ export const createFinderCandidatesFromOwnerPastedSource = (
   sourceText: string
 ): {
   requestedCount: number
-  candidates: FinderCandidateResultDraft[]
+  candidates: Array<
+    FinderCandidateResultDraft & {
+      detectedFormat: FinderSourceAdapterDetectedFormat
+    }
+  >
   errors: { index?: number; reason: string }[]
 } => {
   const entries = splitOwnerPastedSourceEntries(sourceText)
-  const candidates: FinderCandidateResultDraft[] = []
+  const candidates: Array<
+    FinderCandidateResultDraft & {
+      detectedFormat: FinderSourceAdapterDetectedFormat
+    }
+  > = []
   const errors: { index?: number; reason: string }[] = []
   const jobSlug = slugify(job.id, 'job')
 
@@ -865,6 +916,25 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       : headline
     const sourceHash = stableTextHash(`${job.id}\n${normalizedEntry}`)
     const body = lines.slice(1).join(' ').trim()
+    const hasStructuredFields = lines.some(
+      (line) =>
+        !parseMaybeUrl(line) &&
+        /^([A-Za-z][A-Za-z0-9 /_-]{1,40})\s*:\s*(.+)$/.test(line)
+    )
+    const detectedFormat: FinderSourceAdapterDetectedFormat = firstUrl &&
+      lines.length === 1
+      ? 'url'
+      : hasStructuredFields
+        ? 'structured_fields'
+        : lines.some((line) => /linkedin\.com\/jobs\//i.test(line))
+          ? 'linkedin_job'
+          : lines.some((line) => /accelerator|incubator|applications close|program/i.test(line))
+            ? 'accelerator_snippet'
+            : lines.some((line) =>
+                  /fund:|focus:|geography:|investor:|website:|contact:/i.test(line)
+                )
+              ? 'csv_row'
+              : 'freeform_text'
     const summary = [
       `Owner-provided source for ${job.label}.`,
       fields.company ? `Company/partner: ${fields.company}.` : '',
@@ -904,12 +974,14 @@ export const createFinderCandidatesFromOwnerPastedSource = (
     })
 
     candidates.push({
+      detectedFormat,
       sourceId: `coqpi:source-adapter:${job.kind}:${jobSlug}:${sourceHash}`,
       partnerName,
       title,
       summary,
       context: [
         'Imported through owner_paste_v0 from owner-provided URL/text/export.',
+        `Detected source format: ${detectedFormat}.`,
         'No web fetch, scraping, search API, scheduler, or outbound action was performed.',
         `Original job query: ${job.query}.`,
         job.goal ? `Job goal: ${job.goal}.` : '',
@@ -955,6 +1027,20 @@ export const summarizeFinderSourceAdapterRun = (
     'Owner-pasted URL/text/export was normalized locally; no web fetch, scraping, search API, scheduler, or outbound action was performed.'
 })
 
+export const getFinderSourceAdapterDetectedFormatSummary = (
+  candidates: Array<{ detectedFormat: FinderSourceAdapterDetectedFormat }>
+) =>
+  Array.from(
+    candidates.reduce(
+      (counts, candidate) =>
+        counts.set(
+          candidate.detectedFormat,
+          (counts.get(candidate.detectedFormat) ?? 0) + 1
+        ),
+      new Map<FinderSourceAdapterDetectedFormat, number>()
+    )
+  ).map(([format, count]) => ({ format, count }))
+
 export const getFinderSearchStatusCounts = (
   jobs: readonly FinderSearchJob[]
 ): FinderSearchStatusCounts =>
@@ -989,11 +1075,240 @@ const compareByStatusPriority = (
 ) =>
   candidateStatusPriority[left.status] - candidateStatusPriority[right.status]
 
+const decisionRecommendationPriority: Record<
+  FinderDecisionQueueItem['recommendation'],
+  number
+> = {
+  import: 0,
+  hold: 1,
+  reject: 2
+}
+
+const decisionPriorityOrder: Record<FinderDecisionQueueItem['priority'], number> = {
+  now: 0,
+  soon: 1,
+  later: 2
+}
+
+const buildExplicitFinderDecision = (
+  state: FinderCandidateDecisionState,
+  reason: string | undefined
+): FinderDecisionQueueItem | null => {
+  if (state === 'import_now') {
+    return {
+      recommendation: 'import',
+      priority: 'now',
+      score: 95,
+      summary: reason?.trim()
+        ? `Marked for immediate import. ${reason.trim()}`
+        : 'Marked for immediate import.',
+      reasons: reason?.trim()
+        ? [reason.trim(), 'owner marked import now']
+        : ['owner marked import now']
+    }
+  }
+
+  if (state === 'hold_later') {
+    return {
+      recommendation: 'hold',
+      priority: 'later',
+      score: 50,
+      summary: reason?.trim()
+        ? `Held for later. ${reason.trim()}`
+        : 'Held for later review.',
+      reasons: reason?.trim()
+        ? [reason.trim(), 'owner marked hold for later']
+        : ['owner marked hold for later']
+    }
+  }
+
+  if (state === 'rejected') {
+    return {
+      recommendation: 'reject',
+      priority: 'later',
+      score: 10,
+      summary: reason?.trim()
+        ? `Rejected with reason. ${reason.trim()}`
+        : 'Rejected by owner review.',
+      reasons: reason?.trim()
+        ? [reason.trim(), 'owner rejected candidate']
+        : ['owner rejected candidate']
+    }
+  }
+
+  return null
+}
+
+export const buildFinderDecisionQueueItem = (
+  result: FinderCandidateResult
+): FinderDecisionQueueItem => {
+  const explicitDecision = buildExplicitFinderDecision(
+    result.decision?.state ?? 'auto',
+    result.decision?.reason
+  )
+
+  if (explicitDecision) {
+    return explicitDecision
+  }
+
+  if (result.status === 'imported') {
+    return {
+      recommendation: 'hold',
+      priority: 'later',
+      score: 35,
+      summary: 'Already imported. Keep for follow-up, not for first-pass queue.',
+      reasons: ['already imported']
+    }
+  }
+
+  if (result.status === 'rejected') {
+    return {
+      recommendation: 'reject',
+      priority: 'later',
+      score: 10,
+      summary: 'Already rejected. Keep out of the active queue unless new evidence appears.',
+      reasons: ['already rejected']
+    }
+  }
+
+  const fitScore = result.fitScore ?? 0
+  const hasWhyRelevant = Boolean(result.whyRelevant?.trim())
+  const hasNextAction = Boolean(result.nextAction?.trim())
+  const hasLinks = (result.links ?? []).length > 0
+  const improvementCount = splitScoreImprovements(result.missingInfo ?? '').length
+  const hasNamedTarget = Boolean(result.partnerName?.trim())
+  const hasClearTitle = Boolean(result.title?.trim())
+  const hasStrongEvidence =
+    hasLinks && hasWhyRelevant && hasNextAction && hasNamedTarget && hasClearTitle
+  const hasUsableEvidence =
+    hasNamedTarget &&
+    hasClearTitle &&
+    (hasLinks || hasWhyRelevant || hasNextAction)
+
+  const baseScore =
+    fitScore +
+    (hasLinks ? 8 : 0) +
+    (hasWhyRelevant ? 6 : 0) +
+    (hasNextAction ? 6 : 0) +
+    (hasNamedTarget ? 4 : 0) +
+    (hasClearTitle ? 4 : 0) -
+    improvementCount * 4
+
+  const reasons = [
+    hasLinks ? 'source link present' : 'source link missing',
+    hasWhyRelevant ? 'relevance rationale present' : 'relevance rationale missing',
+    hasNextAction ? 'next action present' : 'next action missing',
+    improvementCount > 0
+      ? `${improvementCount} improvement point${improvementCount === 1 ? '' : 's'}`
+      : 'no obvious improvement blockers'
+  ]
+
+  if (fitScore >= 80 && hasStrongEvidence) {
+    return {
+      recommendation: 'import',
+      priority: 'now',
+      score: Math.max(0, Math.min(100, Math.round(baseScore))),
+      summary: 'Strong candidate. Import first and prepare outreach or session context now.',
+      reasons
+    }
+  }
+
+  if ((fitScore >= 68 && hasUsableEvidence) || (fitScore >= 75 && hasLinks)) {
+    return {
+      recommendation: 'hold',
+      priority: 'soon',
+      score: Math.max(0, Math.min(100, Math.round(baseScore - 8))),
+      summary: 'Promising candidate. Fill a few weak fields before importing.',
+      reasons
+    }
+  }
+
+  if (fitScore >= 50 || hasUsableEvidence) {
+    return {
+      recommendation: 'hold',
+      priority: 'later',
+      score: Math.max(0, Math.min(100, Math.round(baseScore - 18))),
+      summary: 'Keep for later review. More evidence is needed before import.',
+      reasons
+    }
+  }
+
+  return {
+    recommendation: 'reject',
+    priority: 'later',
+    score: Math.max(0, Math.min(100, Math.round(baseScore - 30))),
+    summary: 'Too weak for the active queue. Reject unless new evidence arrives.',
+    reasons
+  }
+}
+
+export const summarizeFinderDecisionQueue = (
+  results: readonly FinderCandidateResult[]
+): FinderDecisionQueueSummary =>
+  results.reduce<FinderDecisionQueueSummary>(
+    (summary, result) => {
+      const decision = buildFinderDecisionQueueItem(result)
+
+      return {
+        importCount:
+          summary.importCount +
+          (decision.recommendation === 'import' ? 1 : 0),
+        holdCount: summary.holdCount + (decision.recommendation === 'hold' ? 1 : 0),
+        rejectCount:
+          summary.rejectCount +
+          (decision.recommendation === 'reject' ? 1 : 0),
+        nowCount: summary.nowCount + (decision.priority === 'now' ? 1 : 0),
+        soonCount: summary.soonCount + (decision.priority === 'soon' ? 1 : 0),
+        laterCount: summary.laterCount + (decision.priority === 'later' ? 1 : 0)
+      }
+    },
+    {
+      importCount: 0,
+      holdCount: 0,
+      rejectCount: 0,
+      nowCount: 0,
+      soonCount: 0,
+      laterCount: 0
+    }
+  )
+
+export const buildFinderQueueReviewColumns = (
+  results: readonly FinderCandidateResult[]
+): FinderQueueReviewColumn[] => {
+  const sorted = createFinderPipelineView(results, { sortMode: 'decision' })
+  const lanes: FinderQueueReviewLane[] = ['import', 'hold', 'reject']
+  const labels: Record<FinderQueueReviewLane, string> = {
+    import: 'Import now',
+    hold: 'Hold',
+    reject: 'Reject'
+  }
+
+  return lanes.map((lane) => {
+    const items = sorted
+      .filter((result) => buildFinderDecisionQueueItem(result).recommendation === lane)
+      .map((result) => ({
+        result,
+        decision: buildFinderDecisionQueueItem(result),
+        lane,
+        explicitState: result.decision?.state ?? 'auto',
+        isExplicit: (result.decision?.state ?? 'auto') !== 'auto'
+      }))
+
+    return {
+      lane,
+      label: labels[lane],
+      items,
+      explicitCount: items.filter((item) => item.isExplicit).length
+    }
+  })
+}
+
 export const createFinderPipelineView = (
   results: readonly FinderCandidateResult[],
   filters: FinderPipelineFilters = {}
 ): FinderCandidateResult[] => {
   const status = filters.status ?? 'all'
+  const decision = filters.decision ?? 'all'
   const sortMode = filters.sortMode ?? 'fit_desc'
   const minFitScore =
     typeof filters.minFitScore === 'number' && !Number.isNaN(filters.minFitScore)
@@ -1002,6 +1317,15 @@ export const createFinderPipelineView = (
 
   return results
     .filter((result) => status === 'all' || result.status === status)
+    .filter((result) =>
+      decision === 'all'
+        ? true
+        : decision === 'import'
+        ? result.status === 'imported' || result.decision?.state === 'import_now'
+        : decision === 'hold'
+        ? result.decision?.state === 'hold_later'
+        : result.status === 'rejected' || result.decision?.state === 'rejected'
+    )
     .filter((result) =>
       minFitScore === undefined ? true : (result.fitScore ?? -1) >= minFitScore
     )
@@ -1022,6 +1346,22 @@ export const createFinderPipelineView = (
         return (
           compareByStatusPriority(left, right) ||
           getFitScoreForDesc(right) - getFitScoreForDesc(left) ||
+          compareByCreatedAtDesc(left, right)
+        )
+      }
+
+      if (sortMode === 'decision') {
+        const leftDecision = buildFinderDecisionQueueItem(left)
+        const rightDecision = buildFinderDecisionQueueItem(right)
+
+        return (
+          decisionRecommendationPriority[leftDecision.recommendation] -
+            decisionRecommendationPriority[rightDecision.recommendation] ||
+          decisionPriorityOrder[leftDecision.priority] -
+            decisionPriorityOrder[rightDecision.priority] ||
+          rightDecision.score - leftDecision.score ||
+          getFitScoreForDesc(right) - getFitScoreForDesc(left) ||
+          compareByStatusPriority(left, right) ||
           compareByCreatedAtDesc(left, right)
         )
       }
@@ -1065,6 +1405,36 @@ export interface FinderCandidateScoreExplanation {
   improvements: string[]
 }
 
+export interface FinderPreviewQualityReview {
+  level: 'ready' | 'usable' | 'weak'
+  label: string
+  retrievalReady: boolean
+  missingCriticalFields: string[]
+  suggestedEdits: string[]
+}
+
+export interface FinderPreviewCompletionAction {
+  id: string
+  label: string
+  field:
+    | 'partnerName'
+    | 'title'
+    | 'linksText'
+    | 'context'
+    | 'whyRelevant'
+    | 'missingInfo'
+    | 'nextAction'
+  value: string
+}
+
+export interface FinderPreviewImportDecision {
+  tier: 'ready' | 'usable' | 'weak'
+  label: string
+  canAutoSelect: boolean
+  requiresConfirmation: boolean
+  canImport: boolean
+}
+
 export const explainFinderCandidateScore = (
   result: FinderCandidateResult | (FinderCandidateResultDraft & { kind: CounterpartyContextPackKind })
 ): FinderCandidateScoreExplanation => {
@@ -1106,6 +1476,169 @@ export const explainFinderCandidateScore = (
     scoreReason,
     positiveSignals,
     improvements
+  }
+}
+
+export const reviewFinderPreviewCandidateQuality = (
+  result: FinderCandidateResult | (FinderCandidateResultDraft & { kind: CounterpartyContextPackKind })
+): FinderPreviewQualityReview => {
+  const evidenceText = [
+    result.summary,
+    result.context,
+    result.whyRelevant,
+    result.nextAction
+  ]
+    .filter(Boolean)
+    .join('\n')
+  const missingCriticalFields = [
+    result.partnerName ? '' : 'partner name',
+    result.title ? '' : 'title or opportunity',
+    (result.links ?? []).length > 0 ? '' : 'source URL',
+    getEmailsFromText(evidenceText).length > 0 ? '' : 'contact',
+    result.whyRelevant ? '' : 'why relevant',
+    result.nextAction ? '' : 'next action'
+  ].filter(Boolean)
+  const improvements = splitScoreImprovements(result.missingInfo ?? '')
+  const suggestedEdits = [
+    ...missingCriticalFields.map((field) => `Add ${field}`),
+    ...improvements.map((field) => `Clarify ${field}`)
+  ].filter((value, index, list) => list.indexOf(value) === index)
+
+  if (missingCriticalFields.length === 0 && improvements.length <= 2) {
+    return {
+      level: 'ready',
+      label: 'ready for import',
+      retrievalReady: true,
+      missingCriticalFields,
+      suggestedEdits
+    }
+  }
+
+  if (missingCriticalFields.length <= 2) {
+    return {
+      level: 'usable',
+      label: 'usable after quick edits',
+      retrievalReady: true,
+      missingCriticalFields,
+      suggestedEdits
+    }
+  }
+
+  return {
+    level: 'weak',
+    label: 'weak before outreach/session use',
+    retrievalReady: false,
+    missingCriticalFields,
+    suggestedEdits
+  }
+}
+
+export const buildFinderPreviewCompletionActions = (
+  result: FinderCandidateResult | (FinderCandidateResultDraft & { kind: CounterpartyContextPackKind }),
+  review: FinderPreviewQualityReview
+): FinderPreviewCompletionAction[] => {
+  const actions: FinderPreviewCompletionAction[] = []
+  const addAction = (action: FinderPreviewCompletionAction) => {
+    if (actions.some((item) => item.id === action.id)) {
+      return
+    }
+
+    actions.push(action)
+  }
+
+  if (review.missingCriticalFields.includes('source URL')) {
+    addAction({
+      id: 'add-source-url',
+      label: 'Add source URL',
+      field: 'linksText',
+      value: 'https://'
+    })
+  }
+
+  if (review.missingCriticalFields.includes('contact')) {
+    addAction({
+      id: 'add-contact',
+      label: 'Add contact hint',
+      field: 'context',
+      value: 'Contact: '
+    })
+  }
+
+  if (review.missingCriticalFields.includes('why relevant')) {
+    addAction({
+      id: 'add-why-relevant',
+      label: 'Add why relevant',
+      field: 'whyRelevant',
+      value: `Relevant for ${result.kind} outreach because `
+    })
+  }
+
+  if (review.missingCriticalFields.includes('next action')) {
+    const nextActionByKind: Record<CounterpartyContextPackKind, string> = {
+      job: 'Prepare interview story and verify role details.',
+      partner: 'Prepare partner intro and confirm decision maker.',
+      investor: 'Prepare investor intro and verify thesis fit.',
+      accelerator: 'Prepare application intro and verify deadline.',
+      other: 'Prepare focused intro and confirm next step.'
+    }
+
+    addAction({
+      id: 'add-next-action',
+      label: 'Add next action',
+      field: 'nextAction',
+      value: nextActionByKind[result.kind]
+    })
+  }
+
+  for (const edit of review.suggestedEdits.slice(0, 4)) {
+    addAction({
+      id: `track-${edit.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      label: `Track ${edit}`,
+      field: 'missingInfo',
+      value: edit
+    })
+  }
+
+  return actions
+}
+
+export const getFinderPreviewImportDecision = ({
+  review,
+  selected,
+  confirmed
+}: {
+  review: FinderPreviewQualityReview
+  selected: boolean
+  confirmed: boolean
+}): FinderPreviewImportDecision => {
+  if (review.level === 'ready') {
+    return {
+      tier: 'ready',
+      label: 'ready to import',
+      canAutoSelect: true,
+      requiresConfirmation: false,
+      canImport: selected
+    }
+  }
+
+  if (review.level === 'usable') {
+    return {
+      tier: 'usable',
+      label: 'usable, review before import',
+      canAutoSelect: true,
+      requiresConfirmation: false,
+      canImport: selected
+    }
+  }
+
+  return {
+    tier: 'weak',
+    label: confirmed
+      ? 'weak, confirmed for import'
+      : 'weak, confirm before import',
+    canAutoSelect: false,
+    requiresConfirmation: true,
+    canImport: selected && confirmed
   }
 }
 

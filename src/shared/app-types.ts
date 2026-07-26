@@ -140,6 +140,7 @@ export interface SessionContext {
 
 export interface SessionContextResult {
   context: SessionContext
+  persistedContext: SessionContext
 }
 
 export const contextSourceKindValues = [
@@ -241,12 +242,25 @@ export interface FinderCandidateResultDraft {
   nextAction?: string
 }
 
+export type FinderCandidateDecisionState =
+  | 'auto'
+  | 'import_now'
+  | 'hold_later'
+  | 'rejected'
+
+export interface FinderCandidateDecision {
+  state: FinderCandidateDecisionState
+  reason?: string
+  updatedAt: string
+}
+
 export interface FinderCandidateResult extends FinderCandidateResultDraft {
   version: 1
   id: string
   jobId: string
   kind: CounterpartyContextPackKind
   status: 'ready' | 'imported' | 'rejected'
+  decision: FinderCandidateDecision
   createdAt: string
 }
 
@@ -262,6 +276,14 @@ export interface FinderRunnerRunSummary {
 
 export type FinderSourceAdapterMode = 'owner_paste_v0'
 
+export type FinderSourceAdapterDetectedFormat =
+  | 'url'
+  | 'structured_fields'
+  | 'linkedin_job'
+  | 'accelerator_snippet'
+  | 'csv_row'
+  | 'freeform_text'
+
 export interface FinderSourceAdapterRunSummary {
   jobId: string
   mode: FinderSourceAdapterMode
@@ -275,6 +297,7 @@ export interface FinderSourceAdapterRunSummary {
 export interface FinderSourceAdapterPreviewCandidate {
   index: number
   draft: FinderCandidateResultDraft
+  detectedFormat: FinderSourceAdapterDetectedFormat
   duplicate: boolean
 }
 
@@ -284,9 +307,22 @@ export interface FinderSourceAdapterPreviewResult {
   requestedCount: number
   validCount: number
   duplicateCount: number
+  detectedFormats: {
+    format: FinderSourceAdapterDetectedFormat
+    count: number
+  }[]
   candidates: FinderSourceAdapterPreviewCandidate[]
   errors: { index?: number; reason: string }[]
   reason: string
+}
+
+export interface FinderOwnerSourceSessionIngressResult {
+  store: FinderSearchStore
+  manifest: ContextSourceManifestResult['manifest']
+  session: SessionContextResult
+  finderSourceAdapterSummary?: FinderSourceAdapterRunSummary
+  importedPackCount: number
+  importedCandidateCount: number
 }
 
 export interface FinderOutreachDraft {
@@ -305,7 +341,7 @@ export interface FinderOutreachDraft {
   openingMessage: string
   nextAction: string
   warnings: string[]
-  status: 'draft'
+  status: 'draft' | 'ready_for_contact'
   createdAt: string
 }
 

@@ -23,6 +23,7 @@ import {
   type CounterpartyFinderPayloadPreviewResult,
   type ContextSourceKind,
   type ControlState,
+  type FinderCandidateDecisionState,
   type FinderCandidateResult,
   type FinderCandidateResultDraft,
   type FinderOutreachDraft,
@@ -83,15 +84,26 @@ import {
   formatContextSourceReadinessFixes
 } from '@shared/knowledge-ingestion-quality'
 import {
-  buildManualPrepPreview
-} from '@shared/manual-prep-preview'
-import {
   buildSessionPayloadInspector,
-  type SessionPayloadInspector
+  type SessionPayloadInspector,
+  type SessionPayloadPackItem
 } from '@shared/session-payload-inspector'
+import {
+  buildSessionSelectionSurface
+} from '@shared/session-selection-surface'
+import {
+  buildSessionPackReviewItems,
+  filterSessionPackReviewItems,
+  getSessionPackReviewFilterCounts,
+  type SessionPackReviewFilter
+} from '@shared/session-pack-review'
+import {
+  buildInitialLoadState
+} from '@shared/initial-load-state'
 import {
   formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
+  getSessionContextWithImportedCounterpartyPacks,
   getSessionContextWithCounterpartyPacks,
   getSessionSelectedCounterpartyPackIds
 } from '@shared/session-pack-selection'
@@ -113,9 +125,12 @@ import {
   preTestResetPlan
 } from '@shared/pre-test-reset'
 import {
+  buildFinderPreviewImportNotice,
   createFinderPreviewItems,
+  getFinderPreviewControls,
   getFinderPreviewSelectionStats,
   type CounterpartyFinderPreviewItem,
+  setFinderPreviewItemSelected,
   toggleSelectAllFinderCandidates as toggleSelectAllFinderCandidatesModel
 } from '@shared/finder-preview-state'
 import {
@@ -130,13 +145,21 @@ import {
   type KnowledgePackLifecycleVisibilityFilter
 } from '@shared/knowledge-pack-review'
 import {
+  buildFinderDecisionQueueItem,
+  buildFinderQueueReviewColumns,
   createContextPackDraftFromFinderResult,
+  buildFinderPreviewCompletionActions,
   createFinderOutreachPrepPack,
   createFinderPipelineView,
   explainFinderCandidateScore,
   formatFinderOutreachDraftForExport,
+  getFinderPreviewImportDecision,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
+  reviewFinderPreviewCandidateQuality,
+  summarizeFinderDecisionQueue,
+  type FinderQueueReviewLane,
+  type FinderPipelineDecisionFilter,
   type FinderPipelineSortMode,
   type FinderPipelineStatusFilter,
   type FinderRunnerPayloadPreviewResult
@@ -240,8 +263,12 @@ type FinderCandidateFormDraft = FinderCandidateResultDraft & {
 type FinderOwnerSourcePreviewItem = {
   index: number
   selected: boolean
+  weakConfirmed: boolean
   duplicate: boolean
-  draft: FinderCandidateResultDraft
+  detectedFormat: NonNullable<
+    FinderSourceAdapterPreviewResult['candidates'][number]
+  >['detectedFormat']
+  draft: FinderCandidateFormDraft
 }
 
 const fileContextSourceKinds = new Set<ContextSourceKind>([
@@ -302,6 +329,18 @@ const speakerLabels = {
   me: 'Me',
   system: 'System'
 } as const
+
+const finderSourceDetectedFormatLabels: Record<
+  FinderSourceAdapterPreviewResult['candidates'][number]['detectedFormat'],
+  string
+> = {
+  url: 'URL',
+  structured_fields: 'Structured',
+  linkedin_job: 'LinkedIn',
+  accelerator_snippet: 'Accelerator',
+  csv_row: 'CSV/export',
+  freeform_text: 'Freeform'
+}
 
 const suggestionLabelTitles: Record<SuggestedAnswer['label'], string> = {
   short: 'Short',
@@ -567,17 +606,6 @@ const getSessionContextLabel = (context: SessionContext) => {
   return company || role || 'No session'
 }
 
-const getSessionContextWithImportedCandidates = (
-  context: SessionContext,
-  availablePacks: CounterpartyContextPack[],
-  importedCandidates: CounterpartyContextPackDraft[] = []
-) =>
-  getSessionContextWithCounterpartyPacks(
-    context,
-    availablePacks,
-    importedCandidates
-  )
-
 const getSessionContextRetrievalKinds = (
   context: SessionContext
 ): CounterpartyContextPackKind[] | undefined => {
@@ -664,6 +692,7 @@ export const App = () => {
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
   const noEventTimeoutRef = useRef<number | null>(null)
   const autoAnalysisTimeoutRef = useRef<number | null>(null)
+  const preparePackReviewSectionRef = useRef<HTMLDivElement | null>(null)
   const lastAutoAnalyzedFingerprintRef = useRef<string | null>(null)
   const scheduledAutoAnalysisFingerprintRef = useRef<string | null>(null)
   const runAssistantAnalysisRef = useRef<
@@ -693,12 +722,18 @@ export const App = () => {
     useState<SessionContext>(emptySessionContext)
   const [sessionContextDraft, setSessionContextDraft] =
     useState<SessionContext>(emptySessionContext)
+  const [activeSessionDroppedPackAudit, setActiveSessionDroppedPackAudit] =
+    useState<SessionPayloadPackItem[]>([])
+  const [draftSessionDroppedPackAudit, setDraftSessionDroppedPackAudit] =
+    useState<SessionPayloadPackItem[]>([])
   const [sessionContextError, setSessionContextError] = useState<string | null>(
     null
   )
   const [sessionContextNotice, setSessionContextNotice] = useState<
     string | null
   >(null)
+  const [preparePackReviewFilter, setPreparePackReviewFilter] =
+    useState<SessionPackReviewFilter>('all')
   const [isSavingSessionContext, setIsSavingSessionContext] = useState(false)
   const [counterpartyPacks, setCounterpartyPacks] = useState<
     CounterpartyContextPack[]
@@ -761,6 +796,8 @@ export const App = () => {
     useState<string | null>(null)
   const [finderPipelineStatusFilter, setFinderPipelineStatusFilter] =
     useState<FinderPipelineStatusFilter>('all')
+  const [finderPipelineDecisionFilter, setFinderPipelineDecisionFilter] =
+    useState<FinderPipelineDecisionFilter>('all')
   const [finderPipelineSortMode, setFinderPipelineSortMode] =
     useState<FinderPipelineSortMode>('fit_desc')
   const [finderPipelineMinFitScore, setFinderPipelineMinFitScore] = useState('')
@@ -773,22 +810,57 @@ export const App = () => {
   const finderPayloadCandidatesCount = counterpartyFinderPayloadItems.length
   const finderPayloadSelectionStats =
     getFinderPreviewSelectionStats(counterpartyFinderPayloadItems)
+  const finderPreviewControls = getFinderPreviewControls(
+    counterpartyFinderPayloadItems,
+    isSavingCounterpartyPacks
+  )
   const finderPayloadCandidateCountNonDuplicate =
-    finderPayloadSelectionStats.nonDuplicate
-  const selectedFinderCandidatesCount = finderPayloadSelectionStats.selected
+    finderPreviewControls.selectableCount
+  const selectedFinderCandidatesCount = finderPreviewControls.selectedCount
   const areAllFinderCandidatesSelected =
     finderPayloadSelectionStats.areAllSelected
   const finderSearchStatusCounts =
     getFinderSearchStatusCounts(finderSearchJobs)
-  const selectableFinderOwnerSourceCount = finderOwnerSourcePreviewItems.filter(
-    (item) => !item.duplicate
+  const finderOwnerSourceDecisionItems = finderOwnerSourcePreviewItems.map(
+    (item) => {
+      const review = reviewFinderPreviewCandidateQuality({
+        ...item.draft,
+        links: normalizeLinksText(item.draft.linksText),
+        kind: selectedFinderSearchJob?.kind ?? 'other'
+      })
+      const decision = getFinderPreviewImportDecision({
+        review,
+        selected: item.selected,
+        confirmed: item.weakConfirmed
+      })
+
+      return {
+        item,
+        review,
+        decision
+      }
+    }
+  )
+  const selectableFinderOwnerSourceCount = finderOwnerSourceDecisionItems.filter(
+    ({ item }) => !item.duplicate
   ).length
-  const selectedFinderOwnerSourceCount = finderOwnerSourcePreviewItems.filter(
-    (item) => item.selected && !item.duplicate
+  const selectedFinderOwnerSourceCount = finderOwnerSourceDecisionItems.filter(
+    ({ item, decision }) =>
+      item.selected && !item.duplicate && decision.canImport
   ).length
+  const pendingFinderOwnerSourceConfirmationsCount =
+    finderOwnerSourceDecisionItems.filter(
+      ({ item, decision }) =>
+        item.selected &&
+        !item.duplicate &&
+        decision.requiresConfirmation &&
+        !decision.canImport
+    ).length
   const areAllFinderOwnerSourceCandidatesSelected =
     selectableFinderOwnerSourceCount > 0 &&
-    selectedFinderOwnerSourceCount === selectableFinderOwnerSourceCount
+    finderOwnerSourceDecisionItems
+      .filter(({ item }) => !item.duplicate)
+      .every(({ item }) => item.selected)
   const selectedFinderSearchJob =
     finderSearchJobs.find((job) => job.id === selectedFinderSearchJobId) ?? null
   const selectedFinderSearchResultsRaw = selectedFinderSearchJob
@@ -800,12 +872,19 @@ export const App = () => {
     selectedFinderSearchResultsRaw,
     {
       status: finderPipelineStatusFilter,
+      decision: finderPipelineDecisionFilter,
       sortMode: finderPipelineSortMode,
       minFitScore: finderPipelineMinFitScore.trim()
         ? Number(finderPipelineMinFitScore)
         : undefined,
       requiresNextAction: finderPipelineRequiresNextAction
     }
+  )
+  const selectedFinderDecisionSummary = summarizeFinderDecisionQueue(
+    selectedFinderSearchResults
+  )
+  const finderQueueReviewColumns = buildFinderQueueReviewColumns(
+    selectedFinderSearchResultsRaw
   )
   const focusedFinderCandidateResult =
     selectedFinderSearchResults.find(
@@ -830,6 +909,9 @@ export const App = () => {
         (draft) => draft.jobId === selectedFinderSearchJob.id
       )
     : []
+  const finderOutreachDraftsByCandidateId = new Map(
+    finderOutreachDrafts.map((draft) => [draft.candidateResultId, draft])
+  )
   const counterpartyPackReviewSurface = buildKnowledgePackReviewSurface({
     sourceId: counterpartyPackDraft.sourceId,
     kind: counterpartyPackDraft.kind,
@@ -1023,47 +1105,57 @@ export const App = () => {
             window.coqpi.finderSearch.get()
           ])
 
-        setConfigStatus(status)
-        setProfileContext(profile.content)
-        setProfileError(null)
-        const packs = contextSourcePayload.manifest.counterpartyPacks ?? []
-        const syncedSessionContext = {
-          ...session.context,
-          selectedCounterpartyPackIds:
-            getSessionSelectedCounterpartyPackIds(session.context, packs)
-        }
+        const initialLoadState = buildInitialLoadState({
+          status,
+          profile,
+          session,
+          contextSourcePayload,
+          settingsPayload,
+          keyState,
+          smokeNotePayload,
+          finderSearchPayload
+        })
 
-        setCounterpartyPacks(packs)
-        setKnowledgePackLifecycle(
-          contextSourcePayload.manifest.knowledgePackLifecycle ?? []
+        setConfigStatus(initialLoadState.configStatus)
+        setProfileContext(initialLoadState.profileContext)
+        setProfileError(null)
+        setCounterpartyPacks(initialLoadState.counterpartyPacks)
+        setKnowledgePackLifecycle(initialLoadState.knowledgePackLifecycle)
+        setSessionContext(initialLoadState.sessionContext)
+        setSessionContextDraft(initialLoadState.sessionContextDraft)
+        setActiveSessionDroppedPackAudit(
+          initialLoadState.activeSessionDroppedPackAudit
         )
-        setSessionContext(syncedSessionContext)
-        setSessionContextDraft(syncedSessionContext)
+        setDraftSessionDroppedPackAudit(
+          initialLoadState.draftSessionDroppedPackAudit
+        )
         setSessionContextError(null)
-        setContextSources(contextSourcePayload.manifest.sources)
+        setSessionContextNotice(initialLoadState.sessionRecoveryNotice)
+        setContextSources(initialLoadState.contextSources)
         setContextSourcesError(null)
         setCounterpartyPackDraftError(null)
         setCounterpartyPackDraftNotice(null)
         setCounterpartyPackFinderPayload('')
-        setKeyStatus(keyState)
-        setSettingsForm(settingsPayload.settings)
-        setSettingsMeta(settingsPayload.meta)
-        setSmokeNotes(smokeNotePayload.notes)
-        applyFinderSearchStore(finderSearchPayload.store)
-        setIncludeProfileContext(
-          settingsPayload.settings.includeProfileContextByDefault
-        )
-        setCostMode(settingsPayload.settings.costMode)
+        setKeyStatus(initialLoadState.keyStatus)
+        setSettingsForm(initialLoadState.settingsForm)
+        setSettingsMeta(initialLoadState.settingsMeta)
+        setSmokeNotes(initialLoadState.smokeNotes)
+        applyFinderSearchStore(initialLoadState.finderSearchStore)
+        setIncludeProfileContext(initialLoadState.includeProfileContext)
+        setCostMode(initialLoadState.costMode)
         setControls((currentControls) => ({
           ...currentControls,
-          callLanguage: settingsPayload.settings.defaultCallLanguage,
-          answerLanguage: settingsPayload.settings.defaultAnswerLanguage
+          callLanguage: initialLoadState.controlPatch.callLanguage,
+          answerLanguage: initialLoadState.controlPatch.answerLanguage
         }))
       } catch (error) {
         setConfigStatus(missingConfigStatus)
         setProfileContext('')
         setSessionContext(emptySessionContext)
         setSessionContextDraft(emptySessionContext)
+        setActiveSessionDroppedPackAudit([])
+        setDraftSessionDroppedPackAudit([])
+        setSessionContextNotice(null)
         setContextSources([])
         setCounterpartyPacks([])
         setCounterpartyPackDraft(emptyCounterpartyPackDraft)
@@ -1579,6 +1671,8 @@ export const App = () => {
 
       setSessionContext(payload.context)
       setSessionContextDraft(payload.context)
+      setActiveSessionDroppedPackAudit([])
+      setDraftSessionDroppedPackAudit([])
       setSessionContextNotice('Session context saved locally.')
     } catch (error) {
       setSessionContextError(
@@ -1604,6 +1698,8 @@ export const App = () => {
 
       setSessionContext(payload.context)
       setSessionContextDraft(payload.context)
+      setActiveSessionDroppedPackAudit([])
+      setDraftSessionDroppedPackAudit([])
       setSessionContextNotice('Session context cleared.')
     } catch (error) {
       setSessionContextError(
@@ -1677,14 +1773,39 @@ export const App = () => {
     importedCandidates: CounterpartyContextPackDraft[] = [],
     lifecycle: KnowledgePackLifecycleEntry[] = knowledgePackLifecycle
   ) => {
+    const activeDroppedPacks = buildSessionPayloadInspector({
+      context: sessionContext,
+      availablePacks: packs,
+      availableOutreachDrafts: finderOutreachDrafts,
+      includeProfileContext,
+      profileChars: profileContext.length
+    }).droppedPacks
+    const draftDroppedPacks = buildSessionPayloadInspector({
+      context: sessionContextDraft,
+      availablePacks: packs,
+      availableOutreachDrafts: finderOutreachDrafts,
+      includeProfileContext,
+      profileChars: profileContext.length
+    }).droppedPacks
+
     setCounterpartyPacks(packs)
     setKnowledgePackLifecycle(lifecycle)
     setCounterpartyPackDraftError(null)
+    setActiveSessionDroppedPackAudit(activeDroppedPacks)
+    setDraftSessionDroppedPackAudit(draftDroppedPacks)
     setSessionContext((current) =>
-      getSessionContextWithImportedCandidates(current, packs, importedCandidates)
+      getSessionContextWithImportedCounterpartyPacks(
+        current,
+        packs,
+        importedCandidates
+      )
     )
     setSessionContextDraft((current) =>
-      getSessionContextWithImportedCandidates(current, packs, importedCandidates)
+      getSessionContextWithImportedCounterpartyPacks(
+        current,
+        packs,
+        importedCandidates
+      )
     )
   }
 
@@ -1943,9 +2064,7 @@ export const App = () => {
     selected: boolean
   ) => {
     setCounterpartyFinderPayloadItems((current) =>
-      current.map((item) =>
-        item.index === index ? { ...item, selected } : item
-      )
+      setFinderPreviewItemSelected(current, index, selected)
     )
   }
 
@@ -1954,7 +2073,7 @@ export const App = () => {
       return
     }
 
-    if (finderPayloadCandidateCountNonDuplicate === 0) {
+    if (!finderPreviewControls.canToggleSelectAll) {
       return
     }
 
@@ -1975,8 +2094,7 @@ export const App = () => {
     setCounterpartyPackImportErrors([])
   }
 
-  const canImportFinderCandidates =
-    !isSavingCounterpartyPacks && selectedFinderCandidatesCount > 0
+  const canImportFinderCandidates = finderPreviewControls.canImportSelected
 
   const importSelectedFinderCandidates = async () => {
     const selected = counterpartyFinderPayloadItems.filter(
@@ -2003,7 +2121,7 @@ export const App = () => {
       )
       const importedCandidates = selected.map((candidate) => candidate.draft)
       const nextPacks = payload.manifest.counterpartyPacks ?? []
-      const nextSessionContext = getSessionContextWithImportedCandidates(
+      const nextSessionContext = getSessionContextWithImportedCounterpartyPacks(
         sessionContext,
         nextPacks,
         importedCandidates
@@ -2033,29 +2151,12 @@ export const App = () => {
 
       const selectedCount = selected.length
       setCounterpartyPackDraftNotice(
-        `Imported ${selectedCount} selected counterparty pack${
-          selectedCount === 1 ? '' : 's'
-        }.`
+        buildFinderPreviewImportNotice({
+          selectedCount,
+          duplicateCount: previewDuplicateCount,
+          errorCount: previewErrorCount
+        })
       )
-
-      if (previewDuplicateCount > 0 || previewErrorCount > 0) {
-        const duplicateSuffix =
-          previewDuplicateCount > 0
-            ? ` ${previewDuplicateCount} duplicate/recorded entr${
-                previewDuplicateCount === 1 ? 'y' : 'ies'
-              } skipped.`
-            : ''
-        const errorSuffix =
-          previewErrorCount > 0
-            ? ` ${previewErrorCount} invalid entr${
-                previewErrorCount === 1 ? 'y' : 'ies'
-              } skipped.`
-            : ''
-
-        setCounterpartyPackDraftNotice((current) =>
-          `${current ?? ''}${duplicateSuffix}${errorSuffix}`.trim()
-        )
-      }
 
       setCounterpartyPackFinderPayload('')
       setCounterpartyFinderPayloadItems([])
@@ -2158,6 +2259,79 @@ export const App = () => {
     }
   }
 
+  const setFinderCandidateDecision = async (
+    resultId: string,
+    state: FinderCandidateDecisionState,
+    reason?: string
+  ) => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const payload = await window.coqpi.finderSearch.setCandidateDecision(
+        resultId,
+        state,
+        reason
+      )
+      applyFinderSearchStore(payload.store)
+      setFinderSearchNotice(
+        state === 'hold_later'
+          ? 'Candidate marked to review later.'
+          : state === 'rejected'
+          ? 'Candidate rejected with reason.'
+          : 'Candidate decision updated.'
+      )
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update finder candidate decision.'
+      )
+    }
+  }
+
+  const batchSetFinderCandidateDecision = async (
+    results: readonly FinderCandidateResult[],
+    state: FinderCandidateDecisionState,
+    reason?: string
+  ) => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    let latestStore: FinderSearchStore | null = null
+
+    try {
+      for (const result of results) {
+        const payload = await window.coqpi.finderSearch.setCandidateDecision(
+          result.id,
+          state,
+          reason
+        )
+        latestStore = payload.store
+      }
+
+      if (latestStore) {
+        applyFinderSearchStore(latestStore)
+      }
+
+      setFinderSearchNotice(
+        state === 'hold_later'
+          ? `${results.length} candidate${results.length === 1 ? '' : 's'} moved to hold.`
+          : state === 'import_now'
+          ? `${results.length} candidate${results.length === 1 ? '' : 's'} marked for import.`
+          : state === 'auto'
+          ? `${results.length} candidate${results.length === 1 ? '' : 's'} restored to auto review.`
+          : `${results.length} candidate${results.length === 1 ? '' : 's'} updated.`
+      )
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update finder queue decisions.'
+      )
+    }
+  }
+
   const saveFinderOutreachDraft = async (resultId: string) => {
     setFinderSearchError(null)
     setFinderSearchNotice(null)
@@ -2171,6 +2345,47 @@ export const App = () => {
         error instanceof Error
           ? error.message
           : 'Unable to save local outreach draft.'
+      )
+    }
+  }
+
+  const saveFinderOutreachDraftsBatch = async (
+    results: readonly FinderCandidateResult[]
+  ) => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    const missingDraftResults = results.filter(
+      (result) => !finderOutreachDraftsByCandidateId.has(result.id)
+    )
+
+    if (missingDraftResults.length === 0) {
+      setFinderSearchNotice('All visible candidates in this lane already have outreach drafts.')
+      return
+    }
+
+    let latestStore: FinderSearchStore | null = null
+
+    try {
+      for (const result of missingDraftResults) {
+        const payload = await window.coqpi.finderSearch.saveOutreachDraft(result.id)
+        latestStore = payload.store
+      }
+
+      if (latestStore) {
+        applyFinderSearchStore(latestStore)
+      }
+
+      setFinderSearchNotice(
+        `Saved ${missingDraftResults.length} outreach draft${
+          missingDraftResults.length === 1 ? '' : 's'
+        } locally.`
+      )
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to save outreach drafts.'
       )
     }
   }
@@ -2193,6 +2408,80 @@ export const App = () => {
     } catch {
       setCopiedFinderOutreachDraftId(null)
       setFinderSearchError('Unable to copy local outreach draft.')
+    }
+  }
+
+  const setFinderOutreachDraftStatus = async (
+    draftId: string,
+    status: FinderOutreachDraft['status']
+  ) => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const payload = await window.coqpi.finderSearch.setOutreachDraftStatus(
+        draftId,
+        status
+      )
+      applyFinderSearchStore(payload.store)
+      setFinderSearchNotice(
+        status === 'ready_for_contact'
+          ? 'Draft marked ready for contact locally.'
+          : 'Draft returned to working state.'
+      )
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update outreach draft status.'
+      )
+    }
+  }
+
+  const setFinderOutreachDraftStatusBatch = async (
+    drafts: readonly FinderOutreachDraft[],
+    status: FinderOutreachDraft['status']
+  ) => {
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    const targetDrafts = drafts.filter((draft) => draft.status !== status)
+
+    if (targetDrafts.length === 0) {
+      setFinderSearchNotice(
+        status === 'ready_for_contact'
+          ? 'All visible drafts are already marked ready for contact.'
+          : 'Visible drafts are already back in working state.'
+      )
+      return
+    }
+
+    let latestStore: FinderSearchStore | null = null
+
+    try {
+      for (const draft of targetDrafts) {
+        const payload = await window.coqpi.finderSearch.setOutreachDraftStatus(
+          draft.id,
+          status
+        )
+        latestStore = payload.store
+      }
+
+      if (latestStore) {
+        applyFinderSearchStore(latestStore)
+      }
+
+      setFinderSearchNotice(
+        status === 'ready_for_contact'
+          ? `${targetDrafts.length} draft${targetDrafts.length === 1 ? '' : 's'} marked ready for contact.`
+          : `${targetDrafts.length} draft${targetDrafts.length === 1 ? '' : 's'} moved back to working state.`
+      )
+    } catch (error) {
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update outreach draft statuses.'
+      )
     }
   }
 
@@ -2302,12 +2591,30 @@ export const App = () => {
       )
       setFinderOwnerSourcePreview(preview)
       setFinderOwnerSourcePreviewItems(
-        preview.candidates.map((candidate) => ({
-          index: candidate.index,
-          selected: !candidate.duplicate,
-          duplicate: candidate.duplicate,
-          draft: candidate.draft
-        }))
+        preview.candidates.map((candidate) => {
+          const draft = {
+            ...candidate.draft,
+            linksText: (candidate.draft.links ?? []).join('\n')
+          }
+          const review = reviewFinderPreviewCandidateQuality({
+            ...draft,
+            kind: selectedFinderSearchJob.kind
+          })
+          const decision = getFinderPreviewImportDecision({
+            review,
+            selected: true,
+            confirmed: false
+          })
+
+          return {
+            index: candidate.index,
+            selected: !candidate.duplicate && decision.canAutoSelect,
+            weakConfirmed: false,
+            duplicate: candidate.duplicate,
+            detectedFormat: candidate.detectedFormat,
+            draft
+          }
+        })
       )
       setFinderSearchNotice(
         `Source preview: ${preview.validCount} valid of ${preview.requestedCount}. ${preview.duplicateCount} duplicate skipped by default.`
@@ -2331,8 +2638,37 @@ export const App = () => {
     }
 
     const selectedDrafts = finderOwnerSourcePreviewItems
-      .filter((item) => item.selected && !item.duplicate)
-      .map((item) => item.draft)
+      .filter((item) => {
+        if (item.duplicate || !item.selected) {
+          return false
+        }
+
+        const review = reviewFinderPreviewCandidateQuality({
+          ...item.draft,
+          links: normalizeLinksText(item.draft.linksText),
+          kind: selectedFinderSearchJob.kind
+        })
+        const decision = getFinderPreviewImportDecision({
+          review,
+          selected: item.selected,
+          confirmed: item.weakConfirmed
+        })
+
+        return decision.canImport
+      })
+      .map((item) => ({
+        sourceId: item.draft.sourceId,
+        partnerName: item.draft.partnerName,
+        title: item.draft.title,
+        summary: item.draft.summary,
+        context: item.draft.context,
+        links: normalizeLinksText(item.draft.linksText),
+        score: item.draft.score,
+        fitScore: item.draft.fitScore,
+        whyRelevant: item.draft.whyRelevant,
+        missingInfo: item.draft.missingInfo,
+        nextAction: item.draft.nextAction
+      }))
 
     if (selectedDrafts.length === 0) {
       setFinderSearchError('Select at least one non-duplicate source candidate.')
@@ -2372,6 +2708,106 @@ export const App = () => {
     }
   }
 
+  const importSelectedFinderOwnerSourceToSession = async () => {
+    if (!selectedFinderSearchJob || isImportingFinderOwnerSource) {
+      return
+    }
+
+    const selectedDrafts = finderOwnerSourcePreviewItems
+      .filter((item) => {
+        if (item.duplicate || !item.selected) {
+          return false
+        }
+
+        const review = reviewFinderPreviewCandidateQuality({
+          ...item.draft,
+          links: normalizeLinksText(item.draft.linksText),
+          kind: selectedFinderSearchJob.kind
+        })
+        const decision = getFinderPreviewImportDecision({
+          review,
+          selected: item.selected,
+          confirmed: item.weakConfirmed
+        })
+
+        return decision.canImport
+      })
+      .map((item) => ({
+        sourceId: item.draft.sourceId,
+        partnerName: item.draft.partnerName,
+        title: item.draft.title,
+        summary: item.draft.summary,
+        context: item.draft.context,
+        links: normalizeLinksText(item.draft.linksText),
+        score: item.draft.score,
+        fitScore: item.draft.fitScore,
+        whyRelevant: item.draft.whyRelevant,
+        missingInfo: item.draft.missingInfo,
+        nextAction: item.draft.nextAction
+      }))
+
+    if (selectedDrafts.length === 0) {
+      setFinderSearchError('Select at least one non-duplicate source candidate.')
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsImportingFinderOwnerSource(true)
+    setIsSavingCounterpartyPacks(true)
+    setIsSavingSessionContext(true)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+    setSessionContextError(null)
+    setSessionContextNotice(null)
+
+    try {
+      const payload = await window.coqpi.finderSearch.ingestOwnerSourceToSession(
+        selectedFinderSearchJob.id,
+        selectedDrafts
+      )
+
+      applyFinderSearchStore(payload.store)
+      applyCounterpartyPackManifest(
+        payload.manifest.counterpartyPacks ?? [],
+        [],
+        payload.manifest.knowledgePackLifecycle ?? []
+      )
+      setSessionContext(payload.session.context)
+      setSessionContextDraft(payload.session.context)
+      setActiveSessionDroppedPackAudit([])
+      setDraftSessionDroppedPackAudit([])
+      setSelectedFinderSearchJobId(selectedFinderSearchJob.id)
+      setFinderOwnerSourceText('')
+      setFinderOwnerSourcePreview(null)
+      setFinderOwnerSourcePreviewItems([])
+      setSessionContextNotice(
+        `Source adapter attached ${payload.importedPackCount} pack${
+          payload.importedPackCount === 1 ? '' : 's'
+        } to session prep.`
+      )
+      setFinderSearchNotice(
+        `Imported ${payload.importedCandidateCount} candidate${
+          payload.importedCandidateCount === 1 ? '' : 's'
+        } and attached ${payload.importedPackCount} pack${
+          payload.importedPackCount === 1 ? '' : 's'
+        } to session prep.`
+      )
+      setActiveTab('prepare')
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to import owner source into session prep.'
+      setFinderSearchError(message)
+      setSessionContextError(message)
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsImportingFinderOwnerSource(false)
+      setIsSavingCounterpartyPacks(false)
+      setIsSavingSessionContext(false)
+    }
+  }
+
   const importFinderCandidateResult = async (result: FinderCandidateResult) => {
     if (contextSourceMutationRef.current) {
       return
@@ -2388,7 +2824,7 @@ export const App = () => {
         draft
       ])
       const nextPacks = payload.manifest.counterpartyPacks ?? []
-      const nextSessionContext = getSessionContextWithImportedCandidates(
+      const nextSessionContext = getSessionContextWithImportedCounterpartyPacks(
         sessionContext,
         nextPacks,
         [draft]
@@ -2427,6 +2863,89 @@ export const App = () => {
       setIsSavingCounterpartyPacks(false)
     }
   }
+
+  const importFinderCandidateResults = async (
+    results: readonly FinderCandidateResult[]
+  ) => {
+    const importable = results.filter((result) => result.status === 'ready')
+
+    if (importable.length === 0 || contextSourceMutationRef.current) {
+      return
+    }
+
+    contextSourceMutationRef.current = true
+    setIsSavingCounterpartyPacks(true)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    let nextSessionContext = sessionContext
+    let latestPacks = counterpartyPacks
+    let latestLifecycle = knowledgePackLifecycle
+    let latestFinderStore: FinderSearchStore | null = null
+    const importedDrafts: CounterpartyContextPackDraft[] = []
+
+    try {
+      for (const result of importable) {
+        const draft = createContextPackDraftFromFinderResult(result)
+        const payload = await window.coqpi.contextPacks.ingestFinderPayloadBatch([
+          draft
+        ])
+
+        latestPacks = payload.manifest.counterpartyPacks ?? latestPacks
+        latestLifecycle = payload.manifest.knowledgePackLifecycle ?? latestLifecycle
+        importedDrafts.push(draft)
+        nextSessionContext = getSessionContextWithImportedCounterpartyPacks(
+          nextSessionContext,
+          latestPacks,
+          [draft]
+        )
+
+        const finderPayload = await window.coqpi.finderSearch.setCandidateStatus(
+          result.id,
+          'imported'
+        )
+        latestFinderStore = finderPayload.store
+      }
+
+      applyCounterpartyPackManifest(latestPacks, importedDrafts, latestLifecycle)
+      if (latestFinderStore) {
+        applyFinderSearchStore(latestFinderStore)
+      }
+      setSessionContext(nextSessionContext)
+      setSessionContextDraft(nextSessionContext)
+
+      try {
+        const saved = await window.coqpi.session.saveContext(nextSessionContext)
+        setSessionContext(saved.context)
+        setSessionContextDraft(saved.context)
+      } catch (error) {
+        setSessionContextError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to save session selection for imported finder results.'
+        )
+      }
+
+      setFinderSearchNotice(
+        `Imported ${importable.length} finder candidate${
+          importable.length === 1 ? '' : 's'
+        } as selected context packs.`
+      )
+    } catch (error) {
+      setFinderSearchError(getCounterpartyPackErrorMessage(error))
+    } finally {
+      contextSourceMutationRef.current = false
+      setIsSavingCounterpartyPacks(false)
+    }
+  }
+
+  const getFinderQueueColumnRecoveryItems = (
+    lane: FinderQueueReviewLane
+  ): FinderCandidateResult[] =>
+    finderQueueReviewColumns
+      .find((column) => column.lane === lane)
+      ?.items.filter((item) => item.isExplicit)
+      .map((item) => item.result) ?? []
 
   const setCounterpartyPackSelection = async (
     id: string,
@@ -2487,6 +3006,8 @@ export const App = () => {
 
     setSessionContext(nextSessionContext)
     setSessionContextDraft(nextSessionContextDraft)
+    setActiveSessionDroppedPackAudit([])
+    setDraftSessionDroppedPackAudit([])
   }
 
   const setSessionOutreachDraftSelection = (id: string, selected: boolean) => {
@@ -3625,18 +4146,6 @@ export const App = () => {
   const selectedDeviceLabel =
     audioDevices.find((device) => device.deviceId === selectedAudioDeviceId)
       ?.label || 'No device selected'
-  const selectedCounterpartyPackNames = sessionContext.selectedCounterpartyPackIds
-    .map((packId) => counterpartyPacks.find((pack) => pack.id === packId)?.partnerName)
-    .filter((label): label is string => Boolean(label))
-    .slice(0, 3)
-  const selectedCounterpartyPackNamesLabel =
-    selectedCounterpartyPackNames.length > 0
-      ? selectedCounterpartyPackNames.join(', ')
-      : 'No pack selected'
-  const selectedCounterpartyPacksLabel =
-    sessionContext.selectedCounterpartyPackIds.length > 0
-      ? `Packs: ${selectedCounterpartyPackNamesLabel}`
-      : 'No packs selected'
   const autoAnalysisTranscriptText = getRecentTranscriptText(
     getAutoAnalysisTranscriptUtterances(
       transcriptUtterances,
@@ -3644,14 +4153,53 @@ export const App = () => {
     ),
     30
   )
+  const setSmokeChecklistMark = (
+    stepId: SmokeChecklistStepId,
+    mark: SmokeChecklistMark
+  ) => {
+    setSmokeChecklistMarks((current) => ({
+      ...current,
+      [stepId]: mark
+    }))
+  }
+  const sessionSelectionSurface = buildSessionSelectionSurface({
+    activeContext: sessionContext,
+    draftContext: sessionContextDraft,
+    availablePacks: counterpartyPacks,
+    availableOutreachDrafts: finderOutreachDrafts,
+    activeAuditedDroppedPacks: activeSessionDroppedPackAudit,
+    draftAuditedDroppedPacks: draftSessionDroppedPackAudit,
+    includeProfileContext,
+    profileChars: profileContext.length
+  })
+  const activeSessionPrepPreview = sessionSelectionSurface.activePrepPreview
+  const activeSessionPayloadInspector =
+    sessionSelectionSurface.activePayloadInspector
+  const activeSessionPackSummary = sessionSelectionSurface.activePackSummary
+  const manualPrepPreview = sessionSelectionSurface.draftPrepPreview
+  const draftSessionPayloadInspector =
+    sessionSelectionSurface.draftPayloadInspector
+  const sessionPackReviewItems = buildSessionPackReviewItems({
+    packs: counterpartyPacks,
+    selectedPackIds: sessionContextDraft.selectedCounterpartyPackIds,
+    droppedPacks: draftSessionPayloadInspector.droppedPacks
+  })
+  const sessionPackReviewFilterCounts =
+    getSessionPackReviewFilterCounts(sessionPackReviewItems)
+  const visibleSessionPackReviewItems = filterSessionPackReviewItems(
+    sessionPackReviewItems,
+    preparePackReviewFilter
+  )
+  const selectedCounterpartyPacksLabel = activeSessionPackSummary.label
   const liveTestCockpitItems = buildLiveTestCockpitItems({
     callLanguage: assistantCallLanguage,
     realtimeLabel:
       realtimeStatus === 'idle' ? 'idle' : realtimeHealthLabel.toLowerCase(),
     assistantStatus,
     autoTranscriptText: autoAnalysisTranscriptText,
-    selectedPackLabel: selectedCounterpartyPackNamesLabel,
-    selectedPackCount: sessionContext.selectedCounterpartyPackIds.length,
+    selectedPackLabel: activeSessionPackSummary.label,
+    selectedPackState: activeSessionPackSummary.state,
+    selectedPackCount: activeSessionPackSummary.includedCount,
     transcriptUtterances,
     latestRelevantUtteranceId: assistantRelevantLastUtterance?.id,
     lastAnalyzedUtteranceId,
@@ -3669,56 +4217,19 @@ export const App = () => {
           ? 'fresh'
           : 'stale'
         : 'waiting',
-      selectedPackCount: sessionContext.selectedCounterpartyPackIds.length,
+      selectedPackCount: activeSessionPackSummary.includedCount,
       realtimeReady: isRealtimeReady
     },
     smokeChecklistMarks
   )
-  const setSmokeChecklistMark = (
-    stepId: SmokeChecklistStepId,
-    mark: SmokeChecklistMark
-  ) => {
-    setSmokeChecklistMarks((current) => ({
-      ...current,
-      [stepId]: mark
-    }))
-  }
-  const activeSessionPrepPreview = buildManualPrepPreview({
-    context: sessionContext,
-    availablePacks: counterpartyPacks,
-    availableOutreachDrafts: finderOutreachDrafts,
-    includeProfileContext,
-    profileChars: profileContext.length
-  })
-  const activeSessionPayloadInspector = buildSessionPayloadInspector({
-    context: sessionContext,
-    availablePacks: counterpartyPacks,
-    availableOutreachDrafts: finderOutreachDrafts,
-    includeProfileContext,
-    profileChars: profileContext.length
-  })
-  const manualPrepPreview = buildManualPrepPreview({
-    context: sessionContextDraft,
-    availablePacks: counterpartyPacks,
-    availableOutreachDrafts: finderOutreachDrafts,
-    includeProfileContext,
-    profileChars: profileContext.length
-  })
-  const draftSessionPayloadInspector = buildSessionPayloadInspector({
-    context: sessionContextDraft,
-    availablePacks: counterpartyPacks,
-    availableOutreachDrafts: finderOutreachDrafts,
-    includeProfileContext,
-    profileChars: profileContext.length
-  })
   const knowledgeIngestionSummary = buildKnowledgeIngestionSummary(
     contextSources,
     counterpartyPacks
   )
   const smokeReadinessPack = buildSmokeReadinessPack({
     apiKeyAvailable: configStatus.effectiveKeyAvailable,
-    selectedPackCount: sessionContext.selectedCounterpartyPackIds.length,
-    selectedPackLabel: selectedCounterpartyPackNamesLabel,
+    selectedPackCount: activeSessionPackSummary.includedCount,
+    selectedPackLabel: activeSessionPackSummary.detailLabel,
     selectedPackQualityLevel:
       activeSessionPrepPreview.selectedPackQualityLevel,
     weakFieldCount: activeSessionPrepPreview.weakFields.length,
@@ -3769,6 +4280,17 @@ export const App = () => {
 
     setMiniPane('transcript')
   }, [assistantState, isMiniLayout, realtimeStatus])
+
+  const reviewDroppedSessionPacks = () => {
+    setActiveTab('prepare')
+    setPreparePackReviewFilter('dropped')
+    window.requestAnimationFrame(() => {
+      preparePackReviewSectionRef.current?.scrollIntoView({
+        block: 'start',
+        behavior: 'smooth'
+      })
+    })
+  }
 
   const copyAnswerText = async (text: string) => {
     try {
@@ -4036,9 +4558,15 @@ export const App = () => {
           <span>Included packs</span>
           {inspector.includedPacks.length > 0 ? (
             inspector.includedPacks.slice(0, 3).map((pack) => (
-              <strong key={`included-${pack.id}`} title={pack.sourceId}>
-                {pack.label}
-              </strong>
+              <div
+                className="session-payload-entry session-payload-entry-included"
+                key={`included-${pack.id}`}
+                title={pack.sourceId}
+              >
+                <strong>{pack.label}</strong>
+                <code>{pack.sourceId}</code>
+                <span>{pack.reason}</span>
+              </div>
             ))
           ) : (
             <strong>none</strong>
@@ -4048,21 +4576,41 @@ export const App = () => {
           <span>Dropped packs</span>
           {inspector.droppedPacks.length > 0 ? (
             inspector.droppedPacks.slice(0, 3).map((pack) => (
-              <strong key={`dropped-${pack.id}`} title={pack.sourceId}>
-                {pack.label}: {pack.reason}
-              </strong>
+              <div
+                className="session-payload-entry session-payload-entry-dropped"
+                key={`dropped-${pack.id}`}
+                title={pack.sourceId}
+              >
+                <strong>{pack.label}</strong>
+                <code>{pack.sourceId}</code>
+                <span>{pack.reason}</span>
+              </div>
             ))
           ) : (
             <strong>none</strong>
           )}
         </div>
         <div>
-          <span>Outreach draft</span>
-          <strong>
-            {inspector.includedOutreachDraft?.label ??
-              inspector.droppedOutreachDraft?.reason ??
-              'none'}
-          </strong>
+          <span>Included draft</span>
+          {inspector.includedOutreachDraft ? (
+            <div className="session-payload-entry session-payload-entry-included">
+              <strong>{inspector.includedOutreachDraft.label}</strong>
+              <span>{inspector.includedOutreachDraft.reason}</span>
+            </div>
+          ) : (
+            <strong>none</strong>
+          )}
+        </div>
+        <div>
+          <span>Dropped draft</span>
+          {inspector.droppedOutreachDraft ? (
+            <div className="session-payload-entry session-payload-entry-dropped">
+              <strong>{inspector.droppedOutreachDraft.label}</strong>
+              <span>{inspector.droppedOutreachDraft.reason}</span>
+            </div>
+          ) : (
+            <strong>none</strong>
+          )}
         </div>
         <div>
           <span>Profile</span>
@@ -5310,7 +5858,21 @@ export const App = () => {
                     <div className="error-box">{sessionContextError}</div>
                   ) : null}
                   {sessionContextNotice ? (
-                    <div className="info-box">{sessionContextNotice}</div>
+                    <div className="info-box">
+                      <div className="stack">
+                        <span>{sessionContextNotice}</span>
+                        {activeSessionDroppedPackAudit.length > 0 ? (
+                          <div className="button-row button-row-inline">
+                            <button
+                              onClick={reviewDroppedSessionPacks}
+                              type="button"
+                            >
+                              Review dropped packs
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   ) : null}
                 </div>
               )}
@@ -5470,19 +6032,69 @@ export const App = () => {
                     value={sessionContextDraft.notes}
                   />
                 </label>
-                <div className="context-source-list">
+                <div
+                  className="context-source-list"
+                  ref={preparePackReviewSectionRef}
+                >
                   <div className="settings-row-label">Counterparty packs for this call</div>
+                  <div className="button-row button-row-inline">
+                    <button
+                      onClick={() => setPreparePackReviewFilter('all')}
+                      type="button"
+                    >
+                      All {sessionPackReviewFilterCounts.all}
+                    </button>
+                    <button
+                      onClick={() => setPreparePackReviewFilter('selected')}
+                      type="button"
+                    >
+                      Selected {sessionPackReviewFilterCounts.selected}
+                    </button>
+                    <button
+                      onClick={() => setPreparePackReviewFilter('dropped')}
+                      type="button"
+                    >
+                      Dropped {sessionPackReviewFilterCounts.dropped}
+                    </button>
+                  </div>
                   {counterpartyPacks.length === 0 ? (
                     <div className="context-source-empty">
                       Add counterparty packs in Context tab first.
                     </div>
+                  ) : visibleSessionPackReviewItems.length === 0 ? (
+                    <div className="context-source-empty">
+                      {preparePackReviewFilter === 'dropped'
+                        ? 'No dropped packs. This session payload is clean.'
+                        : preparePackReviewFilter === 'selected'
+                          ? 'No packs selected for this session yet.'
+                          : 'No packs available for review.'}
+                    </div>
                   ) : (
-                    counterpartyPacks.map((pack) => {
+                    visibleSessionPackReviewItems.map((reviewItem) => {
+                      const pack = reviewItem.pack
+
+                      if (!pack) {
+                        return (
+                          <div className="context-source-item" key={`session-${reviewItem.id}`}>
+                            <label className="context-source-select">
+                              <input checked={false} disabled type="checkbox" />
+                              <span>Dropped from session</span>
+                            </label>
+                            <div className="context-source-details">
+                              <strong>{reviewItem.label}</strong>
+                              <span className="context-source-status-blocked">
+                                session: dropped
+                              </span>
+                              <code>{reviewItem.dropReason ?? 'Pack unavailable.'}</code>
+                              <code>{reviewItem.id}</code>
+                            </div>
+                          </div>
+                        )
+                      }
+
                       const eligibility = getCounterpartyPackSessionEligibility(pack)
                       const quality = evaluateCounterpartyPackQuality(pack)
-                      const isChecked = sessionContextDraft.selectedCounterpartyPackIds.includes(
-                        pack.id
-                      )
+                      const isChecked = reviewItem.selected
 
                       return (
                         <div className="context-source-item" key={`session-${pack.id}`}>
@@ -5507,12 +6119,17 @@ export const App = () => {
                             </span>
                             <span
                               className={
-                                eligibility.eligible
-                                  ? 'context-source-status-ready'
-                                  : 'context-source-status-blocked'
+                                reviewItem.dropped || !eligibility.eligible
+                                  ? 'context-source-status-blocked'
+                                  : 'context-source-status-ready'
                               }
                             >
-                              session: {formatCounterpartyPackSessionEligibility(eligibility)}
+                              session:{' '}
+                              {reviewItem.dropped
+                                ? `dropped (${reviewItem.dropReason ?? 'not eligible'})`
+                                : formatCounterpartyPackSessionEligibility(
+                                    eligibility
+                                  )}
                             </span>
                             <span
                               className={`context-pack-quality context-pack-quality-${quality.level}`}
@@ -5844,6 +6461,10 @@ export const App = () => {
                                 {finderOwnerSourcePreview.duplicateCount > 0
                                   ? `${finderOwnerSourcePreview.duplicateCount} duplicate.`
                                   : 'No duplicates.'}
+                                {' '}
+                                {pendingFinderOwnerSourceConfirmationsCount > 0
+                                  ? `${pendingFinderOwnerSourceConfirmationsCount} weak awaiting confirm.`
+                                  : ''}
                               </div>
                               <div className="button-row settings-actions">
                                 <button
@@ -5858,9 +6479,10 @@ export const App = () => {
                                     setFinderOwnerSourcePreviewItems((current) =>
                                       current.map((item) => ({
                                         ...item,
-                                        selected: item.duplicate
-                                          ? false
-                                          : shouldSelect
+                                        selected: item.duplicate ? false : shouldSelect,
+                                        weakConfirmed: shouldSelect
+                                          ? item.weakConfirmed
+                                          : false
                                       }))
                                     )
                                   }}
@@ -5872,6 +6494,15 @@ export const App = () => {
                                 </button>
                               </div>
                             </div>
+                            {finderOwnerSourcePreview.detectedFormats.length > 0 ? (
+                              <div className="manual-prep-fixes">
+                                {finderOwnerSourcePreview.detectedFormats.map((item) => (
+                                  <span key={item.format}>
+                                    {finderSourceDetectedFormatLabels[item.format]} {item.count}
+                                  </span>
+                                ))}
+                              </div>
+                            ) : null}
                             {finderOwnerSourcePreview.errors.length > 0 ? (
                               <ul className="error-list">
                                 {finderOwnerSourcePreview.errors
@@ -5890,6 +6521,25 @@ export const App = () => {
                                 ...item.draft,
                                 kind: selectedFinderSearchJob.kind
                               })
+                              const qualityReview = reviewFinderPreviewCandidateQuality({
+                                ...item.draft,
+                                links: normalizeLinksText(item.draft.linksText),
+                                kind: selectedFinderSearchJob.kind
+                              })
+                              const completionActions =
+                                buildFinderPreviewCompletionActions(
+                                  {
+                                    ...item.draft,
+                                    links: normalizeLinksText(item.draft.linksText),
+                                    kind: selectedFinderSearchJob.kind
+                                  },
+                                  qualityReview
+                                )
+                              const importDecision = getFinderPreviewImportDecision({
+                                review: qualityReview,
+                                selected: item.selected,
+                                confirmed: item.weakConfirmed
+                              })
 
                               return (
                               <div className="finder-preview-item" key={item.draft.sourceId}>
@@ -5904,8 +6554,14 @@ export const App = () => {
                                       const { checked } = event.target
                                       setFinderOwnerSourcePreviewItems((current) =>
                                         current.map((candidate) =>
-                                          candidate.index === item.index
-                                            ? { ...candidate, selected: checked }
+                                            candidate.index === item.index
+                                            ? {
+                                                ...candidate,
+                                                selected: checked,
+                                                weakConfirmed: checked
+                                                  ? candidate.weakConfirmed
+                                                  : false
+                                              }
                                             : candidate
                                         )
                                       )
@@ -5920,6 +6576,21 @@ export const App = () => {
                                 </label>
                                 <div className="finder-score-explanation">
                                   <strong>{scoreExplanation.fitLabel}</strong>
+                                  <span>
+                                    quality: {qualityReview.label}
+                                    {!qualityReview.retrievalReady
+                                      ? ' · not session-ready'
+                                      : ''}
+                                  </span>
+                                  <span>import: {importDecision.label}</span>
+                                  <span>
+                                    format:{' '}
+                                    {
+                                      finderSourceDetectedFormatLabels[
+                                        item.detectedFormat
+                                      ]
+                                    }
+                                  </span>
                                   <span>{scoreExplanation.scoreReason}</span>
                                   {scoreExplanation.positiveSignals.length > 0 ? (
                                     <span>
@@ -5931,7 +6602,89 @@ export const App = () => {
                                       Improve: {scoreExplanation.improvements.join(', ')}
                                     </span>
                                   ) : null}
+                                  {qualityReview.missingCriticalFields.length > 0 ? (
+                                    <span>
+                                      Missing: {qualityReview.missingCriticalFields.join(', ')}
+                                    </span>
+                                  ) : null}
+                                  {qualityReview.suggestedEdits.length > 0 ? (
+                                    <span>
+                                      Fix before import: {qualityReview.suggestedEdits.join(', ')}
+                                    </span>
+                                  ) : null}
                                 </div>
+                                {importDecision.requiresConfirmation ? (
+                                  <label className="settings-row settings-row-inline">
+                                    <input
+                                      checked={item.weakConfirmed}
+                                      disabled={
+                                        isImportingFinderOwnerSource || !item.selected
+                                      }
+                                      onChange={(event) => {
+                                        const { checked } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  weakConfirmed: checked
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      type="checkbox"
+                                    />
+                                    <span className="settings-row-label">
+                                      Confirm import despite weak quality
+                                    </span>
+                                  </label>
+                                ) : null}
+                                {completionActions.length > 0 ? (
+                                  <div className="button-row button-row-inline">
+                                    {completionActions.map((action) => (
+                                      <button
+                                        className="button-small"
+                                        disabled={isImportingFinderOwnerSource}
+                                        key={`${item.index}-${action.id}`}
+                                        onClick={() => {
+                                          setFinderOwnerSourcePreviewItems((current) =>
+                                            current.map((candidate) => {
+                                              if (candidate.index !== item.index) {
+                                                return candidate
+                                              }
+
+                                              const currentValue =
+                                                candidate.draft[action.field] ?? ''
+                                              const nextValue =
+                                                typeof currentValue === 'string' &&
+                                                currentValue.trim().length > 0
+                                                  ? action.field === 'missingInfo'
+                                                    ? currentValue.includes(action.value)
+                                                      ? currentValue
+                                                      : `${currentValue.replace(/\s+$/, '')}${
+                                                          currentValue.trim().endsWith('.') ? ' ' : '; '
+                                                        }${action.value}`
+                                                    : currentValue
+                                                  : action.value
+
+                                              return {
+                                                ...candidate,
+                                                draft: {
+                                                  ...candidate.draft,
+                                                  [action.field]: nextValue
+                                                }
+                                              }
+                                            })
+                                          )
+                                        }}
+                                        type="button"
+                                      >
+                                        {action.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
                                 <div className="compact-form-grid">
                                   <label className="settings-row">
                                     <span className="settings-row-label">
@@ -6007,6 +6760,81 @@ export const App = () => {
                                     />
                                   </label>
                                   <label className="settings-row settings-row-textarea">
+                                    <span className="settings-row-label">Why relevant</span>
+                                    <textarea
+                                      className="prepare-textarea"
+                                      disabled={isImportingFinderOwnerSource}
+                                      onChange={(event) => {
+                                        const { value } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  draft: {
+                                                    ...candidate.draft,
+                                                    whyRelevant: value
+                                                  }
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      rows={2}
+                                      value={item.draft.whyRelevant ?? ''}
+                                    />
+                                  </label>
+                                  <label className="settings-row settings-row-textarea">
+                                    <span className="settings-row-label">Context</span>
+                                    <textarea
+                                      className="prepare-textarea"
+                                      disabled={isImportingFinderOwnerSource}
+                                      onChange={(event) => {
+                                        const { value } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  draft: {
+                                                    ...candidate.draft,
+                                                    context: value
+                                                  }
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      rows={3}
+                                      value={item.draft.context ?? ''}
+                                    />
+                                  </label>
+                                  <label className="settings-row settings-row-textarea">
+                                    <span className="settings-row-label">Missing info</span>
+                                    <textarea
+                                      className="prepare-textarea"
+                                      disabled={isImportingFinderOwnerSource}
+                                      onChange={(event) => {
+                                        const { value } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  draft: {
+                                                    ...candidate.draft,
+                                                    missingInfo: value
+                                                  }
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      rows={2}
+                                      value={item.draft.missingInfo ?? ''}
+                                    />
+                                  </label>
+                                  <label className="settings-row settings-row-textarea">
                                     <span className="settings-row-label">Next action</span>
                                     <textarea
                                       className="prepare-textarea"
@@ -6029,6 +6857,31 @@ export const App = () => {
                                       }}
                                       rows={2}
                                       value={item.draft.nextAction}
+                                    />
+                                  </label>
+                                  <label className="settings-row settings-row-textarea">
+                                    <span className="settings-row-label">Links</span>
+                                    <textarea
+                                      className="prepare-textarea"
+                                      disabled={isImportingFinderOwnerSource}
+                                      onChange={(event) => {
+                                        const { value } = event.target
+                                        setFinderOwnerSourcePreviewItems((current) =>
+                                          current.map((candidate) =>
+                                            candidate.index === item.index
+                                              ? {
+                                                  ...candidate,
+                                                  draft: {
+                                                    ...candidate.draft,
+                                                    linksText: value
+                                                  }
+                                                }
+                                              : candidate
+                                          )
+                                        )
+                                      }}
+                                      rows={2}
+                                      value={item.draft.linksText}
                                     />
                                   </label>
                                 </div>
@@ -6065,6 +6918,23 @@ export const App = () => {
                             {isImportingFinderOwnerSource
                               ? 'Importing...'
                               : 'Import selected'}
+                          </button>
+                          <button
+                            disabled={
+                              isImportingFinderOwnerSource ||
+                              isSavingCounterpartyPacks ||
+                              isSavingSessionContext ||
+                              selectedFinderSearchJob.status === 'rejected' ||
+                              selectedFinderOwnerSourceCount === 0
+                            }
+                            onClick={() =>
+                              void importSelectedFinderOwnerSourceToSession()
+                            }
+                            type="button"
+                          >
+                            {isImportingFinderOwnerSource
+                              ? 'Attaching...'
+                              : 'Import to session prep'}
                           </button>
                           <button
                             disabled={
@@ -6267,6 +7137,22 @@ export const App = () => {
                           </select>
                         </label>
                         <label className="settings-row">
+                          <span className="settings-row-label">Decision</span>
+                          <select
+                            onChange={(event) =>
+                              setFinderPipelineDecisionFilter(
+                                event.target.value as FinderPipelineDecisionFilter
+                              )
+                            }
+                            value={finderPipelineDecisionFilter}
+                          >
+                            <option value="all">all</option>
+                            <option value="import">import first</option>
+                            <option value="hold">hold</option>
+                            <option value="reject">reject</option>
+                          </select>
+                        </label>
+                        <label className="settings-row">
                           <span className="settings-row-label">Sort</span>
                           <select
                             onChange={(event) =>
@@ -6279,6 +7165,7 @@ export const App = () => {
                             <option value="fit_desc">fit high first</option>
                             <option value="fit_asc">fit low first</option>
                             <option value="status">status priority</option>
+                            <option value="decision">decision queue</option>
                             <option value="next_action">next action first</option>
                           </select>
                         </label>
@@ -6307,6 +7194,423 @@ export const App = () => {
                           />
                           <span>Has next action</span>
                         </label>
+                      </div>
+                      <div className="finder-decision-summary">
+                        <div className="finder-decision-card">
+                          <span>Import first</span>
+                          <strong>{selectedFinderDecisionSummary.importCount}</strong>
+                          <span>now {selectedFinderDecisionSummary.nowCount}</span>
+                        </div>
+                        <div className="finder-decision-card">
+                          <span>Hold</span>
+                          <strong>{selectedFinderDecisionSummary.holdCount}</strong>
+                          <span>
+                            soon {selectedFinderDecisionSummary.soonCount} · later{' '}
+                            {selectedFinderDecisionSummary.laterCount}
+                          </span>
+                        </div>
+                        <div className="finder-decision-card">
+                          <span>Reject</span>
+                          <strong>{selectedFinderDecisionSummary.rejectCount}</strong>
+                          <span>visible queue decisions</span>
+                        </div>
+                      </div>
+                      <div className="finder-queue-review">
+                        <div className="finder-draft-review-header">
+                          <div>
+                            <strong>Queue review</strong>
+                            <span>
+                              Compact decision board for import, hold, reject, and recovery.
+                            </span>
+                          </div>
+                          <span>Batch actions stay local</span>
+                        </div>
+                        <div className="finder-queue-columns">
+                          {finderQueueReviewColumns.map((column) => (
+                            <div className="finder-queue-column" key={column.lane}>
+                              {(() => {
+                                const missingDraftCount = column.items.filter(
+                                  (item) =>
+                                    !finderOutreachDraftsByCandidateId.has(item.result.id)
+                                ).length
+                                const readyDraftCount =
+                                  column.items.length - missingDraftCount
+                                const laneDrafts = column.items
+                                  .map((item) =>
+                                    finderOutreachDraftsByCandidateId.get(item.result.id)
+                                  )
+                                  .filter((draft): draft is FinderOutreachDraft => Boolean(draft))
+                                const readyForContactCount = laneDrafts.filter(
+                                  (draft) => draft.status === 'ready_for_contact'
+                                ).length
+
+                                return (
+                              <div className="finder-queue-column-header">
+                                <div>
+                                  <strong>{column.label}</strong>
+                                  <span>
+                                    {column.items.length} item
+                                    {column.items.length === 1 ? '' : 's'}
+                                    {column.explicitCount > 0
+                                      ? ` · explicit ${column.explicitCount}`
+                                      : ''}
+                                  </span>
+                                  {(column.lane === 'import' || column.lane === 'hold') && (
+                                    <span>
+                                      drafts {readyDraftCount} ready · {missingDraftCount} missing
+                                    </span>
+                                  )}
+                                  {laneDrafts.length > 0 ? (
+                                    <span>
+                                      ready for contact {readyForContactCount} / {laneDrafts.length}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                <div className="button-row settings-actions">
+                                  {column.lane === 'import' ? (
+                                    <>
+                                      <button
+                                        className="button-small"
+                                        disabled={missingDraftCount === 0}
+                                        onClick={() =>
+                                          void saveFinderOutreachDraftsBatch(
+                                            column.items.map((item) => item.result)
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Prep missing drafts
+                                      </button>
+                                      <button
+                                        className="button-small"
+                                        disabled={laneDrafts.length === 0}
+                                        onClick={() =>
+                                          void setFinderOutreachDraftStatusBatch(
+                                            laneDrafts,
+                                            'ready_for_contact'
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Mark lane ready
+                                      </button>
+                                      <button
+                                        className="button-small"
+                                        disabled={
+                                          isSavingCounterpartyPacks ||
+                                          column.items.filter(
+                                            (item) => item.result.status === 'ready'
+                                          ).length === 0
+                                        }
+                                        onClick={() =>
+                                          void importFinderCandidateResults(
+                                            column.items.map((item) => item.result)
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Import lane
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {column.lane === 'hold' ? (
+                                    <>
+                                      <button
+                                        className="button-small"
+                                        disabled={missingDraftCount === 0}
+                                        onClick={() =>
+                                          void saveFinderOutreachDraftsBatch(
+                                            column.items.map((item) => item.result)
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Prep missing drafts
+                                      </button>
+                                      <button
+                                        className="button-small"
+                                        disabled={laneDrafts.length === 0}
+                                        onClick={() =>
+                                          void setFinderOutreachDraftStatusBatch(
+                                            laneDrafts,
+                                            'ready_for_contact'
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Mark lane ready
+                                      </button>
+                                      <button
+                                        className="button-small"
+                                        disabled={column.explicitCount === 0}
+                                        onClick={() =>
+                                          void batchSetFinderCandidateDecision(
+                                            getFinderQueueColumnRecoveryItems('hold'),
+                                            'auto'
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Restore held
+                                      </button>
+                                      <button
+                                        className="button-small"
+                                        disabled={column.explicitCount === 0}
+                                        onClick={() =>
+                                          void batchSetFinderCandidateDecision(
+                                            getFinderQueueColumnRecoveryItems('hold'),
+                                            'import_now'
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Move held to import
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {column.lane === 'reject' ? (
+                                    <>
+                                      <button
+                                        className="button-small"
+                                        disabled={column.explicitCount === 0}
+                                        onClick={() =>
+                                          void batchSetFinderCandidateDecision(
+                                            getFinderQueueColumnRecoveryItems('reject'),
+                                            'auto'
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Restore rejected
+                                      </button>
+                                      <button
+                                        className="button-small"
+                                        disabled={column.explicitCount === 0}
+                                        onClick={() =>
+                                          void batchSetFinderCandidateDecision(
+                                            getFinderQueueColumnRecoveryItems('reject'),
+                                            'hold_later'
+                                          )
+                                        }
+                                        type="button"
+                                      >
+                                        Move rejected to hold
+                                      </button>
+                                    </>
+                                  ) : null}
+                                </div>
+                              </div>
+                                )
+                              })()}
+                              {column.items.length === 0 ? (
+                                <div className="context-source-empty">
+                                  No items in this queue.
+                                </div>
+                              ) : (
+                                <div className="finder-queue-list">
+                                  {column.items.map((item) => (
+                                    (() => {
+                                      const outreachDraft =
+                                        finderOutreachDraftsByCandidateId.get(item.result.id) ??
+                                        null
+                                      const openingPreview =
+                                        outreachDraft?.openingMessage ??
+                                        (selectedFinderSearchJob
+                                          ? createFinderOutreachPrepPack(
+                                              selectedFinderSearchJob,
+                                              item.result
+                                            ).openingMessage
+                                          : item.result.summary)
+
+                                      return (
+                                        <div className="finder-queue-item" key={item.result.id}>
+                                          <div>
+                                            <strong>{item.result.partnerName}</strong>
+                                            <span>
+                                              {item.result.title} ·{' '}
+                                              {item.result.fitScore === undefined
+                                                ? 'not scored'
+                                                : `${item.result.fitScore}/100`}
+                                            </span>
+                                            <span>
+                                              {item.isExplicit
+                                                ? `explicit ${item.explicitState}`
+                                                : 'auto review'}
+                                            </span>
+                                            <span>
+                                              {outreachDraft
+                                                ? outreachDraft.status === 'ready_for_contact'
+                                                  ? 'draft ready for contact'
+                                                  : 'draft ready'
+                                                : 'draft missing'}
+                                            </span>
+                                          </div>
+                                          <code>{item.decision.summary}</code>
+                                          <div className="finder-queue-opening">
+                                            <span>Opening message</span>
+                                            <code>{openingPreview}</code>
+                                          </div>
+                                          <div className="button-row settings-actions">
+                                            <button
+                                              className="button-small"
+                                              onClick={() =>
+                                                setFocusedFinderCandidateResultId(item.result.id)
+                                              }
+                                              type="button"
+                                            >
+                                              Prep
+                                            </button>
+                                            {outreachDraft ? (
+                                              <>
+                                                <button
+                                                  className="button-small"
+                                                  onClick={() =>
+                                                    void copyFinderOutreachDraft(outreachDraft)
+                                                  }
+                                                  type="button"
+                                                >
+                                                  {copiedFinderOutreachDraftId === outreachDraft.id
+                                                    ? 'Copied'
+                                                    : 'Copy draft'}
+                                                </button>
+                                                <button
+                                                  className="button-small"
+                                                  onClick={() =>
+                                                    void attachFinderOutreachDraftToSession(
+                                                      outreachDraft
+                                                    )
+                                                  }
+                                                  type="button"
+                                                >
+                                                  {sessionContext.selectedFinderOutreachDraftId ===
+                                                  outreachDraft.id
+                                                    ? 'In session'
+                                                    : 'Use in session'}
+                                                </button>
+                                                <button
+                                                  className="button-small"
+                                                  onClick={() =>
+                                                    void setFinderOutreachDraftStatus(
+                                                      outreachDraft.id,
+                                                      outreachDraft.status ===
+                                                        'ready_for_contact'
+                                                        ? 'draft'
+                                                        : 'ready_for_contact'
+                                                    )
+                                                  }
+                                                  type="button"
+                                                >
+                                                  {outreachDraft.status === 'ready_for_contact'
+                                                    ? 'Back to working'
+                                                    : 'Ready for contact'}
+                                                </button>
+                                              </>
+                                            ) : (
+                                              <button
+                                                className="button-small"
+                                                onClick={() =>
+                                                  void saveFinderOutreachDraft(item.result.id)
+                                                }
+                                                type="button"
+                                              >
+                                                Create draft
+                                              </button>
+                                            )}
+                                            {column.lane !== 'import' ? (
+                                              <button
+                                                className="button-small"
+                                                disabled={item.result.status !== 'ready'}
+                                                onClick={() =>
+                                                  void setFinderCandidateDecision(
+                                                    item.result.id,
+                                                    'import_now'
+                                                  )
+                                                }
+                                                type="button"
+                                              >
+                                                Move to import
+                                              </button>
+                                            ) : (
+                                              <button
+                                                className="button-small"
+                                                disabled={
+                                                  isSavingCounterpartyPacks ||
+                                                  item.result.status !== 'ready'
+                                                }
+                                                onClick={() =>
+                                                  void importFinderCandidateResult(item.result)
+                                                }
+                                                type="button"
+                                              >
+                                                Import
+                                              </button>
+                                            )}
+                                            {item.isExplicit ? (
+                                              <button
+                                                className="button-small"
+                                                onClick={() =>
+                                                  void setFinderCandidateDecision(
+                                                    item.result.id,
+                                                    'auto'
+                                                  )
+                                                }
+                                                type="button"
+                                              >
+                                                Restore auto
+                                              </button>
+                                            ) : column.lane === 'hold' ? (
+                                              <button
+                                                className="button-small"
+                                                disabled={item.result.status !== 'ready'}
+                                                onClick={() =>
+                                                  void setFinderCandidateDecision(
+                                                    item.result.id,
+                                                    'hold_later'
+                                                  )
+                                                }
+                                                type="button"
+                                              >
+                                                Mark hold
+                                              </button>
+                                            ) : column.lane === 'reject' ? (
+                                              <button
+                                                className="button-small"
+                                                disabled={item.result.status === 'imported'}
+                                                onClick={() =>
+                                                  void setFinderCandidateDecision(
+                                                    item.result.id,
+                                                    'hold_later'
+                                                  )
+                                                }
+                                                type="button"
+                                              >
+                                                Hold instead
+                                              </button>
+                                            ) : (
+                                              <button
+                                                className="button-small"
+                                                disabled={item.result.status !== 'ready'}
+                                                onClick={() =>
+                                                  void setFinderCandidateDecision(
+                                                    item.result.id,
+                                                    'hold_later'
+                                                  )
+                                                }
+                                                type="button"
+                                              >
+                                                Hold
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )
+                                    })()
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                       {finderOutreachPrepPack ? (
                         <div className="finder-outreach-prep">
@@ -6455,6 +7759,8 @@ export const App = () => {
                           selectedFinderSearchResults.map((result) => {
                             const scoreExplanation =
                               explainFinderCandidateScore(result)
+                            const queueDecision =
+                              buildFinderDecisionQueueItem(result)
 
                             return (
                             <div
@@ -6499,6 +7805,18 @@ export const App = () => {
                                     </span>
                                   ) : null}
                                 </div>
+                                <div className="finder-decision-explanation">
+                                  <strong>
+                                    {queueDecision.recommendation} · {queueDecision.priority}
+                                  </strong>
+                                  <span>{queueDecision.summary}</span>
+                                  <span>
+                                    Why: {queueDecision.reasons.slice(0, 3).join(', ')}
+                                  </span>
+                                  {result.decision.reason ? (
+                                    <span>Decision note: {result.decision.reason}</span>
+                                  ) : null}
+                                </div>
                                 {result.whyRelevant ? (
                                   <code>why: {result.whyRelevant}</code>
                                 ) : null}
@@ -6530,20 +7848,54 @@ export const App = () => {
                                   }
                                   type="button"
                                 >
-                                  Import pack
+                                  Import now
+                                </button>
+                                <button
+                                  className="button-small"
+                                  disabled={result.status !== 'ready'}
+                                  onClick={() =>
+                                    void setFinderCandidateDecision(
+                                      result.id,
+                                      'hold_later'
+                                    )
+                                  }
+                                  type="button"
+                                >
+                                  Hold for later
                                 </button>
                                 <button
                                   className="button-small"
                                   disabled={result.status === 'imported'}
                                   onClick={() =>
-                                    void setFinderCandidateStatus(
-                                      result.id,
-                                      'rejected'
-                                    )
+                                    void (async () => {
+                                      const reason = window.prompt(
+                                        'Reject reason',
+                                        result.decision.reason ?? ''
+                                      )
+
+                                      if (reason === null) {
+                                        return
+                                      }
+
+                                      const trimmedReason = reason.trim()
+
+                                      if (!trimmedReason) {
+                                        setFinderSearchError(
+                                          'Reject reason is required.'
+                                        )
+                                        return
+                                      }
+
+                                      await setFinderCandidateDecision(
+                                        result.id,
+                                        'rejected',
+                                        trimmedReason
+                                      )
+                                    })()
                                   }
                                   type="button"
                                 >
-                                  Reject
+                                  Reject with reason
                                 </button>
                               </div>
                             </div>
@@ -6964,18 +8316,13 @@ export const App = () => {
                     <div className="button-row settings-actions">
                       <button
                         className="button-small"
-                        disabled={
-                          isSavingCounterpartyPacks ||
-                          finderPayloadCandidateCountNonDuplicate === 0
-                        }
+                        disabled={!finderPreviewControls.canToggleSelectAll}
                         onClick={() => {
                           toggleSelectAllFinderCandidates()
                         }}
                         type="button"
                       >
-                        {areAllFinderCandidatesSelected
-                          ? 'Deselect all'
-                          : 'Select all'}
+                        {finderPreviewControls.toggleLabel}
                       </button>
                     </div>
                   </div>

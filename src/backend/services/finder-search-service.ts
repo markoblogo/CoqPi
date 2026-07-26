@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type {
+  FinderCandidateDecisionState,
   FinderCandidateResultDraft,
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
@@ -19,6 +20,7 @@ import {
   createFinderRecordsFromRunnerPayload,
   createFinderSearchJob,
   createManualFinderRunnerCandidates,
+  getFinderSourceAdapterDetectedFormatSummary,
   summarizeFinderSourceAdapterRun,
   summarizeManualFinderRunnerRun,
   updateFinderSearchJobStatus
@@ -40,7 +42,17 @@ type FinderSearchEvent =
     }
   | {
       version: 1
+      type: 'candidate_decision_changed'
+      result: StoredFinderCandidateResult
+    }
+  | {
+      version: 1
       type: 'outreach_draft_recorded'
+      draft: StoredFinderOutreachDraft
+    }
+  | {
+      version: 1
+      type: 'outreach_draft_status_changed'
       draft: StoredFinderOutreachDraft
     }
 
@@ -105,9 +117,20 @@ const withResultSourceTruth = (
     fitScore: result.fitScore,
     whyRelevant: result.whyRelevant,
     missingInfo: result.missingInfo,
-    nextAction: result.nextAction
+    nextAction: result.nextAction,
+    decision: result.decision
   }),
   statusHistory: [{ status: result.status, at: result.createdAt, reason }]
+})
+
+const normalizeStoredResult = (
+  result: StoredFinderCandidateResult
+): StoredFinderCandidateResult => ({
+  ...result,
+  decision: result.decision ?? {
+    state: 'auto',
+    updatedAt: result.createdAt
+  }
 })
 
 const withOutreachDraftSourceTruth = (
@@ -163,6 +186,24 @@ const applyEvent = (
     }
   }
 
+  if (event.type === 'candidate_decision_changed') {
+    return {
+      ...store,
+      results: store.results.map((result) =>
+        result.id === event.result.id ? event.result : result
+      )
+    }
+  }
+
+  if (event.type === 'outreach_draft_status_changed') {
+    return {
+      ...store,
+      outreachDrafts: store.outreachDrafts.map((draft) =>
+        draft.id === event.draft.id ? event.draft : draft
+      )
+    }
+  }
+
   return {
     ...store,
     outreachDrafts: [event.draft, ...store.outreachDrafts]
@@ -211,9 +252,13 @@ const mutateStore = async (events: FinderSearchEvent[]) => {
 const getFinderSearchStoreRaw = async (): Promise<FinderSearchStore> => {
   const events = await readEvents()
   const store = events.reduce(applyEvent, emptyStore())
+  const normalizedStore: FinderSearchStore = {
+    ...store,
+    results: store.results.map(normalizeStoredResult)
+  }
 
-  await writeManifest(store)
-  return store
+  await writeManifest(normalizedStore)
+  return normalizedStore
 }
 
 export const getFinderSearchStore =
@@ -375,6 +420,55 @@ export const setFinderCandidateResultStatus = async (
   return mutateStore(events)
 }
 
+export const setFinderCandidateResultDecision = async (
+  id: string,
+  state: FinderCandidateDecisionState,
+  reason?: string
+): Promise<FinderSearchStoreResult> => {
+  const store = await getFinderSearchStoreRaw()
+  const current = store.results.find((result) => result.id === id)
+
+  if (!current) {
+    throw new Error('Finder candidate result not found.')
+  }
+
+  const now = new Date().toISOString()
+  const normalizedReason = typeof reason === 'string' ? reason.trim() : ''
+  const nextStatus =
+    state === 'rejected'
+      ? 'rejected'
+      : current.status === 'rejected'
+      ? 'ready'
+      : current.status
+  const result: StoredFinderCandidateResult = {
+    ...current,
+    status: nextStatus,
+    decision: {
+      state,
+      reason: normalizedReason || undefined,
+      updatedAt: now
+    },
+    statusHistory:
+      nextStatus !== current.status
+        ? [
+            {
+              status: nextStatus,
+              at: now,
+              reason:
+                state === 'rejected'
+                  ? normalizedReason || 'candidate rejected with reason'
+                  : 'candidate restored from rejected state'
+            },
+            ...current.statusHistory
+          ]
+        : current.statusHistory
+  }
+
+  return mutateStore([
+    { version: 1, type: 'candidate_decision_changed', result }
+  ])
+}
+
 export const ingestFinderRunnerPayload = async (
   payloadText: string
 ): Promise<FinderSearchStoreResult> => {
@@ -486,13 +580,13 @@ export const ingestFinderOwnerPastedSource = async (
       .map((result) => result.sourceId)
   )
   const newDrafts = parsed.candidates.filter(
-    (draft) => !existingSourceIds.has(draft.sourceId)
+    (candidate) => !existingSourceIds.has(candidate.sourceId)
   )
-  const events: FinderSearchEvent[] = newDrafts.map((draft) => ({
+  const events: FinderSearchEvent[] = newDrafts.map((candidate) => ({
     version: 1,
     type: 'candidate_recorded',
     result: withResultSourceTruth(
-      createFinderCandidateResult(job, draft, {
+      createFinderCandidateResult(job, candidate, {
         id: randomUUID(),
         now
       }),
@@ -557,6 +651,7 @@ export const previewFinderOwnerPastedSource = async (
   const candidates = parsed.candidates.map((draft, index) => ({
     index,
     draft,
+    detectedFormat: draft.detectedFormat,
     duplicate: existingSourceIds.has(draft.sourceId)
   }))
 
@@ -566,6 +661,7 @@ export const previewFinderOwnerPastedSource = async (
     requestedCount: parsed.requestedCount,
     validCount: parsed.candidates.length,
     duplicateCount: candidates.filter((candidate) => candidate.duplicate).length,
+    detectedFormats: getFinderSourceAdapterDetectedFormatSummary(parsed.candidates),
     candidates,
     errors: parsed.errors,
     reason:
@@ -644,6 +740,14 @@ export const saveFinderOutreachDraft = async (
   candidateResultId: string
 ): Promise<FinderSearchStoreResult> => {
   const store = await getFinderSearchStoreRaw()
+  const existingDraft = store.outreachDrafts.find(
+    (draft) => draft.candidateResultId === candidateResultId
+  )
+
+  if (existingDraft) {
+    return { store }
+  }
+
   const result = store.results.find(
     (candidate) => candidate.id === candidateResultId
   )
@@ -666,4 +770,29 @@ export const saveFinderOutreachDraft = async (
   )
 
   return mutateStore([{ version: 1, type: 'outreach_draft_recorded', draft }])
+}
+
+export const setFinderOutreachDraftStatus = async (
+  draftId: string,
+  status: StoredFinderOutreachDraft['status']
+): Promise<FinderSearchStoreResult> => {
+  const store = await getFinderSearchStoreRaw()
+  const current = store.outreachDrafts.find((draft) => draft.id === draftId)
+
+  if (!current) {
+    throw new Error('Finder outreach draft not found.')
+  }
+
+  if (current.status === status) {
+    return { store }
+  }
+
+  const draft: StoredFinderOutreachDraft = {
+    ...current,
+    status
+  }
+
+  return mutateStore([
+    { version: 1, type: 'outreach_draft_status_changed', draft }
+  ])
 }

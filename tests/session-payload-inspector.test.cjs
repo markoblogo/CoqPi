@@ -2,7 +2,8 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
-  buildSessionPayloadInspector
+  buildSessionPayloadInspector,
+  buildSessionPayloadPackSummary
 } = require('../dist-electron/shared/session-payload-inspector.js')
 
 const makeContext = (overrides = {}) => ({
@@ -113,4 +114,146 @@ test('session payload inspector reports stale outreach draft and profile off', (
   assert.match(inspector.droppedOutreachDraft.reason, /missing/)
   assert.equal(inspector.profileLabel, 'profile off')
   assert.equal(inspector.warningCount, 3)
+})
+
+test('session payload inspector reflects included to dropped transition when available items change', () => {
+  const context = makeContext({
+    selectedCounterpartyPackIds: ['pack-ready'],
+    selectedFinderOutreachDraftId: 'draft-A'
+  })
+
+  const initial = buildSessionPayloadInspector({
+    context,
+    availablePacks: [makePack()],
+    availableOutreachDrafts: [makeDraft()],
+    includeProfileContext: true,
+    profileChars: 123
+  })
+
+  const changed = buildSessionPayloadInspector({
+    context,
+    availablePacks: [
+      makePack({
+        id: 'pack-ready',
+        selected: false,
+        status: 'pending_classification'
+      })
+    ],
+    availableOutreachDrafts: [],
+    includeProfileContext: true,
+    profileChars: 123
+  })
+
+  assert.equal(initial.includedPacks.length, 1)
+  assert.equal(initial.droppedPacks.length, 0)
+  assert.equal(initial.includedOutreachDraft?.id, 'draft-A')
+  assert.equal(initial.droppedOutreachDraft, null)
+
+  assert.equal(changed.includedPacks.length, 0)
+  assert.equal(changed.droppedPacks.length, 1)
+  assert.match(changed.droppedPacks[0].reason, /not selected/)
+  assert.equal(changed.includedOutreachDraft, null)
+  assert.equal(changed.droppedOutreachDraft?.id, 'draft-A')
+  assert.match(changed.droppedOutreachDraft?.reason ?? '', /missing/)
+  assert.equal(changed.warningCount, 2)
+})
+
+test('session payload inspector preserves dropped pack audit after session ids are pruned', () => {
+  const droppedPackAudit = {
+    id: 'pack-ready',
+    label: 'Acme · Senior Product Manager',
+    sourceId: 'finder:job:ready',
+    status: 'dropped',
+    reason: 'not selected, not retrieval-ready'
+  }
+
+  const inspector = buildSessionPayloadInspector({
+    context: makeContext({
+      selectedCounterpartyPackIds: [],
+      selectedFinderOutreachDraftId: ''
+    }),
+    availablePacks: [
+      makePack({
+        id: 'pack-ready',
+        selected: false,
+        status: 'pending_classification'
+      })
+    ],
+    availableOutreachDrafts: [],
+    auditedDroppedPacks: [droppedPackAudit],
+    includeProfileContext: true,
+    profileChars: 123
+  })
+
+  assert.equal(inspector.includedPacks.length, 0)
+  assert.deepEqual(
+    inspector.droppedPacks.map((pack) => pack.id),
+    ['pack-ready']
+  )
+  assert.match(inspector.droppedPacks[0].reason, /not selected/)
+  assert.equal(inspector.warningCount, 1)
+  assert.match(inspector.summaryLabel, /dropped 1/)
+})
+
+test('session payload pack summary stays aligned for included dropped and none states', () => {
+  const included = buildSessionPayloadPackSummary(
+    buildSessionPayloadInspector({
+      context: makeContext({
+        selectedCounterpartyPackIds: ['pack-ready'],
+        selectedFinderOutreachDraftId: ''
+      }),
+      availablePacks: [makePack()],
+      availableOutreachDrafts: [],
+      includeProfileContext: true,
+      profileChars: 1
+    })
+  )
+  const dropped = buildSessionPayloadPackSummary(
+    buildSessionPayloadInspector({
+      context: makeContext({
+        selectedCounterpartyPackIds: [],
+        selectedFinderOutreachDraftId: ''
+      }),
+      availablePacks: [
+        makePack({
+          selected: false,
+          status: 'pending_classification'
+        })
+      ],
+      availableOutreachDrafts: [],
+      auditedDroppedPacks: [
+        {
+          id: 'pack-ready',
+          label: 'Acme · Senior Product Manager',
+          sourceId: 'finder:job:ready',
+          status: 'dropped',
+          reason: 'not selected, not retrieval-ready'
+        }
+      ],
+      includeProfileContext: true,
+      profileChars: 1
+    })
+  )
+  const none = buildSessionPayloadPackSummary(
+    buildSessionPayloadInspector({
+      context: makeContext({
+        selectedCounterpartyPackIds: [],
+        selectedFinderOutreachDraftId: ''
+      }),
+      availablePacks: [],
+      availableOutreachDrafts: [],
+      includeProfileContext: true,
+      profileChars: 1
+    })
+  )
+
+  assert.equal(included.state, 'included')
+  assert.equal(included.label, 'Packs: Acme · Senior Product Manager')
+  assert.equal(included.detailLabel, 'Acme · Senior Product Manager')
+  assert.equal(dropped.state, 'dropped')
+  assert.equal(dropped.label, 'Dropped: Acme · Senior Product Manager')
+  assert.equal(dropped.detailLabel, 'Acme · Senior Product Manager')
+  assert.equal(none.state, 'none')
+  assert.equal(none.label, 'No packs selected')
+  assert.equal(none.detailLabel, 'No pack selected')
 })

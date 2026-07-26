@@ -4,8 +4,11 @@ import type {
   AssistantAnalysisRequest,
   ContextSourceDraft,
   CounterpartyContextPackDraft,
+  FinderOutreachDraft,
   KnowledgePackLifecycleDraft,
+  FinderCandidateDecisionState,
   FinderCandidateResultDraft,
+  FinderOwnerSourceSessionIngressResult,
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
@@ -53,6 +56,17 @@ contextBridge.exposeInMainWorld('coqpi', {
         id,
         status
       ),
+    setCandidateDecision: (
+      id: string,
+      state: FinderCandidateDecisionState,
+      reason?: string
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:set-candidate-decision',
+        id,
+        state,
+        reason
+      ),
     ingestRunnerPayload: (payloadText: string) =>
       ipcRenderer.invoke(
         'coqpi:finder-search:ingest-runner-payload',
@@ -81,10 +95,28 @@ contextBridge.exposeInMainWorld('coqpi', {
         jobId,
         drafts
       ),
+    ingestOwnerSourceToSession: (
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:ingest-owner-source-to-session',
+        jobId,
+        drafts
+      ) as Promise<FinderOwnerSourceSessionIngressResult>,
     saveOutreachDraft: (candidateResultId: string) =>
       ipcRenderer.invoke(
         'coqpi:finder-search:save-outreach-draft',
         candidateResultId
+      ),
+    setOutreachDraftStatus: (
+      draftId: string,
+      status: FinderOutreachDraft['status']
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:set-outreach-draft-status',
+        draftId,
+        status
       )
   },
   contextSources: {

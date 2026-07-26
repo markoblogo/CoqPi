@@ -8,8 +8,17 @@ const { buildAutoAnalysisSchedule } = require('../dist-electron/shared/live-loop
 const {
   buildSessionPayloadInspector
 } = require('../dist-electron/shared/session-payload-inspector.js')
+const {
+  buildSessionSelectionSurface
+} = require('../dist-electron/shared/session-selection-surface.js')
+const {
+  getSessionContextWithImportedCounterpartyPacks
+} = require('../dist-electron/shared/session-pack-selection.js')
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+const {
+  createContextPackDraftFromFinderResult
+} = require('../dist-electron/shared/finder-search-module.js')
 
 const mockElectron = {
   app: {
@@ -39,6 +48,7 @@ const withElectronMock = async (run) => {
     const contextSourceService = require('../dist-electron/backend/services/context-source-service.js')
     const sessionContextService = require('../dist-electron/backend/services/session-context-service.js')
     const finderSearchService = require('../dist-electron/backend/services/finder-search-service.js')
+    const finderSessionIngressService = require('../dist-electron/backend/services/finder-session-ingress-service.js')
     const profileService = require('../dist-electron/backend/services/profile-service.js')
     const secretStorageService = require('../dist-electron/backend/services/secret-storage-service.js')
     const governanceService = require('../dist-electron/backend/services/governance-service.js')
@@ -49,6 +59,7 @@ const withElectronMock = async (run) => {
       contextSourceService,
       sessionContextService,
       finderSearchService,
+      finderSessionIngressService,
       profileService,
       secretStorageService,
       governanceService
@@ -124,6 +135,10 @@ const withStubbedProviderRoute = ({
       isTextOnly: true,
       failoverEnabled: true
     }))
+    const originalGetPersonalInterviewRetrieval =
+      services.contextSourceService.getPersonalInterviewRetrieval.bind(
+        services.contextSourceService
+      )
 
     try {
       return withPatchedModules(
@@ -140,10 +155,23 @@ const withStubbedProviderRoute = ({
         [
           services.contextSourceService,
           'getPersonalInterviewRetrieval',
-          async (_transcriptText, _answerLanguage, retrievalKinds, selectedPackIds) => {
+          async (
+            transcriptText,
+            answerLanguage,
+            retrievalKinds,
+            selectedPackIds,
+            retrievalProvider
+          ) => {
             onRetrievalCall?.(retrievalKinds)
             onSelectedPackIds?.(selectedPackIds)
-            return ''
+
+            return originalGetPersonalInterviewRetrieval(
+              transcriptText,
+              answerLanguage,
+              retrievalKinds,
+              selectedPackIds,
+              retrievalProvider
+            )
           }
         ],
         [
@@ -174,7 +202,7 @@ const withStubbedProviderRoute = ({
 
         const resolvedOverrides =
           typeof requestOverrides === 'function'
-            ? requestOverrides(services)
+            ? await requestOverrides(services)
             : requestOverrides
         const request = makeRequest(resolvedOverrides)
         onAnalyzeRequest?.(request)
@@ -726,7 +754,7 @@ test('analyzeRecentTranscript assistant prompt matches session payload inspector
   )
 })
 
-test('analyzeRecentTranscript excludes stale selected outreach draft while keeping selected pack audit', async () => {
+test('analyzeRecentTranscript prunes stale selected outreach draft from persisted session while keeping selected pack audit', async () => {
   const observed = {
     capturedPrompt: '',
     capturedSelectedPackIds: undefined,
@@ -787,7 +815,15 @@ test('analyzeRecentTranscript excludes stale selected outreach draft while keepi
         const reloadedSession = await services.sessionContextService.getSessionContext()
         observed.requestContext = reloadedSession.context
       },
-      requestOverrides: () => observed.requestContext,
+      requestOverrides: () => ({
+        ...makeRequest({
+          transcriptText:
+            'I am interested in the Interview lead v2 role at Stale Draft Co and would like to discuss the next steps.'
+        }),
+        sessionContext: observed.requestContext,
+        selectedCounterpartyPackIds:
+          observed.requestContext?.selectedCounterpartyPackIds ?? []
+      }),
       onSelectedPackIds: (selectedCounterpartyPackIds) => {
         observed.capturedSelectedPackIds = [...selectedCounterpartyPackIds]
       },
@@ -827,11 +863,12 @@ test('analyzeRecentTranscript excludes stale selected outreach draft while keepi
     profileChars: 0
   })
 
+  assert.equal(observed.requestContext.selectedFinderOutreachDraftId, '')
   assert.equal(inspector.includedOutreachDraft, null)
-  assert.equal(inspector.droppedOutreachDraft?.id, staleDraftId)
+  assert.equal(inspector.droppedOutreachDraft, null)
 
   assert.equal(inspector.includedPacks.map((pack) => pack.id).length, 1)
-  assert.equal(inspector.droppedPacks.map((pack) => pack.id).length, 2)
+  assert.equal(inspector.droppedPacks.map((pack) => pack.id).length, 0)
 
   assert.equal(
     observed.capturedPrompt.includes('finder:job:payload-audit-keep-2'),
@@ -1140,6 +1177,620 @@ test('analyzeRecentTranscript includes selected outreach draft from persisted se
     /Opening message already drafted: Hi Northfield Labs/
   )
   assert.match(capturedPrompt, /Use this outreach version before the call/)
+})
+
+test('analyzeRecentTranscript includes finder-imported selected pack from persisted session handoff', async () => {
+  const observed = {
+    capturedPrompt: '',
+    retrievalSelectedCounterpartyPackIds: undefined
+  }
+  let expectedSelectedPackIds = []
+  let expectedPackSourceId = ''
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'job',
+          label: 'France product roles',
+          query: 'senior product manager france agtech'
+        })
+        const job = afterJob.store.jobs[0]
+        const afterCandidate =
+          await services.finderSearchService.addFinderCandidateResult(job.id, {
+            sourceId: 'finder:job:handoff-001',
+            partnerName: 'Northfield Labs',
+            title: 'Senior Product Lead',
+            summary: 'Interview candidate sourced from Finder job.',
+            links: ['https://example.com/jobs/northfield-product-lead'],
+            fitScore: 88,
+            whyRelevant: 'Strong overlap with product leadership and AI workflows.',
+            missingInfo: 'Need compensation range.',
+            nextAction: 'Prepare tailored interview story.'
+          })
+
+        const candidate = afterCandidate.store.results[0]
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            createContextPackDraftFromFinderResult(candidate)
+          ])
+        const importedPack = importResult.manifest.counterpartyPacks[0]
+        expectedSelectedPackIds = importedPack ? [importedPack.id] : []
+        expectedPackSourceId = importedPack?.sourceId ?? ''
+
+        await services.sessionContextService.saveSessionContext({
+          company: candidate.partnerName,
+          role: candidate.title,
+          context: 'Finder to session handoff',
+          goal: 'Use the imported Finder pack in the next assistant analysis.',
+          notes: 'No manual pack id edits between import and analyze.',
+          selectedCounterpartyPackIds: expectedSelectedPackIds
+        })
+      },
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      onSelectedPackIds: (selectedPackIdsFromRetrieval) => {
+        observed.retrievalSelectedCounterpartyPackIds = [
+          ...(selectedPackIdsFromRetrieval ?? [])
+        ]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = JSON.parse(init.body)
+        observed.capturedPrompt = body.messages[1].content
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Finder pack подключен в живой анализ.',
+              detectedQuestion: 'Which imported context is active?',
+              intent: 'finder handoff check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I prepared for this role using the selected company context.',
+                  answerMeaningRu: 'Я подготовился к этой роли с выбранным контекстом компании.'
+                }
+              ],
+              keywordsToRemember: ['selected context', 'role'],
+              openingPhrase: 'Sure.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.deepEqual(
+    observed.retrievalSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.match(observed.capturedPrompt, /Northfield Labs/)
+  assert.match(observed.capturedPrompt, /Senior Product Lead/)
+  assert.match(observed.capturedPrompt, /Prepare tailored interview story/)
+  assert.equal(
+    observed.capturedPrompt.includes(expectedPackSourceId),
+    true
+  )
+})
+
+test('App-style finder import auto-selects session pack and analyze uses it without manual selected ids', async () => {
+  const observed = {
+    capturedPrompt: '',
+    retrievalSelectedCounterpartyPackIds: undefined,
+    savedSelectedCounterpartyPackIds: undefined,
+    reloadedSelectedCounterpartyPackIds: undefined,
+    finderCandidateStatus: undefined
+  }
+  let expectedSelectedPackIds = []
+  let expectedPackSourceId = ''
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'job',
+          label: 'France product roles',
+          query: 'senior product manager france agtech'
+        })
+        const job = afterJob.store.jobs[0]
+        const afterCandidate =
+          await services.finderSearchService.addFinderCandidateResult(job.id, {
+            sourceId: 'finder:job:app-path-001',
+            partnerName: 'Northfield Labs',
+            title: 'Senior Product Lead',
+            summary: 'Interview candidate sourced from Finder job.',
+            links: ['https://example.com/jobs/northfield-product-lead'],
+            fitScore: 88,
+            whyRelevant: 'Strong overlap with product leadership and AI workflows.',
+            missingInfo: 'Need compensation range.',
+            nextAction: 'Prepare tailored interview story.'
+          })
+
+        const candidate = afterCandidate.store.results[0]
+        const finderDraft = createContextPackDraftFromFinderResult(candidate)
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            finderDraft
+          ])
+        const nextPacks = importResult.manifest.counterpartyPacks ?? []
+        const importedPack = nextPacks[0]
+        expectedSelectedPackIds = importedPack ? [importedPack.id] : []
+        expectedPackSourceId = importedPack?.sourceId ?? ''
+
+        const currentSession =
+          (await services.sessionContextService.getSessionContext()).context
+        const nextSession = getSessionContextWithImportedCounterpartyPacks(
+          {
+            ...currentSession,
+            company: candidate.partnerName,
+            role: candidate.title,
+            context: 'Finder import handoff',
+            goal: 'Use the imported Finder pack in the next assistant analysis.',
+            notes: 'No manual selected pack edits after import.'
+          },
+          nextPacks,
+          [finderDraft]
+        )
+        const saved =
+          await services.sessionContextService.saveSessionContext(nextSession)
+        observed.savedSelectedCounterpartyPackIds =
+          saved.context.selectedCounterpartyPackIds
+
+        const finderPayload =
+          await services.finderSearchService.setFinderCandidateResultStatus(
+            candidate.id,
+            'imported'
+          )
+        observed.finderCandidateStatus = finderPayload.store.results[0]?.status
+
+        const reloaded = await services.sessionContextService.getSessionContext()
+        observed.reloadedSelectedCounterpartyPackIds =
+          reloaded.context.selectedCounterpartyPackIds
+      },
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      onSelectedPackIds: (selectedPackIdsFromRetrieval) => {
+        observed.retrievalSelectedCounterpartyPackIds = [
+          ...(selectedPackIdsFromRetrieval ?? [])
+        ]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = JSON.parse(init.body)
+        observed.capturedPrompt = body.messages[1].content
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Finder import flow передал выбранный pack в live analyze.',
+              detectedQuestion: 'Which selected context is active now?',
+              intent: 'finder app path check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I prepared using the selected company context for this role.',
+                  answerMeaningRu: 'Я подготовился по выбранному контексту компании для этой роли.'
+                }
+              ],
+              keywordsToRemember: ['selected context', 'company'],
+              openingPhrase: 'Sure.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.deepEqual(
+    observed.savedSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.deepEqual(
+    observed.reloadedSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.deepEqual(
+    observed.retrievalSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.equal(observed.finderCandidateStatus, 'imported')
+  assert.match(observed.capturedPrompt, /Northfield Labs/)
+  assert.match(observed.capturedPrompt, /Senior Product Lead/)
+  assert.match(observed.capturedPrompt, /Prepare tailored interview story/)
+  assert.equal(
+    observed.capturedPrompt.includes(expectedPackSourceId),
+    true
+  )
+})
+
+test('owner source fast-lane persists selected pack into prepare/live analyze without manual session edits', async () => {
+  const observed = {
+    capturedPrompt: '',
+    retrievalSelectedCounterpartyPackIds: undefined,
+    prepareSelectedPackLabel: '',
+    prepareIncludedSourceId: ''
+  }
+  let expectedSelectedPackIds = []
+  let expectedPackSourceId = ''
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'job',
+          label: 'France product roles',
+          query: 'senior product manager france agtech',
+          goal: 'Prepare interview context'
+        })
+        const job = afterJob.store.jobs[0]
+        const preview =
+          await services.finderSearchService.previewFinderOwnerPastedSource(
+            job.id,
+            [
+              'Company: Northfield Labs',
+              'Role: Senior Product Manager',
+              'Location: Paris, France',
+              'Website: https://northfield.example/careers',
+              'Contact: hiring@northfield.example',
+              'Why relevant: Product management role in French agtech market.'
+            ].join('\n')
+          )
+        const ingress =
+          await services.finderSessionIngressService.ingestFinderOwnerSourceCandidatesToSession(
+            job.id,
+            preview.candidates.map((candidate) => candidate.draft)
+          )
+        expectedSelectedPackIds =
+          ingress.session.context.selectedCounterpartyPackIds
+        expectedPackSourceId =
+          ingress.manifest.counterpartyPacks?.[0]?.sourceId ?? ''
+
+        const surface = buildSessionSelectionSurface({
+          activeContext: ingress.session.context,
+          draftContext: ingress.session.context,
+          availablePacks: ingress.manifest.counterpartyPacks ?? [],
+          availableOutreachDrafts: ingress.store.outreachDrafts,
+          includeProfileContext: false,
+          profileChars: 0
+        })
+
+        observed.prepareSelectedPackLabel =
+          surface.activePrepPreview.selectedPackLabel
+        observed.prepareIncludedSourceId =
+          surface.activePayloadInspector.includedPacks[0]?.sourceId ?? ''
+      },
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      onSelectedPackIds: (selectedPackIdsFromRetrieval) => {
+        observed.retrievalSelectedCounterpartyPackIds = [
+          ...(selectedPackIdsFromRetrieval ?? [])
+        ]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = JSON.parse(init.body)
+        observed.capturedPrompt = body.messages[1].content
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Owner source fast-lane передал выбранный pack в live analyze.',
+              detectedQuestion: 'Which owner-source context is active now?',
+              intent: 'owner source app path check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I prepared for this role using the selected company context.',
+                  answerMeaningRu: 'Я подготовился к этой роли с выбранным контекстом компании.'
+                }
+              ],
+              keywordsToRemember: ['selected context', 'company'],
+              openingPhrase: 'Sure.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.deepEqual(
+    observed.retrievalSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.equal(
+    observed.prepareSelectedPackLabel,
+    'Northfield Labs · Senior Product Manager'
+  )
+  assert.equal(observed.prepareIncludedSourceId, expectedPackSourceId)
+  assert.match(observed.capturedPrompt, /Northfield Labs/)
+  assert.match(observed.capturedPrompt, /Senior Product Manager/)
+  assert.match(observed.capturedPrompt, /French agtech market/)
+  assert.equal(
+    observed.capturedPrompt.includes(expectedPackSourceId),
+    true
+  )
+})
+
+test('analyzeRecentTranscript drops disabled selected finder pack and stays aligned with UI audit surface', async () => {
+  const observed = {
+    capturedPrompt: '',
+    capturedSelectedPackIds: undefined,
+    restoredSession: null
+  }
+  let disabledPack = null
+  let uiSurface = null
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:disabled-after-selected-001',
+              partnerName: 'Northfield Labs',
+              title: 'Senior Product Lead',
+              summary: 'This pack will be selected, then disabled before analyze.'
+            }
+          ])
+
+        const importedPack = importResult.manifest.counterpartyPacks[0]
+        disabledPack = importedPack
+
+        const selectedContext =
+          await services.sessionContextService.saveSessionContext({
+            company: 'Northfield Labs',
+            role: 'Senior Product Lead',
+            context: 'Finder import handoff',
+            goal: 'Check disabled pack does not reach assistant payload.',
+            notes: 'UI should still show why the pack was dropped.',
+            selectedCounterpartyPackIds: importedPack ? [importedPack.id] : []
+          })
+
+        const disabledManifest =
+          await services.contextSourceService.setCounterpartyContextPackSelected(
+            importedPack.id,
+            false
+          )
+        const disabledPacks = disabledManifest.manifest.counterpartyPacks ?? []
+        const restoredSession = await services.sessionContextService.getSessionContext()
+        observed.restoredSession = restoredSession
+
+        uiSurface = buildSessionSelectionSurface({
+          activeContext: restoredSession.context,
+          draftContext: restoredSession.context,
+          availablePacks: disabledPacks,
+          activeAuditedDroppedPacks: buildSessionPayloadInspector({
+            context: restoredSession.persistedContext,
+            availablePacks: disabledPacks,
+            includeProfileContext: false,
+            profileChars: 0
+          }).droppedPacks,
+          draftAuditedDroppedPacks: buildSessionPayloadInspector({
+            context: restoredSession.persistedContext,
+            availablePacks: disabledPacks,
+            includeProfileContext: false,
+            profileChars: 0
+          }).droppedPacks,
+          includeProfileContext: false,
+          profileChars: 0
+        })
+      },
+      requestOverrides: () => ({
+        ...makeRequest({
+          transcriptText:
+            'I am interested in the Senior Product Lead role at Northfield Labs and would like to discuss the next steps.'
+        }),
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      }),
+      onSelectedPackIds: (selectedCounterpartyPackIds) => {
+        observed.capturedSelectedPackIds = [...selectedCounterpartyPackIds]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = init.body ? JSON.parse(init.body) : {}
+        observed.capturedPrompt = body?.messages?.[1]?.content || ''
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Отключенный pack исключён из запроса.',
+              detectedQuestion: 'Will the disabled context still be used?',
+              intent: 'disabled pack audit',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I will continue without the disabled context pack.',
+                  answerMeaningRu: 'Продолжу без отключённого context pack.'
+                }
+              ],
+              keywordsToRemember: ['disabled', 'context'],
+              openingPhrase: 'OK.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.deepEqual(observed.restoredSession.context.selectedCounterpartyPackIds, [])
+  assert.deepEqual(
+    observed.restoredSession.persistedContext.selectedCounterpartyPackIds,
+    [disabledPack.id]
+  )
+  assert.deepEqual(observed.capturedSelectedPackIds, [])
+  assert.equal(uiSurface.activePackSummary.state, 'dropped')
+  assert.equal(
+    uiSurface.activePackSummary.label,
+    'Dropped: Northfield Labs · Senior Product Lead'
+  )
+  assert.equal(
+    uiSurface.activePrepPreview.selectedPackQualityLabel,
+    'dropped from assistant payload'
+  )
+  assert.deepEqual(
+    uiSurface.activePayloadInspector.droppedPacks.map((pack) => pack.id),
+    [disabledPack.id]
+  )
+  assert.match(
+    uiSurface.activePayloadInspector.droppedPacks[0].reason,
+    /not selected/
+  )
+  assert.equal(
+    observed.capturedPrompt.includes('finder:job:disabled-after-selected-001'),
+    false
+  )
+  assert.equal(
+    observed.capturedPrompt.includes(disabledPack.id),
+    false
+  )
+})
+
+test('analyzeRecentTranscript drops removed selected finder pack and stays aligned with UI audit surface', async () => {
+  const observed = {
+    capturedPrompt: '',
+    capturedSelectedPackIds: undefined,
+    restoredSession: null
+  }
+  let removedPack = null
+  let uiSurface = null
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:removed-after-selected-001',
+              partnerName: 'Northfield Labs',
+              title: 'Senior Product Lead',
+              summary: 'This pack will be selected, then removed before analyze.'
+            }
+          ])
+
+        const importedPack = importResult.manifest.counterpartyPacks[0]
+        removedPack = importedPack
+
+        const selectedContext =
+          await services.sessionContextService.saveSessionContext({
+            company: 'Northfield Labs',
+            role: 'Senior Product Lead',
+            context: 'Finder import handoff',
+            goal: 'Check removed pack does not reach assistant payload.',
+            notes: 'UI should still show the removed pack as dropped.',
+            selectedCounterpartyPackIds: importedPack ? [importedPack.id] : []
+          })
+
+        await services.contextSourceService.removeCounterpartyContextPack(
+          importedPack.id
+        )
+        const removedPacks = []
+        const restoredSession = await services.sessionContextService.getSessionContext()
+        observed.restoredSession = restoredSession
+
+        uiSurface = buildSessionSelectionSurface({
+          activeContext: restoredSession.context,
+          draftContext: restoredSession.context,
+          availablePacks: removedPacks,
+          activeAuditedDroppedPacks: buildSessionPayloadInspector({
+            context: restoredSession.persistedContext,
+            availablePacks: removedPacks,
+            includeProfileContext: false,
+            profileChars: 0
+          }).droppedPacks,
+          draftAuditedDroppedPacks: buildSessionPayloadInspector({
+            context: restoredSession.persistedContext,
+            availablePacks: removedPacks,
+            includeProfileContext: false,
+            profileChars: 0
+          }).droppedPacks,
+          includeProfileContext: false,
+          profileChars: 0
+        })
+      },
+      requestOverrides: () => ({
+        ...makeRequest({
+          transcriptText:
+            'I am interested in the Senior Product Lead role at Northfield Labs and would like to discuss the next steps.'
+        }),
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      }),
+      onSelectedPackIds: (selectedCounterpartyPackIds) => {
+        observed.capturedSelectedPackIds = [...selectedCounterpartyPackIds]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = init.body ? JSON.parse(init.body) : {}
+        observed.capturedPrompt = body?.messages?.[1]?.content || ''
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Удалённый pack исключён из запроса.',
+              detectedQuestion: 'Will the removed context still be used?',
+              intent: 'removed pack audit',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I will continue without the removed context pack.',
+                  answerMeaningRu: 'Продолжу без удалённого context pack.'
+                }
+              ],
+              keywordsToRemember: ['removed', 'context'],
+              openingPhrase: 'OK.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.deepEqual(observed.restoredSession.context.selectedCounterpartyPackIds, [])
+  assert.deepEqual(
+    observed.restoredSession.persistedContext.selectedCounterpartyPackIds,
+    [removedPack.id]
+  )
+  assert.deepEqual(observed.capturedSelectedPackIds, [])
+  assert.equal(uiSurface.activePackSummary.state, 'dropped')
+  assert.equal(
+    uiSurface.activePackSummary.label,
+    `Dropped: ${removedPack.id}`
+  )
+  assert.equal(
+    uiSurface.activePrepPreview.selectedPackLabel,
+    removedPack.id
+  )
+  assert.deepEqual(
+    uiSurface.activePayloadInspector.droppedPacks.map((pack) => pack.id),
+    [removedPack.id]
+  )
+  assert.match(
+    uiSurface.activePayloadInspector.droppedPacks[0].reason,
+    /missing/
+  )
+  assert.equal(
+    observed.capturedPrompt.includes('finder:job:removed-after-selected-001'),
+    false
+  )
+  assert.equal(
+    observed.capturedPrompt.includes(removedPack.id),
+    false
+  )
 })
 
 test('analyzeRecentTranscript filters persisted selected pack ids through retrieval-ready contract', async () => {

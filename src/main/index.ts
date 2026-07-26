@@ -9,9 +9,12 @@ import type {
   ContextSourceDraft,
   ContextSourceManifestResult,
   CounterpartyContextPackDraft,
+  FinderCandidateDecisionState,
+  FinderOutreachDraft,
   KnowledgePackLifecycleDraft,
   DeleteOpenAIKeyResult,
   FinderCandidateResultDraft,
+  FinderOwnerSourceSessionIngressResult,
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
@@ -60,9 +63,14 @@ import {
   previewFinderOwnerPastedSource,
   runManualFinderSearchJob,
   saveFinderOutreachDraft,
+  setFinderOutreachDraftStatus,
+  setFinderCandidateResultDecision,
   setFinderCandidateResultStatus,
   setFinderSearchJobStatus
 } from '../backend/services/finder-search-service'
+import {
+  ingestFinderOwnerSourceCandidatesToSession
+} from '../backend/services/finder-session-ingress-service'
 import {
   addContextSource,
   addCounterpartyContextPacks,
@@ -309,6 +317,16 @@ const registerIpcHandlers = () => {
   )
 
   ipcMain.handle(
+    'coqpi:finder-search:set-candidate-decision',
+    async (
+      _event,
+      id: string,
+      state: FinderCandidateDecisionState,
+      reason?: string
+    ) => setFinderCandidateResultDecision(id, state, reason)
+  )
+
+  ipcMain.handle(
     'coqpi:finder-search:ingest-runner-payload',
     async (_event, payloadText: string): Promise<FinderSearchStoreResult> =>
       ingestFinderRunnerPayload(payloadText)
@@ -351,12 +369,32 @@ const registerIpcHandlers = () => {
   )
 
   ipcMain.handle(
+    'coqpi:finder-search:ingest-owner-source-to-session',
+    async (
+      _event,
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ): Promise<FinderOwnerSourceSessionIngressResult> =>
+      ingestFinderOwnerSourceCandidatesToSession(jobId, drafts)
+  )
+
+  ipcMain.handle(
     'coqpi:finder-search:save-outreach-draft',
     async (
       _event,
       candidateResultId: string
     ): Promise<FinderSearchStoreResult> =>
       saveFinderOutreachDraft(candidateResultId)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:set-outreach-draft-status',
+    async (
+      _event,
+      draftId: string,
+      status: FinderOutreachDraft['status']
+    ): Promise<FinderSearchStoreResult> =>
+      setFinderOutreachDraftStatus(draftId, status)
   )
 
   ipcMain.handle(

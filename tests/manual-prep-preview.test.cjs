@@ -134,7 +134,7 @@ test('manual prep preview reports weak fields and missing pack', () => {
   assert.equal(preview.sessionLabel, 'No company/role')
   assert.equal(preview.goalLabel, 'No goal')
   assert.equal(preview.contextLabel, 'No context')
-  assert.equal(preview.selectedPackLabel, 'No selected pack')
+  assert.equal(preview.selectedPackLabel, 'No pack selected')
   assert.equal(preview.selectedPackQualityLevel, 'none')
   assert.match(preview.assistantPayloadLabel, /profile off/)
   assert.deepEqual(
@@ -167,6 +167,81 @@ test('manual prep preview surfaces weak selected pack', () => {
   assert.equal(preview.selectedPackQualityLevel, 'weak')
   assert.equal(
     preview.weakFields.some((field) => field.id === 'weak_pack'),
+    true
+  )
+})
+
+test('manual prep preview immediately reflects removed or invalidated selected pack', () => {
+  const removedPreview = buildManualPrepPreview({
+    context: makeContext({ selectedCounterpartyPackIds: ['pack-A'] }),
+    availablePacks: [],
+    includeProfileContext: true,
+    profileChars: 1234
+  })
+
+  assert.equal(removedPreview.selectedPackCount, 0)
+  assert.equal(removedPreview.selectedPackLabel, 'pack-A')
+  assert.equal(removedPreview.selectedPackQualityLevel, 'blocked')
+  assert.equal(
+    removedPreview.weakFields.some((field) => field.id === 'blocked_pack'),
+    true
+  )
+
+  const invalidatedPreview = buildManualPrepPreview({
+    context: makeContext({ selectedCounterpartyPackIds: ['pack-A'] }),
+    availablePacks: [
+      makePack({
+        selected: false,
+        status: 'pending_classification'
+      })
+    ],
+    includeProfileContext: true,
+    profileChars: 1234
+  })
+
+  assert.equal(invalidatedPreview.selectedPackCount, 0)
+  assert.equal(
+    invalidatedPreview.selectedPackLabel,
+    'Acme · Senior Product Manager'
+  )
+  assert.equal(invalidatedPreview.selectedPackQualityLevel, 'blocked')
+  assert.equal(
+    invalidatedPreview.selectedPackQualityLabel,
+    'dropped from assistant payload'
+  )
+  assert.equal(
+    invalidatedPreview.weakFields.some((field) => field.id === 'blocked_pack'),
+    true
+  )
+})
+
+test('manual prep preview preserves dropped selected pack label after session ids are pruned', () => {
+  const preview = buildManualPrepPreview({
+    context: makeContext({ selectedCounterpartyPackIds: [] }),
+    availablePacks: [
+      makePack({
+        selected: false,
+        status: 'pending_classification'
+      })
+    ],
+    auditedDroppedPacks: [
+      {
+        id: 'pack-A',
+        label: 'Acme · Senior Product Manager',
+        sourceId: 'finder:job:a',
+        status: 'dropped',
+        reason: 'not selected, not retrieval-ready'
+      }
+    ],
+    includeProfileContext: true,
+    profileChars: 1234
+  })
+
+  assert.equal(preview.selectedPackCount, 0)
+  assert.equal(preview.selectedPackLabel, 'Acme · Senior Product Manager')
+  assert.equal(preview.selectedPackQualityLevel, 'blocked')
+  assert.equal(
+    preview.weakFields.some((field) => field.id === 'blocked_pack'),
     true
   )
 })

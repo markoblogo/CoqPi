@@ -97,6 +97,48 @@ test('finder search service persists jobs, candidates and status history', async
   })
 })
 
+test('finder search service persists candidate decisions and reject reasons', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'France partners',
+      query: 'agri partners france'
+    })
+    const job = afterJob.store.jobs[0]
+    const afterCandidate = await service.addFinderCandidateResult(job.id, {
+      sourceId: 'finder:partner:canal-market',
+      partnerName: 'Canal Market',
+      title: 'Regional partner',
+      summary: 'Potentially useful regional partner.',
+      fitScore: 71
+    })
+    const result = afterCandidate.store.results[0]
+    const afterHold = await service.setFinderCandidateResultDecision(
+      result.id,
+      'hold_later'
+    )
+    const afterReject = await service.setFinderCandidateResultDecision(
+      result.id,
+      'rejected',
+      'outside current outreach wave'
+    )
+
+    assert.equal(afterHold.store.results[0].decision.state, 'hold_later')
+    assert.equal(afterHold.store.results[0].status, 'ready')
+    assert.equal(afterReject.store.results[0].decision.state, 'rejected')
+    assert.equal(
+      afterReject.store.results[0].decision.reason,
+      'outside current outreach wave'
+    )
+    assert.equal(afterReject.store.results[0].status, 'rejected')
+    assert.equal(afterReject.store.results[0].statusHistory[0].status, 'rejected')
+    assert.match(
+      afterReject.store.results[0].statusHistory[0].reason,
+      /outside current outreach wave/
+    )
+  })
+})
+
 test('finder search service ingests runner payload with append-only source truth', async () => {
   await withFinderWorkspace(async (service) => {
     const payload = JSON.stringify({
@@ -255,6 +297,12 @@ test('finder search service previews and imports reviewed owner source candidate
     assert.equal(preview.requestedCount, 2)
     assert.equal(preview.validCount, 2)
     assert.equal(preview.duplicateCount, 0)
+    assert.deepEqual(preview.detectedFormats, [
+      { format: 'url', count: 1 },
+      { format: 'freeform_text', count: 1 }
+    ])
+    assert.equal(preview.candidates[0].detectedFormat, 'url')
+    assert.equal(preview.candidates[1].detectedFormat, 'freeform_text')
     assert.equal(unchanged.store.results.length, 0)
     assert.equal(imported.store.jobs[0].status, 'ready')
     assert.equal(imported.store.results.length, 1)
@@ -328,5 +376,64 @@ test('finder search service saves outreach draft handoff locally', async () => {
     assert.match(draft.openingMessage, /I saw the AI Product Lead opportunity/)
     assert.equal(reloaded.store.outreachDrafts[0].id, draft.id)
     assert.match(eventLog, /outreach_draft_recorded/)
+  })
+})
+
+test('finder search service updates outreach draft local ready-for-contact state', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'Outreach lane',
+      query: 'agri partners france'
+    })
+    const job = afterJob.store.jobs[0]
+    const afterCandidate = await service.addFinderCandidateResult(job.id, {
+      sourceId: 'finder:partner:ready-state',
+      partnerName: 'Ready State Partner',
+      title: 'Regional partner',
+      summary: 'Good outreach target.',
+      fitScore: 79
+    })
+    const candidate = afterCandidate.store.results[0]
+    const afterDraft = await service.saveFinderOutreachDraft(candidate.id)
+    const draft = afterDraft.store.outreachDrafts[0]
+    const markedReady = await service.setFinderOutreachDraftStatus(
+      draft.id,
+      'ready_for_contact'
+    )
+    const restored = await service.setFinderOutreachDraftStatus(draft.id, 'draft')
+
+    assert.equal(markedReady.store.outreachDrafts[0].status, 'ready_for_contact')
+    assert.equal(restored.store.outreachDrafts[0].status, 'draft')
+  })
+})
+
+test('finder search service does not duplicate outreach drafts for the same candidate', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'investor',
+      label: 'Investor queue',
+      query: 'agri investors france'
+    })
+    const job = afterJob.store.jobs[0]
+    const afterCandidate = await service.addFinderCandidateResult(job.id, {
+      sourceId: 'finder:investor:one-draft-only',
+      partnerName: 'One Draft Fund',
+      title: 'Seed fund',
+      summary: 'Promising investor.',
+      fitScore: 83
+    })
+    const candidate = afterCandidate.store.results[0]
+    const first = await service.saveFinderOutreachDraft(candidate.id)
+    const second = await service.saveFinderOutreachDraft(candidate.id)
+
+    assert.equal(first.store.outreachDrafts.length, 1)
+    assert.equal(second.store.outreachDrafts.length, 1)
+    assert.equal(
+      second.store.outreachDrafts.filter(
+        (draft) => draft.candidateResultId === candidate.id
+      ).length,
+      1
+    )
   })
 })

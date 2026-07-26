@@ -483,6 +483,7 @@ export const buildLiveTestCockpitItems = ({
   assistantStatus,
   autoTranscriptText,
   selectedPackLabel,
+  selectedPackState = 'none',
   selectedPackCount,
   transcriptUtterances,
   latestRelevantUtteranceId,
@@ -494,6 +495,7 @@ export const buildLiveTestCockpitItems = ({
   assistantStatus: AssistantStatusLabelInfo
   autoTranscriptText: string
   selectedPackLabel: string
+  selectedPackState?: 'included' | 'dropped' | 'none'
   selectedPackCount: number
   transcriptUtterances: TranscriptUtterance[]
   latestRelevantUtteranceId: string | undefined
@@ -556,8 +558,16 @@ export const buildLiveTestCockpitItems = ({
     {
       id: 'context',
       label: 'Context',
-      value: selectedPackCount > 0 ? selectedPackLabel : 'No pack',
-      tone: selectedPackCount > 0 ? 'ok' : 'warning',
+      value:
+        selectedPackState === 'none'
+          ? 'No pack'
+          : selectedPackLabel,
+      tone:
+        selectedPackState === 'included'
+          ? 'ok'
+          : selectedPackState === 'dropped'
+            ? 'warning'
+            : 'warning',
       title: 'Selected counterparty packs active for assistant retrieval.'
     },
     {

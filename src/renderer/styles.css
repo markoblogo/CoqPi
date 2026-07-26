@@ -963,6 +963,36 @@ button:disabled {
   background: #11171d;
 }
 
+.session-payload-entry {
+  display: grid;
+  gap: 2px;
+  padding: 4px 5px;
+  border-radius: 3px;
+  border: 1px solid #33404d;
+  background: #182028;
+}
+
+.session-payload-entry strong {
+  color: #e5edf4;
+}
+
+.session-payload-entry span,
+.session-payload-entry code {
+  color: #9fb1c2;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.session-payload-entry-included {
+  border-color: #2f5b40;
+  background: #162118;
+}
+
+.session-payload-entry-dropped {
+  border-color: #5d4638;
+  background: #221916;
+}
+
 .context-sources-card {
   display: grid;
   align-content: start;
@@ -1367,6 +1397,26 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.finder-decision-explanation {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border-left: 2px solid #5f7a55;
+  background: #161d18;
+}
+
+.finder-decision-explanation strong {
+  color: #e6f2df;
+  font-size: var(--font-xs);
+  text-transform: lowercase;
+}
+
+.finder-decision-explanation span {
+  color: #adc2a3;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
 .finder-pipeline-controls {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1390,6 +1440,104 @@ button:disabled {
 
 .finder-pipeline-header span {
   color: #99abbc;
+  font-size: var(--font-xs);
+}
+
+.finder-decision-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.finder-decision-card {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2);
+  border: 1px solid #355044;
+  border-radius: 3px;
+  background: #17211b;
+}
+
+.finder-decision-card span {
+  color: #a2b8ab;
+  font-size: var(--font-xs);
+}
+
+.finder-decision-card strong {
+  color: #edf5ef;
+  font-size: var(--font-sm);
+}
+
+.finder-queue-review {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #33404d;
+  border-radius: 3px;
+  background: #171d24;
+}
+
+.finder-queue-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.finder-queue-column {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #31414e;
+  border-radius: 3px;
+  background: #141b22;
+}
+
+.finder-queue-column-header {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.finder-queue-column-header strong {
+  color: #ecf2f8;
+  font-size: var(--font-sm);
+}
+
+.finder-queue-column-header span {
+  color: #9eb0c0;
+  font-size: var(--font-xs);
+}
+
+.finder-queue-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.finder-queue-item {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #2f3b46;
+  border-radius: 3px;
+  background: #12181e;
+}
+
+.finder-queue-item strong {
+  color: #edf4f9;
+  font-size: var(--font-sm);
+}
+
+.finder-queue-item span {
+  color: #9eb0c0;
+  font-size: var(--font-xs);
+}
+
+.finder-queue-opening {
+  display: grid;
+  gap: 2px;
+}
+
+.finder-queue-opening span {
+  color: #a9bac9;
   font-size: var(--font-xs);
 }
 
@@ -2145,6 +2293,12 @@ button:disabled {
 
   .smoke-checklist-item {
     flex-direction: column;
+  }
+
+  .finder-pipeline-controls,
+  .finder-decision-summary,
+  .finder-queue-columns {
+    grid-template-columns: 1fr;
   }
 
   .smoke-checklist-status {

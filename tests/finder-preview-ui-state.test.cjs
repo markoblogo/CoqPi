@@ -6,8 +6,11 @@ const test = require('node:test')
 
 const contextSourceService = require('../dist-electron/backend/services/context-source-service.js')
 const {
+  buildFinderPreviewImportNotice,
   createFinderPreviewItems,
+  getFinderPreviewControls,
   getFinderPreviewSelectionStats,
+  setFinderPreviewItemSelected,
   toggleSelectAllFinderCandidates: toggleSelectAllFinderCandidatesModel
 } = require('../dist-electron/shared/finder-preview-state.js')
 
@@ -125,5 +128,108 @@ test('finder preview UI state keeps stable select defaults after clear/edit reop
     assert.equal(repeatedStats.nonDuplicate, 1)
     assert.equal(repeatedStats.selected, 1)
     assert.equal(repeatedStats.areAllSelected, true)
+  })
+})
+
+test('finder preview UI controls and partial import summary stay consistent across select/deselect', async () => {
+  await withCoreDirectory(async () => {
+    await contextSourceService.ingestCounterpartyFinderPayload(
+      JSON.stringify({
+        kind: 'job',
+        sourceId: 'finder:job:seed-001',
+        partnerName: 'Seed Company',
+        title: 'Seed role',
+        summary: 'Already imported baseline pack.'
+      })
+    )
+
+    const payload = JSON.stringify([
+      {
+        kind: 'job',
+        sourceId: 'finder:job:seed-001',
+        partnerName: 'Seed Company',
+        title: 'Seed role',
+        summary: 'Duplicate candidate.'
+      },
+      {
+        kind: 'partner',
+        sourceId: 'finder:partner:new-001',
+        partnerName: 'Nova Works',
+        title: 'Potential partner',
+        summary: 'Importable partner candidate.'
+      },
+      {
+        kind: 'investor',
+        sourceId: 'finder:investor:new-002',
+        partnerName: 'Green Fund',
+        title: 'Investor',
+        summary: 'Importable investor candidate.'
+      },
+      {
+        kind: 'job',
+        sourceId: '',
+        partnerName: 'Broken',
+        title: 'Invalid',
+        summary: 'Missing source'
+      }
+    ])
+
+    const preview = await contextSourceService.previewCounterpartyFinderPayload(payload)
+    let items = createFinderPreviewItems(preview)
+    let controls = getFinderPreviewControls(items, false)
+
+    assert.equal(preview.requestedCount, 4)
+    assert.equal(preview.validCount, 3)
+    assert.equal(preview.duplicateCount, 1)
+    assert.equal(preview.errors.length, 1)
+    assert.equal(controls.selectableCount, 2)
+    assert.equal(controls.selectedCount, 2)
+    assert.equal(controls.canToggleSelectAll, true)
+    assert.equal(controls.canImportSelected, true)
+    assert.equal(controls.toggleLabel, 'Deselect all')
+
+    items = setFinderPreviewItemSelected(items, 1, false)
+    controls = getFinderPreviewControls(items, false)
+    assert.equal(controls.selectedCount, 1)
+    assert.equal(controls.toggleLabel, 'Select all')
+
+    items = toggleSelectAllFinderCandidatesModel(
+      items,
+      getFinderPreviewSelectionStats(items).areAllSelected
+    )
+    controls = getFinderPreviewControls(items, false)
+    assert.equal(controls.selectedCount, 2)
+    assert.equal(controls.toggleLabel, 'Deselect all')
+
+    const selectedDrafts = items
+      .filter((item) => item.selected && !item.duplicate)
+      .map((item) => item.draft)
+    const importResult =
+      await contextSourceService.addCounterpartyContextPacks(selectedDrafts)
+    const importedPacks = importResult.manifest.counterpartyPacks
+
+    assert.equal(importedPacks.length, 3)
+
+    const notice = buildFinderPreviewImportNotice({
+      selectedCount: selectedDrafts.length,
+      duplicateCount: preview.duplicateCount,
+      errorCount: preview.errors.length
+    })
+
+    assert.match(notice, /Imported 2 selected counterparty packs\./)
+    assert.match(notice, /1 duplicate\/recorded entry skipped\./)
+    assert.match(notice, /1 invalid entry skipped\./)
+
+    const reopenedPreview =
+      await contextSourceService.previewCounterpartyFinderPayload(payload)
+    const reopenedItems = createFinderPreviewItems(reopenedPreview)
+    const reopenedControls = getFinderPreviewControls(reopenedItems, false)
+
+    assert.equal(reopenedPreview.duplicateCount, 3)
+    assert.equal(reopenedControls.selectableCount, 0)
+    assert.equal(reopenedControls.selectedCount, 0)
+    assert.equal(reopenedControls.canToggleSelectAll, false)
+    assert.equal(reopenedControls.canImportSelected, false)
+    assert.equal(reopenedControls.toggleLabel, 'Select all')
   })
 })

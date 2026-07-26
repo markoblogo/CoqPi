@@ -4,6 +4,7 @@ const test = require('node:test')
 const {
   formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
+  getSessionContextWithImportedCounterpartyPacks,
   getSessionContextWithCounterpartyPacks,
   getSessionSelectedCounterpartyPackIds
 } = require('../dist-electron/shared/session-pack-selection.js')
@@ -161,4 +162,69 @@ test('session pack selection auto-adds only imported packs that remain eligible'
     'pack-existing',
     'pack-imported'
   ])
+})
+
+test('app finder import handoff auto-selects imported eligible pack for session', () => {
+  const existing = makePack({
+    id: 'pack-existing',
+    sourceId: 'finder:job:existing'
+  })
+  const importedFinderPack = makePack({
+    id: 'pack-finder-imported',
+    sourceId: 'finder:job:finder-imported',
+    partnerName: 'Northfield Labs',
+    title: 'Senior Product Lead'
+  })
+
+  const nextContext = getSessionContextWithImportedCounterpartyPacks(
+    {
+      ...makeSession(['pack-existing']),
+      company: 'Northfield Labs',
+      role: 'Senior Product Lead',
+      context: 'Finder import handoff'
+    },
+    [existing, importedFinderPack],
+    [
+      {
+        sourceId: 'finder:job:finder-imported',
+        kind: 'job',
+        partnerName: 'Northfield Labs',
+        title: 'Senior Product Lead',
+        summary: 'Imported from Finder result.'
+      }
+    ]
+  )
+
+  assert.deepEqual(nextContext.selectedCounterpartyPackIds, [
+    'pack-existing',
+    'pack-finder-imported'
+  ])
+})
+
+test('session selection prunes selected pack immediately when pack is removed or becomes ineligible', () => {
+  const selectedSession = makeSession(['pack-A'])
+  const eligiblePack = makePack({ id: 'pack-A' })
+
+  assert.deepEqual(
+    getSessionContextWithCounterpartyPacks(selectedSession, [eligiblePack])
+      .selectedCounterpartyPackIds,
+    ['pack-A']
+  )
+
+  assert.deepEqual(
+    getSessionContextWithCounterpartyPacks(selectedSession, [])
+      .selectedCounterpartyPackIds,
+    []
+  )
+
+  assert.deepEqual(
+    getSessionContextWithCounterpartyPacks(selectedSession, [
+      makePack({
+        id: 'pack-A',
+        selected: false,
+        status: 'pending_classification'
+      })
+    ]).selectedCounterpartyPackIds,
+    []
+  )
 })

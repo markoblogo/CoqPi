@@ -59,10 +59,13 @@ Keep this diagram updated when CoqPi changes its main surfaces, assistant routes
 - The selected Finder job can also run a bounded local `manual_mock` runner that generates deterministic placeholder candidates for review/scoring/import tests. It performs no web search, scraping, API call, scheduler work, or outreach.
 - Real Finder Source Adapter v1 accepts owner-pasted URLs, vacancy/export text, LinkedIn-style job snippets, accelerator/program snippets, investor/fund lists, and CSV-like candidate exports for the selected job. It extracts common fields (`company/partner`, `role/opportunity`, `country/city/location`, `contact`, `deadline`, `why relevant`, `missing info`), previews normalized candidates first, lets the owner select/edit them, and only then sends reviewed candidates into the same scoring/import pipeline.
 - Candidate review fields (`fitScore`, `whyRelevant`, `missingInfo`, `nextAction`) are scenario-aware for job, partner, investor, and accelerator flows; the UI explains fit score signals and missing improvements before outreach prep.
-- Prioritized pipeline view sorts and filters candidates by fit score, status, and next action so the Finder tab works as a review funnel.
+- Prioritized pipeline view sorts and filters candidates by fit score, status, next action, and decision state so the Finder tab works as a review funnel.
+- Queue review adds compact `import now / hold / reject` lanes with local batch actions, recovery from explicit hold/reject states, and import/hold outreach visibility.
 - Outreach prep pack summarizes the focused candidate before action: target, opportunity, fit, why relevant, known context, questions to ask, opening message, next action, and weak-field warnings.
 - Outreach draft handoff saves the focused prep card as a local append-only draft in Finder source truth; nothing is sent externally.
-- Saved outreach drafts can be reviewed per search job, copied as a source-bound markdown export, and attached to the active session prep.
+- Queue lanes show opening-message preview directly, whether a draft already exists, and quick actions to create/copy/use the draft in session without leaving the lane card.
+- Outreach drafts have a local-only execution-prep status: `draft` or `ready_for_contact`. This status is for owner workflow only and does not imply that anything was sent externally.
+- Saved outreach drafts can be reviewed per search job, copied as a source-bound markdown export, attached to the active session prep, and batch-marked `ready for contact` locally.
 - Importing a candidate creates a selected counterparty pack for the active session.
 
 ### 3. Personal knowledge and session context

@@ -10,8 +10,14 @@ const {
   createFinderOutreachPrepPack,
   createFinderSearchJob,
   createManualFinderRunnerCandidates,
+  buildFinderDecisionQueueItem,
+  buildFinderQueueReviewColumns,
   createFinderPipelineView,
+  buildFinderPreviewCompletionActions,
   explainFinderCandidateScore,
+  getFinderPreviewImportDecision,
+  reviewFinderPreviewCandidateQuality,
+  summarizeFinderDecisionQueue,
   formatFinderOutreachDraftForExport,
   getFinderSearchStatusCounts,
   parseFinderRunnerPayloadText,
@@ -640,6 +646,274 @@ test('finder pipeline view filters by status score and next action', () => {
   )
 })
 
+test('finder decision queue marks import hold and reject candidates', () => {
+  const job = createFinderSearchJob(
+    { kind: 'partner', label: 'Partners', query: 'agri logistics france' },
+    { id: 'job-decision', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const importNow = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:partner:import-now',
+      partnerName: 'AgriFlow France',
+      title: 'Strategic logistics partner',
+      summary: 'Strong target with direct fit.',
+      links: ['https://agriflow.example/partners'],
+      fitScore: 88,
+      whyRelevant: 'Matches French rollout and commodity flows.',
+      nextAction: 'Prepare partner intro and call notes.'
+    },
+    { id: 'import-now', now: '2026-07-22T10:01:00.000Z' }
+  )
+  const holdSoon = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:partner:hold-soon',
+      partnerName: 'Canal Market',
+      title: 'Regional partner',
+      summary: 'Promising but still incomplete.',
+      fitScore: 72,
+      whyRelevant: 'Likely channel fit.',
+      missingInfo: 'Verify contact, terms before outreach.'
+    },
+    { id: 'hold-soon', now: '2026-07-22T10:02:00.000Z' }
+  )
+  const rejectLater = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:partner:reject-later',
+      partnerName: 'Unknown',
+      title: 'Lead',
+      summary: 'Sparse source.',
+      fitScore: 34
+    },
+    { id: 'reject-later', now: '2026-07-22T10:03:00.000Z' }
+  )
+
+  const importDecision = buildFinderDecisionQueueItem(importNow)
+  const holdDecision = buildFinderDecisionQueueItem(holdSoon)
+  const rejectDecision = buildFinderDecisionQueueItem(rejectLater)
+
+  assert.equal(importDecision.recommendation, 'import')
+  assert.equal(importDecision.priority, 'now')
+  assert.match(importDecision.summary, /Import first/i)
+  assert.equal(holdDecision.recommendation, 'hold')
+  assert.equal(holdDecision.priority, 'soon')
+  assert.equal(rejectDecision.recommendation, 'reject')
+  assert.equal(rejectDecision.priority, 'later')
+
+  assert.deepEqual(
+    summarizeFinderDecisionQueue([importNow, holdSoon, rejectLater]),
+    {
+      importCount: 1,
+      holdCount: 1,
+      rejectCount: 1,
+      nowCount: 1,
+      soonCount: 1,
+      laterCount: 1
+    }
+  )
+})
+
+test('finder pipeline decision sort prioritizes import queue before hold and reject', () => {
+  const job = createFinderSearchJob(
+    { kind: 'investor', label: 'Funds', query: 'climate agri investors' },
+    { id: 'job-decision-sort', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const rejected = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:investor:rejected',
+        partnerName: 'Rejected Fund',
+        title: 'Fund',
+        summary: 'Already rejected.',
+        fitScore: 90
+      },
+      { id: 'rejected', now: '2026-07-22T10:03:00.000Z' }
+    ),
+    status: 'rejected'
+  }
+  const hold = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:investor:hold',
+      partnerName: 'Hold Fund',
+      title: 'Seed fund',
+      summary: 'Needs more checks.',
+      fitScore: 70,
+      whyRelevant: 'Possible fit.'
+    },
+    { id: 'hold', now: '2026-07-22T10:02:00.000Z' }
+  )
+  const importNow = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:investor:import',
+      partnerName: 'Import Fund',
+      title: 'Climate agri fund',
+      summary: 'Strong target.',
+      links: ['https://importfund.example'],
+      fitScore: 89,
+      whyRelevant: 'Clear thematic fit.',
+      nextAction: 'Prepare investor intro.'
+    },
+    { id: 'import', now: '2026-07-22T10:01:00.000Z' }
+  )
+
+  assert.deepEqual(
+    createFinderPipelineView([rejected, hold, importNow], {
+      sortMode: 'decision'
+    }).map((candidate) => candidate.id),
+    ['import', 'hold', 'rejected']
+  )
+})
+
+test('finder pipeline decision filter respects explicit hold and reject states', () => {
+  const job = createFinderSearchJob(
+    { kind: 'partner', label: 'Partners', query: 'france agri partners' },
+    { id: 'job-decision-filter', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const autoImport = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:partner:auto-import',
+      partnerName: 'Auto Import',
+      title: 'Partner',
+      summary: 'Strong fit.',
+      links: ['https://auto-import.example'],
+      fitScore: 88,
+      whyRelevant: 'Direct fit.',
+      nextAction: 'Prepare intro.'
+    },
+    { id: 'auto-import', now: '2026-07-22T10:01:00.000Z' }
+  )
+  const held = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:partner:held',
+        partnerName: 'Held Candidate',
+        title: 'Partner',
+        summary: 'Needs later review.',
+        fitScore: 84,
+        whyRelevant: 'Still good.'
+      },
+      { id: 'held', now: '2026-07-22T10:02:00.000Z' }
+    ),
+    decision: {
+      state: 'hold_later',
+      reason: 'wait until current outreach batch is done',
+      updatedAt: '2026-07-22T10:03:00.000Z'
+    }
+  }
+  const rejected = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:partner:rejected',
+        partnerName: 'Rejected Candidate',
+        title: 'Partner',
+        summary: 'Weak fit.',
+        fitScore: 48
+      },
+      { id: 'rejected-explicit', now: '2026-07-22T10:04:00.000Z' }
+    ),
+    decision: {
+      state: 'rejected',
+      reason: 'outside current geography',
+      updatedAt: '2026-07-22T10:05:00.000Z'
+    },
+    status: 'rejected'
+  }
+
+  assert.deepEqual(
+    createFinderPipelineView([autoImport, held, rejected], {
+      decision: 'hold'
+    }).map((candidate) => candidate.id),
+    ['held']
+  )
+  assert.deepEqual(
+    createFinderPipelineView([autoImport, held, rejected], {
+      decision: 'reject'
+    }).map((candidate) => candidate.id),
+    ['rejected-explicit']
+  )
+  assert.match(buildFinderDecisionQueueItem(held).summary, /Held for later/i)
+  assert.match(buildFinderDecisionQueueItem(rejected).summary, /Rejected with reason/i)
+})
+
+test('finder queue review columns group import hold and reject lanes with explicit counts', () => {
+  const job = createFinderSearchJob(
+    { kind: 'partner', label: 'Queue board', query: 'france partners' },
+    { id: 'job-queue-board', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const importCandidate = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:partner:queue-import',
+      partnerName: 'Queue Import',
+      title: 'Partner',
+      summary: 'Strong target.',
+      links: ['https://queue-import.example'],
+      fitScore: 89,
+      whyRelevant: 'Direct fit.',
+      nextAction: 'Prepare intro.'
+    },
+    { id: 'queue-import', now: '2026-07-22T10:01:00.000Z' }
+  )
+  const heldCandidate = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:partner:queue-hold',
+        partnerName: 'Queue Hold',
+        title: 'Partner',
+        summary: 'Pause until next batch.',
+        fitScore: 78
+      },
+      { id: 'queue-hold', now: '2026-07-22T10:02:00.000Z' }
+    ),
+    decision: {
+      state: 'hold_later',
+      updatedAt: '2026-07-22T10:03:00.000Z'
+    }
+  }
+  const rejectedCandidate = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:partner:queue-reject',
+        partnerName: 'Queue Reject',
+        title: 'Partner',
+        summary: 'Wrong target.',
+        fitScore: 45
+      },
+      { id: 'queue-reject', now: '2026-07-22T10:04:00.000Z' }
+    ),
+    status: 'rejected',
+    decision: {
+      state: 'rejected',
+      reason: 'wrong market',
+      updatedAt: '2026-07-22T10:05:00.000Z'
+    }
+  }
+
+  const columns = buildFinderQueueReviewColumns([
+    rejectedCandidate,
+    heldCandidate,
+    importCandidate
+  ])
+
+  assert.deepEqual(columns.map((column) => column.lane), ['import', 'hold', 'reject'])
+  assert.deepEqual(columns[0].items.map((item) => item.result.id), ['queue-import'])
+  assert.deepEqual(columns[1].items.map((item) => item.result.id), ['queue-hold'])
+  assert.deepEqual(columns[2].items.map((item) => item.result.id), ['queue-reject'])
+  assert.equal(columns[0].explicitCount, 0)
+  assert.equal(columns[1].explicitCount, 1)
+  assert.equal(columns[2].explicitCount, 1)
+})
+
 test('finder candidate score explanation surfaces reasons and improvements', () => {
   const job = createFinderSearchJob(
     { kind: 'job', label: 'Jobs', query: 'product manager france' },
@@ -687,6 +961,84 @@ test('finder candidate score explanation surfaces reasons and improvements', () 
   assert.match(weakExplanation.scoreReason, /Weak/)
   assert.ok(weakExplanation.improvements.includes('source URL'))
   assert.ok(weakExplanation.improvements.includes('interview process'))
+})
+
+test('finder preview quality review shows ready vs weak field completion states', () => {
+  const job = createFinderSearchJob(
+    { kind: 'job', label: 'Jobs', query: 'product manager france' },
+    { id: 'job-quality-review', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const ready = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:job:quality-ready',
+      partnerName: 'Northfield Labs',
+      title: 'Senior Product Manager',
+      summary:
+        'Owner source. Location: Paris, France. Contact: hiring@northfield.example.',
+      links: ['https://northfield.example/careers'],
+      fitScore: 89,
+      whyRelevant: 'Product management role in French agtech market.',
+      missingInfo: 'Verify salary range before outreach.',
+      nextAction: 'Prepare tailored interview pack.'
+    },
+    { id: 'quality-ready', now: '2026-07-22T10:01:00.000Z' }
+  )
+  const weak = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:job:quality-weak',
+      partnerName: 'Unknown role',
+      title: 'Product role',
+      summary: 'Sparse source.',
+      fitScore: 54,
+      missingInfo:
+        'Verify source URL, contact, why relevant, next action before outreach.'
+    },
+    { id: 'quality-weak', now: '2026-07-22T10:02:00.000Z' }
+  )
+
+  const readyReview = reviewFinderPreviewCandidateQuality(ready)
+  const weakReview = reviewFinderPreviewCandidateQuality(weak)
+
+  assert.equal(readyReview.level, 'ready')
+  assert.equal(readyReview.label, 'ready for import')
+  assert.equal(readyReview.retrievalReady, true)
+  assert.equal(readyReview.missingCriticalFields.length, 0)
+  assert.ok(readyReview.suggestedEdits.includes('Clarify salary range'))
+
+  assert.equal(weakReview.level, 'weak')
+  assert.equal(weakReview.retrievalReady, false)
+  assert.ok(weakReview.missingCriticalFields.includes('source URL'))
+  assert.ok(weakReview.missingCriticalFields.includes('contact'))
+  assert.ok(weakReview.missingCriticalFields.includes('why relevant'))
+  assert.ok(weakReview.missingCriticalFields.includes('next action'))
+  const weakActions = buildFinderPreviewCompletionActions(weak, weakReview)
+  assert.ok(weakActions.some((action) => action.id === 'add-source-url'))
+  assert.ok(weakActions.some((action) => action.id === 'add-contact'))
+  assert.ok(weakActions.some((action) => action.id === 'add-why-relevant'))
+  assert.ok(weakActions.some((action) => action.id === 'add-next-action'))
+  const readyDecision = getFinderPreviewImportDecision({
+    review: readyReview,
+    selected: true,
+    confirmed: false
+  })
+  const weakDecision = getFinderPreviewImportDecision({
+    review: weakReview,
+    selected: true,
+    confirmed: false
+  })
+  const confirmedWeakDecision = getFinderPreviewImportDecision({
+    review: weakReview,
+    selected: true,
+    confirmed: true
+  })
+
+  assert.equal(readyDecision.canAutoSelect, true)
+  assert.equal(readyDecision.canImport, true)
+  assert.equal(weakDecision.requiresConfirmation, true)
+  assert.equal(weakDecision.canImport, false)
+  assert.equal(confirmedWeakDecision.canImport, true)
 })
 
 test('finder outreach prep pack summarizes what to say and ask', () => {

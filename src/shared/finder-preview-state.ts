@@ -14,6 +14,15 @@ export type FinderPreviewSelectionStats = {
   areAllSelected: boolean
 }
 
+export type FinderPreviewControls = {
+  selectableCount: number
+  selectedCount: number
+  duplicateCount: number
+  canToggleSelectAll: boolean
+  canImportSelected: boolean
+  toggleLabel: 'Select all' | 'Deselect all'
+}
+
 export const createFinderPreviewItems = (
   preview: CounterpartyFinderPayloadPreviewResult
 ): CounterpartyFinderPreviewItem[] =>
@@ -39,6 +48,62 @@ export const getFinderPreviewSelectionStats = (
   }
 }
 
+export const getFinderPreviewControls = (
+  items: readonly CounterpartyFinderPreviewItem[],
+  isSaving = false
+): FinderPreviewControls => {
+  const stats = getFinderPreviewSelectionStats(items)
+
+  return {
+    selectableCount: stats.nonDuplicate,
+    selectedCount: stats.selected,
+    duplicateCount: stats.duplicate,
+    canToggleSelectAll: !isSaving && stats.nonDuplicate > 0,
+    canImportSelected: !isSaving && stats.selected > 0,
+    toggleLabel: stats.areAllSelected ? 'Deselect all' : 'Select all'
+  }
+}
+
+export const setFinderPreviewItemSelected = (
+  items: readonly CounterpartyFinderPreviewItem[],
+  index: number,
+  selected: boolean
+): CounterpartyFinderPreviewItem[] =>
+  items.map((item) =>
+    item.index === index
+      ? { ...item, selected: item.duplicate ? false : selected }
+      : item
+  )
+
+export const buildFinderPreviewImportNotice = ({
+  selectedCount,
+  duplicateCount,
+  errorCount
+}: {
+  selectedCount: number
+  duplicateCount: number
+  errorCount: number
+}) => {
+  const base = `Imported ${selectedCount} selected counterparty pack${
+    selectedCount === 1 ? '' : 's'
+  }.`
+
+  const duplicateSuffix =
+    duplicateCount > 0
+      ? ` ${duplicateCount} duplicate/recorded entr${
+          duplicateCount === 1 ? 'y' : 'ies'
+        } skipped.`
+      : ''
+  const errorSuffix =
+    errorCount > 0
+      ? ` ${errorCount} invalid entr${
+          errorCount === 1 ? 'y' : 'ies'
+        } skipped.`
+      : ''
+
+  return `${base}${duplicateSuffix}${errorSuffix}`.trim()
+}
+
 export const toggleSelectAllFinderCandidates = (
   items: readonly CounterpartyFinderPreviewItem[],
   areAllSelected: boolean
@@ -49,4 +114,3 @@ export const toggleSelectAllFinderCandidates = (
         ...item,
         selected: item.duplicate ? false : !areAllSelected
       }))
-
