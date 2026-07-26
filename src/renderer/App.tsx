@@ -2456,8 +2456,10 @@ export const App = () => {
   }
 
   const setSessionCounterpartyPackSelection = (id: string, selected: boolean) => {
-    setSessionContextDraft((current) => {
-      const selectedSet = new Set(current.selectedCounterpartyPackIds)
+    const reconcileSessionPackSelection = (
+      currentContext: SessionContext
+    ): SessionContext => {
+      const selectedSet = new Set(currentContext.selectedCounterpartyPackIds)
 
       if (selected) {
         selectedSet.add(id)
@@ -2465,18 +2467,40 @@ export const App = () => {
         selectedSet.delete(id)
       }
 
-      return {
-        ...current,
+      const nextContext = {
+        ...currentContext,
         selectedCounterpartyPackIds: [...selectedSet]
       }
-    })
+
+      return getSessionContextWithCounterpartyPacks(
+        nextContext,
+        counterpartyPacks
+      )
+    }
+
+    const nextSessionContext = reconcileSessionPackSelection(
+      sessionContext
+    )
+    const nextSessionContextDraft = reconcileSessionPackSelection(
+      sessionContextDraft
+    )
+
+    setSessionContext(nextSessionContext)
+    setSessionContextDraft(nextSessionContextDraft)
   }
 
   const setSessionOutreachDraftSelection = (id: string, selected: boolean) => {
-    setSessionContextDraft((current) => ({
-      ...current,
+    const nextSessionContext = {
+      ...sessionContext,
       selectedFinderOutreachDraftId: selected ? id : ''
-    }))
+    }
+    const nextSessionContextDraft = {
+      ...sessionContextDraft,
+      selectedFinderOutreachDraftId: selected ? id : ''
+    }
+
+    setSessionContext(nextSessionContext)
+    setSessionContextDraft(nextSessionContextDraft)
   }
 
   const attachFinderOutreachDraftToSession = async (draft: FinderOutreachDraft) => {
