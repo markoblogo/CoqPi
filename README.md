@@ -95,6 +95,8 @@ External AI-engineering examples are tracked in [`docs/AI_ENGINEERING_REFERENCE_
 
 Selected-context retrieval now has a compact tiering contract in [`docs/SELECTED_CONTEXT_TIERS_CONTRACT.md`](docs/SELECTED_CONTEXT_TIERS_CONTRACT.md): `L0/L1/L2` loading, explicit retrieval receipts, and selected/dropped/stale context observability without adding a context runtime.
 
+Screen-memory ideas are allowed only in a narrow session-scoped form. [`docs/SESSION_MEMORY_BOUNDARY.md`](docs/SESSION_MEMORY_BOUNDARY.md) limits any future adaptation to explicit call/prep/review windows, local/private reviewed artifacts, redaction before persistence, and report-only follow-up analysis. It rejects ambient 24/7 desktop recall, keyboard/clipboard capture, and unrelated operator memory.
+
 Optional continuous code review is allowed in this repository because provider, retrieval, and session-state changes can compound quickly. It stays local/opt-in only: manual, pre-push, and optional post-commit modes are allowed, while daemon-for-everyone, automatic PR comments, and auto-fix-as-policy are not. See [`docs/CONTINUOUS_REVIEW_BOUNDARY.md`](docs/CONTINUOUS_REVIEW_BOUNDARY.md).
 
 Chat-bot architecture is not the default CoqPi product direction. A later chat-facing surface is allowed only inside a narrow boundary: owner/private-test scope, selected-context only, `proposal` authority, and `clarify_or_abstain` for unsupported requests. See [`docs/CHAT_SURFACE_BOUNDARY.md`](docs/CHAT_SURFACE_BOUNDARY.md).
