@@ -122,6 +122,7 @@ Selected `12-factor-agents` principles are adapted in [`docs/AGENT_EVENT_THREAD_
 - `pnpm lint`
 - `pnpm build`
 - `pnpm format`
+- `pnpm test:finder-prepare-live-ui` to verify the full Finder -> Prepare -> Live selected-context path without manual selected-ID overrides.
 
 ## API key setup
 
