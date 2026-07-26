@@ -11,6 +11,34 @@
 
 CoqPi is a private local desktop application for stressful interview and professional call situations in English and French. It runs as an Electron + React + TypeScript app, keeps API access in the Electron backend, and is designed to stay readable under pressure.
 
+## System Map
+
+```mermaid
+flowchart LR
+  U["User"]
+  P["Prepare / Live / Settings UI"]
+  E["Electron main + IPC boundary"]
+  A["Assistant analysis routes"]
+  R["OpenAI Realtime"]
+  O["Ollama fallback"]
+  K["Personal knowledge core"]
+  F["Finder and outreach drafts"]
+  G["Local governance receipts"]
+
+  U --> P
+  P --> E
+  E --> A
+  A --> R
+  A -. "operational fallback only" .-> O
+  K --> E
+  F --> E
+  E --> G
+  K -. "selected context only" .-> A
+  F -. "reviewed draft only" .-> A
+```
+
+Keep this diagram updated when CoqPi changes its main surfaces, assistant routes, context boundaries, or local governance flow.
+
 ## Current product blocks
 
 ### 1. Live assistant and translator
