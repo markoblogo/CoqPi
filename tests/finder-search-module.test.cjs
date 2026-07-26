@@ -15,6 +15,7 @@ const {
   createFinderPipelineView,
   buildFinderPreviewCompletionActions,
   explainFinderCandidateScore,
+  buildFinderQueueImportPlan,
   getFinderPreviewImportDecision,
   reviewFinderPreviewCandidateQuality,
   summarizeFinderDecisionQueue,
@@ -952,6 +953,174 @@ test('finder queue review columns group import hold and reject lanes with explic
   assert.equal(columns[0].explicitCount, 0)
   assert.equal(columns[1].explicitCount, 1)
   assert.equal(columns[2].explicitCount, 1)
+})
+
+test('finder queue import plan applies eligibility gates and duplicate suppression', () => {
+  const job = createFinderSearchJob(
+    { kind: 'investor', label: 'Queue plan test', query: 'seed and growth investors' },
+    { id: 'job-queue-plan', now: '2026-07-22T10:00:00.000Z', status: 'ready' }
+  )
+  const eligibleImport = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:investor:coqpi-ready',
+      partnerName: 'Ready Fund',
+      title: 'Seed investor',
+      summary: 'Clear investor profile with strong relevance signals.',
+      links: ['https://example.com/ready-fund'],
+      fitScore: 86,
+      whyRelevant: 'Clear synergy with portfolio thesis.',
+      nextAction: 'Introduce with short context.'
+    },
+    { id: 'result-ready', now: '2026-07-22T10:01:00.000Z' }
+  )
+
+  const weakResult = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:investor:coqpi-weak',
+        partnerName: 'Weak Fund',
+        title: 'Potential partner',
+        summary: 'Only minimal data and no practical evidence yet.',
+        fitScore: 42
+      },
+      { id: 'result-weak', now: '2026-07-22T10:02:00.000Z' }
+    ),
+    decision: {
+      state: 'auto',
+      updatedAt: '2026-07-22T10:02:00.000Z'
+    }
+  }
+
+  const duplicateInBatch = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:investor:coqpi-dup',
+        partnerName: 'Dup Investor',
+        title: 'Duplicate test',
+        summary: 'This candidate appears twice from parser run.',
+        links: ['https://example.com/dup'],
+        fitScore: 84,
+        whyRelevant: 'Good fit at first glance.',
+        nextAction: 'Follow-up when source is cleaned.'
+      },
+      { id: 'result-dup-a', now: '2026-07-22T10:03:00.000Z' }
+    ),
+    sourceId: 'finder:investor:coqpi-dup',
+    kind: 'investor',
+    decision: { state: 'auto', updatedAt: '2026-07-22T10:03:00.000Z' }
+  }
+
+  const duplicateInBatchB = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:investor:coqpi-dup',
+        partnerName: 'Dup Investor (copy)',
+        title: 'Duplicate test',
+        summary: 'Second occurrence of same source id.',
+        links: ['https://example.com/dup'],
+        fitScore: 84,
+        whyRelevant: 'Good fit at first glance.',
+        nextAction: 'Follow-up when source is cleaned.'
+      },
+      { id: 'result-dup-b', now: '2026-07-22T10:04:00.000Z' }
+    ),
+    sourceId: 'finder:investor:coqpi-dup',
+    kind: 'investor',
+    decision: { state: 'auto', updatedAt: '2026-07-22T10:04:00.000Z' }
+  }
+
+  const importedConflict = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:investor:coqpi-existing',
+        partnerName: 'Already in packs',
+        title: 'Existing pack',
+        summary: 'This source id is already in live packs.',
+        links: ['https://example.com/existing'],
+        fitScore: 90,
+        whyRelevant: 'Relevant for pre-built context.',
+        nextAction: 'Use in current queue only after review.'
+      },
+      { id: 'result-existing', now: '2026-07-22T10:05:00.000Z' }
+    ),
+    status: 'ready'
+  }
+
+  const explicitImport = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:investor:coqpi-explicit',
+        partnerName: 'Explicit import',
+        title: 'Needs explicit import now',
+        summary: 'Weak candidate moved to import now by user.',
+        fitScore: 45,
+        nextAction: ''
+      },
+      { id: 'result-explicit', now: '2026-07-22T10:06:00.000Z' }
+    ),
+    decision: {
+      state: 'import_now',
+      reason: 'reviewed manually',
+      updatedAt: '2026-07-22T10:06:00.000Z'
+    }
+  }
+
+  const notReady = {
+    ...createFinderCandidateResult(
+      job,
+      {
+        sourceId: 'finder:investor:coqpi-imported',
+        partnerName: 'Imported candidate',
+        title: 'Already imported',
+        summary: 'Should not be re-imported from queue.',
+        fitScore: 87,
+        whyRelevant: 'Used to compare states.',
+        nextAction: 'No action now.'
+      },
+      { id: 'result-not-ready', now: '2026-07-22T10:07:00.000Z' }
+    ),
+    status: 'imported'
+  }
+
+  const plan = buildFinderQueueImportPlan(
+    [
+      duplicateInBatch,
+      duplicateInBatchB,
+      eligibleImport,
+      explicitImport,
+      weakResult,
+      importedConflict,
+      notReady
+    ],
+    {
+      existingSourceKeys: new Set(['finder:investor:coqpi-existing::investor'])
+    }
+  )
+
+  assert.deepEqual(plan.importable.map((item) => item.id), [
+    'result-dup-a',
+    'result-ready',
+    'result-explicit'
+  ])
+  assert.equal(plan.skipped.length, 4)
+  assert.equal(
+    plan.skipped.some((item) => item.reason === 'not-ready'),
+    true
+  )
+  assert.equal(
+    plan.skipped.some((item) => item.reason === 'weak-needs-confirmation'),
+    true
+  )
+  assert.equal(
+    plan.skipped.some((item) => item.reason === 'duplicate-source'),
+    true
+  )
 })
 
 test('finder candidate score explanation surfaces reasons and improvements', () => {

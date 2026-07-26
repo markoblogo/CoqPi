@@ -31,7 +31,7 @@ export const counterpartyPackSessionIneligibilityReasonLabels: Record<
   missing_interview_scope: 'missing EN/FR interview scope'
 }
 
-const buildCounterpartySourceKey = (
+export const buildCounterpartySourceKey = (
   sourceId: string,
   kind: CounterpartyContextPack['kind']
 ) => `${sourceId}::${kind}`

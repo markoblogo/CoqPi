@@ -53,6 +53,26 @@ export interface FinderDecisionQueueItem {
   reasons: string[]
 }
 
+export type FinderQueueImportEligibilityReason =
+  | 'eligible'
+  | 'not-ready'
+  | 'not-recommended'
+  | 'weak-needs-confirmation'
+  | 'duplicate-source'
+
+export interface FinderQueueCandidateImportStatus {
+  result: FinderCandidateResult
+  canImport: boolean
+  reason: FinderQueueImportEligibilityReason
+  decision: FinderDecisionQueueItem
+  qualityReview: FinderPreviewQualityReview
+}
+
+export interface FinderQueueImportPlan {
+  importable: FinderCandidateResult[]
+  skipped: FinderQueueCandidateImportStatus[]
+}
+
 export interface FinderDecisionQueueSummary {
   importCount: number
   holdCount: number
@@ -1614,6 +1634,98 @@ export const buildFinderDecisionQueueItem = (
     summary: 'Too weak for the active queue. Reject unless new evidence arrives.',
     reasons
   }
+}
+
+const hasDuplicateSourceKey = (
+  result: FinderCandidateResult,
+  sourceKeys: Set<string>
+) =>
+  sourceKeys.has(`${result.sourceId}::${result.kind}`) &&
+  (result.sourceId.trim().length > 0 || result.kind.length > 0)
+
+export const assessFinderQueueCandidateImport = (
+  result: FinderCandidateResult,
+  existingSourceKeys: ReadonlySet<string> = new Set()
+): FinderQueueCandidateImportStatus => {
+  const qualityReview = reviewFinderPreviewCandidateQuality(result)
+  const decision = buildFinderDecisionQueueItem(result)
+
+  if (result.status !== 'ready') {
+    return {
+      result,
+      canImport: false,
+      reason: 'not-ready',
+      decision,
+      qualityReview
+    }
+  }
+
+  if (hasDuplicateSourceKey(result, new Set(existingSourceKeys))) {
+    return {
+      result,
+      canImport: false,
+      reason: 'duplicate-source',
+      decision,
+      qualityReview
+    }
+  }
+
+  if (qualityReview.level === 'weak' && decision.recommendation !== 'import') {
+    return {
+      result,
+      canImport: false,
+      reason: 'weak-needs-confirmation',
+      decision,
+      qualityReview
+    }
+  }
+
+  if (decision.recommendation !== 'import') {
+    return {
+      result,
+      canImport: false,
+      reason: 'not-recommended',
+      decision,
+      qualityReview
+    }
+  }
+
+  return {
+    result,
+    canImport: true,
+    reason: 'eligible',
+    decision,
+    qualityReview
+  }
+}
+
+export const buildFinderQueueImportPlan = (
+  results: readonly FinderCandidateResult[],
+  options: {
+    existingSourceKeys?: Iterable<string>
+  } = {}
+): FinderQueueImportPlan => {
+  const sourceKeys = new Set(options.existingSourceKeys ?? [])
+  const importable: FinderCandidateResult[] = []
+  const skipped: FinderQueueCandidateImportStatus[] = []
+  const batchSeenKeys = new Set<string>()
+
+  for (const result of results) {
+    const status = assessFinderQueueCandidateImport(
+      result,
+      new Set([...sourceKeys, ...batchSeenKeys])
+    )
+
+    if (status.canImport) {
+      importable.push(result)
+      batchSeenKeys.add(`${result.sourceId}::${result.kind}`)
+      continue
+    }
+
+    skipped.push(status)
+  }
+
+  return { importable, skipped }
 }
 
 export const summarizeFinderDecisionQueue = (

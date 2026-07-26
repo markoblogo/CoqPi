@@ -12,6 +12,12 @@ const {
 const {
   buildSessionSelectionSurface
 } = require('../dist-electron/shared/session-selection-surface.js')
+const {
+  createContextPackDraftFromFinderResult
+} = require('../dist-electron/shared/finder-search-module.js')
+const {
+  getSessionContextWithImportedCounterpartyPacks
+} = require('../dist-electron/shared/session-pack-selection.js')
 
 const mockElectron = {
   app: {
@@ -351,4 +357,125 @@ test('finder preview import flows into prepare surface and live analyze without 
     observed.capturedPrompt.includes('Product Operations Manager'),
     false
   )
+})
+
+test('finder queue import now updates session payload and assistant selected pack set', async () => {
+  const observed = {
+    selectedPackIdsFromRetrieval: undefined,
+    capturedPrompt: '',
+    importSourceId: '',
+    notImportSourceId: ''
+  }
+  let expectedSelectedPackIds = []
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      beforeAnalyze: async (services) => {
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'partner',
+          label: 'Finder queue demo',
+          query: 'local partner shortlist france',
+          goal: 'Prepare interview calls'
+        })
+        const job = afterJob.store.jobs[0]
+
+        const importReady = await services.finderSearchService.addFinderCandidateResult(
+          job.id,
+          {
+            sourceId: 'finder:partner:coqpi-queue-ready',
+            partnerName: 'Northfield Labs',
+            title: 'Partner outreach lead',
+            summary: 'High relevance partner in French agri ecosystem.',
+            links: ['https://northfield.example'],
+            fitScore: 86,
+            whyRelevant: 'Strong operational overlap for first outreach.',
+            nextAction: 'Build intro call context.'
+          }
+        )
+        const shouldSkip = await services.finderSearchService.addFinderCandidateResult(
+          job.id,
+          {
+            sourceId: 'finder:partner:coqpi-queue-skip',
+            partnerName: 'Sideline Venture',
+            title: 'Secondary follow-up',
+            summary: 'Sparse evidence, not ready for immediate queue import.',
+            fitScore: 42,
+            nextAction: ''
+          }
+        )
+
+        const importReadyResult = importReady.store.results.find(
+          (result) =>
+            result.sourceId === 'finder:partner:coqpi-queue-ready'
+        )
+        const skipResult = shouldSkip.store.results.find(
+          (result) =>
+            result.sourceId === 'finder:partner:coqpi-queue-skip'
+        )
+
+        if (!importReadyResult || !skipResult) {
+          throw new Error('Finder queue fixture not loaded.')
+        }
+
+        observed.importSourceId = importReadyResult.sourceId
+        observed.notImportSourceId = skipResult.sourceId
+
+        const payload = await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+          createContextPackDraftFromFinderResult(importReadyResult)
+        ])
+
+        const session = await services.sessionContextService.getSessionContext()
+        const nextContext = getSessionContextWithImportedCounterpartyPacks(
+          session.context,
+          payload.manifest.counterpartyPacks ?? [],
+          [createContextPackDraftFromFinderResult(importReadyResult)]
+        )
+
+        expectedSelectedPackIds = nextContext.selectedCounterpartyPackIds
+
+        await services.sessionContextService.saveSessionContext(nextContext)
+      },
+      onSelectedPackIds: (selectedPackIds) => {
+        observed.selectedPackIdsFromRetrieval = [...(selectedPackIds ?? [])]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = JSON.parse(init.body)
+        observed.capturedPrompt = body.messages[1].content
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu:
+                'Finder queue import now selected pack for live prompt.',
+              detectedQuestion: 'Which queue target is selected for outreach?',
+              intent: 'finder queue import test',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I will focus on the selected partner from queue.',
+                  answerMeaningRu:
+                    'Я фокусируюсь на выбранном партнере из очереди.'
+                }
+              ],
+              keywordsToRemember: ['queue', 'partner', 'import'],
+              openingPhrase: 'Understood.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.equal(observed.selectedPackIdsFromRetrieval.length, 1)
+  assert.deepEqual(observed.selectedPackIdsFromRetrieval, expectedSelectedPackIds)
+  assert.equal(observed.capturedPrompt.includes(observed.importSourceId), true)
+  assert.equal(observed.capturedPrompt.includes(observed.notImportSourceId), false)
+  assert.match(observed.capturedPrompt, /Northfield Labs/)
+  assert.match(observed.capturedPrompt, /Partner outreach lead/)
+  assert.equal(observed.capturedPrompt.includes('Sideline Venture'), false)
 })

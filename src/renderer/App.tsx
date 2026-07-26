@@ -103,9 +103,9 @@ import {
 import {
   formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
+  buildCounterpartySourceKey,
   getSessionContextWithImportedCounterpartyPacks,
   getSessionContextWithCounterpartyPacks,
-  getSessionSelectedCounterpartyPackIds
 } from '@shared/session-pack-selection'
 import {
   buildSmokeChecklistSummary,
@@ -151,6 +151,7 @@ import {
 import {
   buildFinderDecisionQueueItem,
   buildFinderQueueReviewColumns,
+  buildFinderQueueImportPlan,
   createContextPackDraftFromFinderResult,
   buildFinderPreviewCompletionActions,
   createFinderOutreachPrepPack,
@@ -918,6 +919,20 @@ export const App = () => {
         : undefined,
       requiresNextAction: finderPipelineRequiresNextAction
     }
+  )
+  const finderQueueSourceKeys = new Set(
+    counterpartyPacks.map((pack) =>
+      buildCounterpartySourceKey(pack.sourceId, pack.kind)
+    )
+  )
+  const finderQueueImportPlan = buildFinderQueueImportPlan(
+    selectedFinderSearchResultsRaw,
+    {
+      existingSourceKeys: finderQueueSourceKeys
+    }
+  )
+  const finderQueueImportableSet = new Set(
+    finderQueueImportPlan.importable.map((result) => result.id)
   )
   const selectedFinderDecisionSummary = summarizeFinderDecisionQueue(
     selectedFinderSearchResults
@@ -2820,7 +2835,15 @@ export const App = () => {
   }
 
   const importFinderCandidateResult = async (result: FinderCandidateResult) => {
-    if (contextSourceMutationRef.current) {
+    const assessed = buildFinderQueueImportPlan([result], {
+      existingSourceKeys: finderQueueSourceKeys
+    })
+
+    if (assessed.importable.length === 0 || contextSourceMutationRef.current) {
+      if (assessed.importable.length === 0) {
+        setFinderSearchError('This candidate is not eligible for queue import.')
+      }
+
       return
     }
 
@@ -2878,9 +2901,16 @@ export const App = () => {
   const importFinderCandidateResults = async (
     results: readonly FinderCandidateResult[]
   ) => {
-    const importable = results.filter((result) => result.status === 'ready')
+    const importPlan = buildFinderQueueImportPlan(results, {
+      existingSourceKeys: finderQueueSourceKeys
+    })
+    const importable = importPlan.importable
 
     if (importable.length === 0 || contextSourceMutationRef.current) {
+      if (importable.length === 0) {
+        setFinderSearchError('No eligible finder candidates to import from queue.')
+      }
+
       return
     }
 
@@ -2889,28 +2919,24 @@ export const App = () => {
     setFinderSearchError(null)
     setFinderSearchNotice(null)
 
-    let nextSessionContext = sessionContext
     let latestPacks = counterpartyPacks
     let latestLifecycle = knowledgePackLifecycle
     let latestFinderStore: FinderSearchStore | null = null
-    const importedDrafts: CounterpartyContextPackDraft[] = []
+
+    const importedDrafts = importable.map((result) =>
+      createContextPackDraftFromFinderResult(result)
+    )
 
     try {
+      const payload = await window.coqpi.contextPacks.ingestFinderPayloadBatch(
+        importedDrafts
+      )
+
+      latestPacks = payload.manifest.counterpartyPacks ?? latestPacks
+      latestLifecycle =
+        payload.manifest.knowledgePackLifecycle ?? latestLifecycle
+
       for (const result of importable) {
-        const draft = createContextPackDraftFromFinderResult(result)
-        const payload = await window.coqpi.contextPacks.ingestFinderPayloadBatch([
-          draft
-        ])
-
-        latestPacks = payload.manifest.counterpartyPacks ?? latestPacks
-        latestLifecycle = payload.manifest.knowledgePackLifecycle ?? latestLifecycle
-        importedDrafts.push(draft)
-        nextSessionContext = getSessionContextWithImportedCounterpartyPacks(
-          nextSessionContext,
-          latestPacks,
-          [draft]
-        )
-
         const finderPayload = await window.coqpi.finderSearch.setCandidateStatus(
           result.id,
           'imported'
@@ -2922,6 +2948,11 @@ export const App = () => {
       if (latestFinderStore) {
         applyFinderSearchStore(latestFinderStore)
       }
+      const nextSessionContext = getSessionContextWithImportedCounterpartyPacks(
+        sessionContext,
+        latestPacks,
+        importedDrafts
+      )
       setSessionContext(nextSessionContext)
       setSessionContextDraft(nextSessionContext)
 
@@ -2942,6 +2973,16 @@ export const App = () => {
           importable.length === 1 ? '' : 's'
         } as selected context packs.`
       )
+
+      if (importPlan.skipped.length > 0) {
+        setFinderSearchNotice(
+          `Imported ${importable.length} finder candidate${
+            importable.length === 1 ? '' : 's'
+          } as selected context packs. ${importPlan.skipped.length} candidate${
+            importPlan.skipped.length === 1 ? '' : 's'
+          } skipped from queue import (not eligible).`
+        )
+      }
     } catch (error) {
       setFinderSearchError(getCounterpartyPackErrorMessage(error))
     } finally {
@@ -7363,6 +7404,9 @@ export const App = () => {
                           {finderQueueReviewColumns.map((column) => (
                             <div className="finder-queue-column" key={column.lane}>
                               {(() => {
+                                const importableColumnItems = column.items.filter((item) =>
+                                  finderQueueImportableSet.has(item.result.id)
+                                )
                                 const missingDraftCount = column.items.filter(
                                   (item) =>
                                     !finderOutreachDraftsByCandidateId.has(item.result.id)
@@ -7438,13 +7482,11 @@ export const App = () => {
                                         className="button-small"
                                         disabled={
                                           isSavingCounterpartyPacks ||
-                                          column.items.filter(
-                                            (item) => item.result.status === 'ready'
-                                          ).length === 0
+                                          importableColumnItems.length === 0
                                         }
                                         onClick={() =>
                                           void importFinderCandidateResults(
-                                            column.items.map((item) => item.result)
+                                            importableColumnItems.map((item) => item.result)
                                           )
                                         }
                                         type="button"
@@ -7701,7 +7743,7 @@ export const App = () => {
                                                 className="button-small"
                                                 disabled={
                                                   isSavingCounterpartyPacks ||
-                                                  item.result.status !== 'ready'
+                                                  !finderQueueImportableSet.has(item.result.id)
                                                 }
                                                 onClick={() =>
                                                   void importFinderCandidateResult(item.result)
@@ -7915,20 +7957,22 @@ export const App = () => {
                         )}
                       </div>
                       <div className="finder-table">
-                        {selectedFinderSearchResults.length === 0 ? (
-                          <div className="context-source-empty">
+                                {selectedFinderSearchResults.length === 0 ? (
+                                  <div className="context-source-empty">
                             {selectedFinderSearchResultsRaw.length === 0
                               ? 'No candidates for this job yet.'
                               : 'No candidates match the current pipeline filters.'}
                           </div>
-                        ) : (
-                          selectedFinderSearchResults.map((result) => {
-                            const scoreExplanation =
-                              explainFinderCandidateScore(result)
-                            const queueDecision =
-                              buildFinderDecisionQueueItem(result)
+                                ) : (
+                                  selectedFinderSearchResults.map((result) => {
+                                    const scoreExplanation =
+                                      explainFinderCandidateScore(result)
+                                    const queueDecision =
+                                      buildFinderDecisionQueueItem(result)
+                                    const canImportFromQueue =
+                                      finderQueueImportableSet.has(result.id)
 
-                            return (
+                                    return (
                             <div
                               className={`finder-result-row ${
                                 focusedFinderCandidateResult?.id === result.id
@@ -8003,16 +8047,16 @@ export const App = () => {
                                 >
                                   Prep
                                 </button>
-                                <button
-                                  className="button-small"
-                                  disabled={
-                                    isSavingCounterpartyPacks ||
-                                    result.status !== 'ready'
-                                  }
-                                  onClick={() =>
-                                    void importFinderCandidateResult(result)
-                                  }
-                                  type="button"
+                                      <button
+                                        className="button-small"
+                                        disabled={
+                                          isSavingCounterpartyPacks ||
+                                          !canImportFromQueue
+                                        }
+                                        onClick={() =>
+                                          void importFinderCandidateResult(result)
+                                        }
+                                        type="button"
                                 >
                                   Import now
                                 </button>
