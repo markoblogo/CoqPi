@@ -57,6 +57,9 @@ Keep this diagram updated when CoqPi changes its main surfaces, assistant routes
 - Current statuses are `draft`, `ready`, `imported`, and `rejected`.
 - Finder Runner payload ingress accepts manual/mock JSON from a future search module, soft-accepts valid candidates, returns item errors, and does not browse or scrape from this path.
 - The selected Finder job can also run a bounded local `manual_mock` runner that generates deterministic placeholder candidates for review/scoring/import tests. It performs no web search, scraping, API call, scheduler work, or outreach.
+- Finder import preview now uses an explicit decision layer by candidate: `ready`, `usable`, `weak`.
+  - `ready` / `usable`: auto-select by default and importable immediately when selected.
+  - `weak`: not auto-selected and requires explicit "confirm import despite weak quality" before it can be imported.
 - Real Finder Source Adapter v1 accepts owner-pasted URLs, vacancy/export text, LinkedIn-style job snippets, accelerator/program snippets, investor/fund lists, partner exports, and CSV-like candidate exports for the selected job. It now uses deterministic format-specific parsers (`url`, `structured_fields`, `linkedin_job`, `accelerator_snippet`, `investor_list`, `partner_export`) to extract and enrich company/partner, role/opportunity, location, contact, deadline, relevance, and missing information before preview. URLs are normalized locally only; no fetch is performed.
 - Candidate review fields (`fitScore`, `whyRelevant`, `missingInfo`, `nextAction`) are scenario-aware for job, partner, investor, and accelerator flows; the UI explains fit score signals and missing improvements before outreach prep.
 - Prioritized pipeline view sorts and filters candidates by fit score, status, next action, and decision state so the Finder tab works as a review funnel.

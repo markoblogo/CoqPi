@@ -129,6 +129,7 @@ import {
   createFinderPreviewItems,
   getFinderPreviewControls,
   getFinderPreviewSelectionStats,
+  getFinderPreviewItemCanImport,
   type CounterpartyFinderPreviewItem,
   setFinderPreviewItemSelected,
   toggleSelectAllFinderCandidates as toggleSelectAllFinderCandidatesModel
@@ -845,9 +846,11 @@ export const App = () => {
   )
   const finderPayloadCandidateCountNonDuplicate =
     finderPreviewControls.selectableCount
-  const selectedFinderCandidatesCount = finderPreviewControls.selectedCount
+  const selectedFinderCandidatesCount = finderPreviewControls.importableCount
   const areAllFinderCandidatesSelected =
     finderPayloadSelectionStats.areAllSelected
+  const finderPayloadWeakConfirmationsPending =
+    finderPayloadSelectionStats.pendingWeakConfirmations
   const finderSearchStatusCounts =
     getFinderSearchStatusCounts(finderSearchJobs)
   const finderOwnerSourceDecisionItems = finderOwnerSourcePreviewItems.map(
@@ -1148,7 +1151,9 @@ export const App = () => {
         setConfigStatus(initialLoadState.configStatus)
         setProfileContext(initialLoadState.profileContext)
         setProfileError(null)
-        setCounterpartyPacks(initialLoadState.counterpartyPacks)
+        setCounterpartyPacks([
+          ...(initialLoadState.counterpartyPacks ?? [])
+        ])
         setKnowledgePackLifecycle(initialLoadState.knowledgePackLifecycle)
         setSessionContext(initialLoadState.sessionContext)
         setSessionContextDraft(initialLoadState.sessionContextDraft)
@@ -1751,7 +1756,7 @@ export const App = () => {
       const note = await window.coqpi.smokeNotes.save({
         ...smokeNoteDraft,
         sessionLabel: activeSessionPrepPreview.sessionLabel,
-        selectedPackLabel: selectedCounterpartyPackNamesLabel
+        selectedPackLabel: selectedCounterpartyPacksLabel
       })
       const payload = await window.coqpi.smokeNotes.get()
 
@@ -2056,6 +2061,25 @@ export const App = () => {
         )
       }
 
+      const weakPendingCount = nextItems.reduce(
+        (total, item) =>
+          total +
+          (item.qualityReview.level === 'weak' &&
+          item.selected &&
+          !item.weakConfirmed
+            ? 1
+            : 0),
+        0
+      )
+
+      if (weakPendingCount > 0) {
+        notices.push(
+          `${weakPendingCount} weak candidate${
+            weakPendingCount === 1 ? '' : 's'
+          } require manual confirmation before import.`
+        )
+      }
+
       if (preview.errors.length > 0) {
         notices.push(`Invalid entries: ${preview.errors.length}`)
       }
@@ -2126,12 +2150,12 @@ export const App = () => {
   const canImportFinderCandidates = finderPreviewControls.canImportSelected
 
   const importSelectedFinderCandidates = async () => {
-    const selected = counterpartyFinderPayloadItems.filter(
-      (candidate) => candidate.selected && !candidate.duplicate
+    const selected = counterpartyFinderPayloadItems.filter((candidate) =>
+      getFinderPreviewItemCanImport(candidate)
     )
 
     if (selected.length === 0) {
-      setCounterpartyPackDraftNotice('Select at least one non-duplicate candidate.')
+      setCounterpartyPackDraftNotice('Select importable candidate(s); weak entries need confirmation.')
       return
     }
 
@@ -8347,8 +8371,15 @@ export const App = () => {
                 </div>
               )}
               {counterpartyFinderPayloadItems.length > 0 ? (
-                <div className="context-source-list">
-                  {counterpartyFinderPayloadItems.map((item) => (
+              <div className="context-source-list">
+                  {counterpartyFinderPayloadItems.map((item) => {
+                    const decision = getFinderPreviewImportDecision({
+                      review: item.qualityReview,
+                      selected: item.selected,
+                      confirmed: item.weakConfirmed
+                    })
+
+                    return (
                     <div className="context-source-item" key={item.index}>
                       <label className="context-source-select">
                         <input
@@ -8377,10 +8408,46 @@ export const App = () => {
                         {item.duplicate ? (
                           <span>status: duplicate</span>
                         ) : null}
+                        <span>
+                          quality: {item.qualityReview.label} · import:{' '}
+                          {decision.label}
+                        </span>
+                        {item.qualityReview.suggestedEdits.length > 0 ? (
+                          <span>
+                            fixes: {item.qualityReview.suggestedEdits.join(', ')}
+                          </span>
+                        ) : null}
+                        {!item.duplicate && decision.requiresConfirmation ? (
+                          <label className="settings-row settings-row-inline">
+                            <input
+                              checked={item.weakConfirmed}
+                              disabled={isSavingCounterpartyPacks || !item.selected}
+                              onChange={(event) => {
+                                const { checked } = event.target
+
+                                setCounterpartyFinderPayloadItems((current) =>
+                                  current.map((candidate) =>
+                                    candidate.index === item.index
+                                      ? {
+                                          ...candidate,
+                                          weakConfirmed: checked
+                                        }
+                                      : candidate
+                                  )
+                                )
+                              }}
+                              type="checkbox"
+                            />
+                            <span className="settings-row-label">
+                              Confirm import despite weak quality
+                            </span>
+                          </label>
+                        ) : null}
                         <code>{item.draft.summary}</code>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ) : null}
               <div className="compact-form-grid context-source-form">
@@ -8393,9 +8460,12 @@ export const App = () => {
                       {' '}
                       {finderPayloadCandidatesCount}
                       {' '}
-                      candidates are currently selectable. selected:
+                      candidates are currently importable. selected:
                       {' '}
                       {selectedFinderCandidatesCount}
+                      {finderPayloadWeakConfirmationsPending > 0
+                        ? ` · ${finderPayloadWeakConfirmationsPending} weak awaiting confirm`
+                        : ''}
                     </div>
                     <div className="button-row settings-actions">
                       <button

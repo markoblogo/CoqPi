@@ -8,6 +8,7 @@ const contextSourceService = require('../dist-electron/backend/services/context-
 const {
   buildFinderPreviewImportNotice,
   createFinderPreviewItems,
+  getFinderPreviewItemCanImport,
   getFinderPreviewControls,
   getFinderPreviewSelectionStats,
   setFinderPreviewItemSelected,
@@ -60,7 +61,11 @@ test('finder preview UI state keeps stable select defaults after clear/edit reop
         sourceId: 'finder:partner:new-001',
         partnerName: 'Nova Works',
         title: 'Potential partner',
-        summary: 'Potential partner from search result.'
+        summary: 'Potential partner from search result.',
+        links: ['https://nova.example'],
+        whyRelevant: 'Relevant for long-term partner workflow.',
+        nextAction: 'Prepare a short outreach message.',
+        context: 'Contact: maria@nova.example'
       }
     ])
 
@@ -102,7 +107,11 @@ test('finder preview UI state keeps stable select defaults after clear/edit reop
         sourceId: 'finder:investor:new-002',
         partnerName: 'Green Fund',
         title: 'Investor',
-        summary: 'A new investor candidate from edited input.'
+        summary: 'A new investor candidate from edited input.',
+        links: ['https://green.example'],
+        whyRelevant: 'Relevant for capital and pilot support.',
+        nextAction: 'Prepare an intro version in Russian and English.',
+        context: 'Contact: investor@green.example'
       }
     ])
 
@@ -156,14 +165,22 @@ test('finder preview UI controls and partial import summary stay consistent acro
         sourceId: 'finder:partner:new-001',
         partnerName: 'Nova Works',
         title: 'Potential partner',
-        summary: 'Importable partner candidate.'
+        summary: 'Importable partner candidate.',
+        links: ['https://nova.example/jobs/partner'],
+        context: 'Contact: contact@nova.example',
+        whyRelevant: 'Potentially useful partner in Paris operation.',
+        nextAction: 'Prepare short intro with clear proposal.'
       },
       {
         kind: 'investor',
         sourceId: 'finder:investor:new-002',
         partnerName: 'Green Fund',
         title: 'Investor',
-        summary: 'Importable investor candidate.'
+        summary: 'Importable investor candidate.',
+        links: ['https://green.example/fund'],
+        context: 'Contact: invest@green.example',
+        whyRelevant: 'Investor with strategic appetite in agri AI.',
+        nextAction: 'Prepare a crisp 30-second opener.'
       },
       {
         kind: 'job',
@@ -184,6 +201,7 @@ test('finder preview UI controls and partial import summary stay consistent acro
     assert.equal(preview.errors.length, 1)
     assert.equal(controls.selectableCount, 2)
     assert.equal(controls.selectedCount, 2)
+    assert.equal(controls.importableCount, 2)
     assert.equal(controls.canToggleSelectAll, true)
     assert.equal(controls.canImportSelected, true)
     assert.equal(controls.toggleLabel, 'Deselect all')
@@ -191,6 +209,7 @@ test('finder preview UI controls and partial import summary stay consistent acro
     items = setFinderPreviewItemSelected(items, 1, false)
     controls = getFinderPreviewControls(items, false)
     assert.equal(controls.selectedCount, 1)
+    assert.equal(controls.importableCount, 1)
     assert.equal(controls.toggleLabel, 'Select all')
 
     items = toggleSelectAllFinderCandidatesModel(
@@ -199,6 +218,7 @@ test('finder preview UI controls and partial import summary stay consistent acro
     )
     controls = getFinderPreviewControls(items, false)
     assert.equal(controls.selectedCount, 2)
+    assert.equal(controls.importableCount, 2)
     assert.equal(controls.toggleLabel, 'Deselect all')
 
     const selectedDrafts = items
@@ -231,5 +251,67 @@ test('finder preview UI controls and partial import summary stay consistent acro
     assert.equal(reopenedControls.canToggleSelectAll, false)
     assert.equal(reopenedControls.canImportSelected, false)
     assert.equal(reopenedControls.toggleLabel, 'Select all')
+  })
+})
+
+test('finder preview gating blocks weak candidates until confirmed', async () => {
+  await withCoreDirectory(async () => {
+    const weakPayload = JSON.stringify([
+      {
+        kind: 'job',
+        sourceId: 'finder:job:weak-001',
+        partnerName: 'Sparse Co',
+        title: 'Unclear role',
+        summary: 'Short summary only.'
+      },
+      {
+        kind: 'partner',
+        sourceId: 'finder:partner:ready-001',
+        partnerName: 'Clear Corp',
+        title: 'Strategic partner',
+        summary: 'Clear partner profile with full context for outreach.',
+        links: ['https://clear.example'],
+        context: 'Contact: hello@clear.example',
+        whyRelevant: 'Strong fit for practical collaboration.',
+        nextAction: 'Prepare short intro with relevant proof points.'
+      }
+    ])
+
+    const preview = await contextSourceService.previewCounterpartyFinderPayload(
+      weakPayload
+    )
+    const items = createFinderPreviewItems(preview)
+
+    assert.equal(items.length, 2)
+
+    const weakItem = items.find((item) => item.draft.sourceId.endsWith('weak-001'))
+    const readyItem = items.find((item) => item.draft.sourceId.endsWith('ready-001'))
+
+    assert.equal(weakItem?.selected, false)
+    assert.equal(readyItem?.selected, true)
+    assert.equal(
+      getFinderPreviewItemCanImport(weakItem),
+      false
+    )
+    assert.equal(
+      getFinderPreviewItemCanImport(readyItem),
+      true
+    )
+
+    const selectedWithoutConfirm = items.filter((item) =>
+      getFinderPreviewItemCanImport(item)
+    )
+    assert.equal(selectedWithoutConfirm.length, 1)
+
+    const weakConfirmed = items.map((item) =>
+      item.draft.sourceId === 'finder:job:weak-001'
+        ? { ...item, selected: true, weakConfirmed: true }
+        : item
+    )
+    const selectedWithConfirm = weakConfirmed.filter((item) =>
+      getFinderPreviewItemCanImport(item)
+    )
+
+    assert.equal(selectedWithConfirm.length, 2)
   })
 })
