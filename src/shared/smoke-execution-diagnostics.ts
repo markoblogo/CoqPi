@@ -67,6 +67,8 @@ export type SmokeExecutionDiagnosticsInput = {
   assistantQualityLevel: 'not_ready' | 'needs_attention' | 'ready'
   assistantQualityDetail: string
   selectedPackCount: number
+  currentPayloadSummaryLabel: string
+  lastAnalyzePayloadSummaryLabel: string
   currentPayloadWarningCount: number
   lastAnalyzePayloadWarningCount: number
   realtimeEventCounters: {
@@ -81,7 +83,7 @@ export type SmokeExecutionDiagnosticsInput = {
 }
 
 const joinWorkedSummary = (parts: string[]) =>
-  parts.filter(Boolean).slice(0, 5).join('; ')
+  parts.filter(Boolean).slice(0, 6).join('; ')
 
 export const buildSmokeExecutionDiagnostics = (
   input: SmokeExecutionDiagnosticsInput
@@ -111,6 +113,14 @@ export const buildSmokeExecutionDiagnostics = (
 
   if (input.assistantFreshness === 'fresh') {
     workedParts.push('assistant returned a fresh suggestion')
+  }
+
+  if (
+    input.currentPayloadSummaryLabel.trim().length > 0 &&
+    input.currentPayloadSummaryLabel.trim() === input.lastAnalyzePayloadSummaryLabel.trim() &&
+    input.lastAnalyzePayloadSummaryLabel.trim().length > 0
+  ) {
+    workedParts.push('current session payload still matches the last analyze')
   }
 
   let firstFailure: SmokeExecutionFailure | null = null
@@ -262,6 +272,28 @@ export const buildSmokeExecutionDiagnostics = (
         : input.ignoredTranscriptCount > 0
           ? 'warning'
           : 'info'
+  })
+  trace.push({
+    id: 'payload',
+    label: 'Payload',
+    detail:
+      input.lastAnalyzePayloadSummaryLabel.trim().length === 0
+        ? `current ${input.currentPayloadSummaryLabel || 'none'} · last analyze none`
+        : input.currentPayloadSummaryLabel.trim() ===
+            input.lastAnalyzePayloadSummaryLabel.trim() &&
+            input.currentPayloadWarningCount === input.lastAnalyzePayloadWarningCount
+          ? `aligned · ${input.currentPayloadSummaryLabel}`
+          : `current ${input.currentPayloadSummaryLabel || 'none'} · last ${
+              input.lastAnalyzePayloadSummaryLabel || 'none'
+            }`,
+    tone:
+      input.lastAnalyzePayloadSummaryLabel.trim().length === 0
+        ? 'info'
+        : input.currentPayloadSummaryLabel.trim() ===
+              input.lastAnalyzePayloadSummaryLabel.trim() &&
+            input.currentPayloadWarningCount === input.lastAnalyzePayloadWarningCount
+          ? 'ok'
+          : 'warning'
   })
   if (input.ignoredTranscriptCount > 0) {
     trace.push({

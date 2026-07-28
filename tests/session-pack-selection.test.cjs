@@ -310,6 +310,7 @@ test('finder queue session effect description includes pack and draft handoff ch
     effect: {
       selectedPackIdsAdded: ['pack-A'],
       selectedPackIdsRemoved: ['pack-B'],
+      selectedPackIdsPreserved: [],
       clearedSelectedDraftId: null,
       selectedDraftIdChanged: false,
       changed: true
@@ -357,6 +358,44 @@ test('finder queue hold_later removes matching selected pack but keeps selected 
   assert.deepEqual(reconciled.effect.selectedPackIdsRemoved, ['pack-A'])
   assert.equal(reconciled.effect.clearedSelectedDraftId, null)
   assert.equal(reconciled.effect.changed, true)
+})
+
+test('finder queue hold_later keeps matching selected pack when active draft is already in follow-up', () => {
+  const pack = makePack({ id: 'pack-A', sourceId: 'finder:job:a' })
+  const context = makeSession(['pack-A'], {
+    selectedFinderOutreachDraftId: 'draft-A'
+  })
+
+  const reconciled = reconcileSessionContextWithFinderQueueDecision({
+    context,
+    availablePacks: [pack],
+    availableOutreachDrafts: [
+      makeDraft({
+        id: 'draft-A',
+        candidateResultId: 'result-A',
+        sourceId: 'finder:job:a',
+        status: 'follow_up'
+      })
+    ],
+    affectedResults: [
+      makeResult({
+        id: 'result-A',
+        sourceId: 'finder:job:a',
+        kind: 'job',
+        decision: {
+          state: 'hold_later',
+          updatedAt: '2026-07-28T11:15:00.000Z'
+        }
+      })
+    ],
+    nextDecisionState: 'hold_later'
+  })
+
+  assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, ['pack-A'])
+  assert.equal(reconciled.context.selectedFinderOutreachDraftId, 'draft-A')
+  assert.deepEqual(reconciled.effect.selectedPackIdsRemoved, [])
+  assert.deepEqual(reconciled.effect.selectedPackIdsPreserved, ['pack-A'])
+  assert.equal(reconciled.effect.changed, false)
 })
 
 test('finder queue rejected clears matching selected pack and selected draft from session', () => {

@@ -4624,12 +4624,29 @@ export const App = () => {
     )
 
     if (inspector.includedOutreachDraft) {
+      const draftMeta = [
+        inspector.includedOutreachDraft.handoffLabel ?? inspector.includedOutreachDraft.reason,
+        inspector.includedOutreachDraft.relationshipStatusLabel
+          ? `status ${inspector.includedOutreachDraft.relationshipStatusLabel}`
+          : '',
+        inspector.includedOutreachDraft.lastContactLabel
+          ? `last ${inspector.includedOutreachDraft.lastContactLabel}`
+          : '',
+        inspector.includedOutreachDraft.followUpContextLabel
+          ? `follow-up ${inspector.includedOutreachDraft.followUpContextLabel}`
+          : ''
+      ]
+        .filter(Boolean)
+        .join(' · ')
       parts.push(
-        `draft ${inspector.includedOutreachDraft.label} (${inspector.includedOutreachDraft.handoffLabel ?? inspector.includedOutreachDraft.reason})`
+        `draft ${inspector.includedOutreachDraft.label} (${draftMeta})`
       )
     } else if (inspector.droppedOutreachDraft) {
       parts.push(
-        `draft dropped: ${inspector.droppedOutreachDraft.label} (${inspector.droppedOutreachDraft.reason})`
+        `draft dropped: ${inspector.droppedOutreachDraft.label} (${
+          inspector.droppedOutreachDraft.handoffLabel ??
+          inspector.droppedOutreachDraft.reason
+        })`
       )
     } else {
       parts.push('draft none')
@@ -4750,6 +4767,8 @@ export const App = () => {
     assistantQualityLevel: assistantOutputQualitySummary.level,
     assistantQualityDetail: assistantOutputQualitySummary.detail,
     selectedPackCount: activeSessionPackSummary.includedCount,
+    currentPayloadSummaryLabel: activeSessionPayloadInspector.summaryLabel,
+    lastAnalyzePayloadSummaryLabel: lastAnalyzePayloadInspector?.summaryLabel ?? '',
     currentPayloadWarningCount: activeSessionPayloadInspector.warningCount,
     lastAnalyzePayloadWarningCount: lastAnalyzePayloadInspector?.warningCount ?? 0,
     realtimeEventCounters,
@@ -5453,13 +5472,25 @@ export const App = () => {
                 <strong>{smokeExecutionDiagnostics.headline}</strong>
                 <span>{smokeExecutionDiagnostics.summary}</span>
               </div>
-              <button
-                className="secondary-button"
-                onClick={captureSmokeExecutionToDraft}
-                type="button"
-              >
-                Capture current state
-              </button>
+              <div className="button-row">
+                {(activeSessionPayloadInspector.warningCount > 0 ||
+                  activeSessionPackSummary.includedCount === 0) && (
+                  <button
+                    className="secondary-button"
+                    onClick={reviewDroppedSessionPacks}
+                    type="button"
+                  >
+                    Review dropped packs
+                  </button>
+                )}
+                <button
+                  className="secondary-button"
+                  onClick={captureSmokeExecutionToDraft}
+                  type="button"
+                >
+                  Capture current state
+                </button>
+              </div>
             </div>
             {smokeExecutionDiagnostics.firstFailure ? (
               <div className="smoke-execution-failure">

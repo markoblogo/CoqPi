@@ -29,6 +29,10 @@ const makeInput = (overrides = {}) => ({
   assistantQualityLevel: 'ready',
   assistantQualityDetail: 'Fresh and concise.',
   selectedPackCount: 1,
+  currentPayloadSummaryLabel:
+    'included packs 1 · dropped 0 · draft included · profile 120 chars',
+  lastAnalyzePayloadSummaryLabel:
+    'included packs 1 · dropped 0 · draft included · profile 120 chars',
   currentPayloadWarningCount: 0,
   lastAnalyzePayloadWarningCount: 0,
   realtimeEventCounters: {
@@ -61,6 +65,7 @@ test('smoke execution diagnostics reports realtime startup failure first', () =>
   assert.match(diagnostics.summary, /provider timeout/)
   assert.match(diagnostics.notePrefill.broken, /provider timeout/)
   assert.match(diagnostics.notePrefill.nextFix, /Review the lifecycle trace/)
+  assert.match(diagnostics.trace.find((item) => item.id === 'payload')?.detail ?? '', /aligned/)
 })
 
 test('smoke execution diagnostics reports ignored transcript boundary before assistant', () => {
@@ -110,5 +115,24 @@ test('smoke execution diagnostics reports ready state when live path is healthy'
   assert.equal(diagnostics.firstFailure, null)
   assert.match(diagnostics.headline, /looks healthy/)
   assert.match(diagnostics.notePrefill.worked, /assistant returned a fresh suggestion/)
+  assert.match(diagnostics.notePrefill.worked, /payload still matches the last analyze/)
   assert.equal(diagnostics.notePrefill.broken, '')
+})
+
+test('smoke execution diagnostics exposes payload drift when current context differs from last analyze', () => {
+  const diagnostics = buildSmokeExecutionDiagnostics(
+    makeInput({
+      currentPayloadSummaryLabel:
+        'included packs 1 · dropped 1 · draft included · profile 120 chars',
+      lastAnalyzePayloadSummaryLabel:
+        'included packs 1 · dropped 0 · draft included · profile 120 chars',
+      currentPayloadWarningCount: 1,
+      assistantFreshness: 'stale'
+    })
+  )
+
+  const payloadTrace = diagnostics.trace.find((item) => item.id === 'payload')
+  assert.equal(payloadTrace?.tone, 'warning')
+  assert.match(payloadTrace?.detail ?? '', /current included packs 1 · dropped 1/)
+  assert.match(payloadTrace?.detail ?? '', /last included packs 1 · dropped 0/)
 })

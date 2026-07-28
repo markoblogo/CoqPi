@@ -22,10 +22,12 @@ export type LiveTestCockpitItem = {
     | 'listening'
     | 'scope'
     | 'ignored'
+    | 'boundary'
     | 'assistant'
     | 'sent'
     | 'context'
     | 'payload'
+    | 'payload-drift'
   label: string
   value: string
   detail?: string
@@ -790,6 +792,9 @@ export const getAutoAnalysisIgnoreReasonLabel = (
   return 'not ignored'
 }
 
+const normalizePayloadDetail = (value: string) => value.trim().replace(/\s+/g, ' ')
+const noAnalyzePayloadPlaceholder = normalizePayloadDetail('No analyze payload captured yet.')
+
 export const buildLiveTestCockpitItems = ({
   callLanguage,
   realtimeLabel,
@@ -856,6 +861,17 @@ export const buildLiveTestCockpitItems = ({
     cooldownRemainingSeconds > 0
       ? `${assistantStatus.label} / ${cooldownRemainingSeconds}s`
       : assistantStatus.label
+  const normalizedCurrentPayloadDetail = normalizePayloadDetail(currentPayloadDetail)
+  const normalizedLastPayloadDetail = normalizePayloadDetail(lastAnalyzePayloadDetail)
+  const payloadDriftState =
+    lastAnalyzePayloadSummary.trim().length === 0 &&
+    (normalizedLastPayloadDetail.length === 0 ||
+      normalizedLastPayloadDetail === noAnalyzePayloadPlaceholder)
+      ? 'not_sent'
+      : currentPayloadSummary.trim() === lastAnalyzePayloadSummary.trim() &&
+          normalizedCurrentPayloadDetail === normalizedLastPayloadDetail
+        ? 'same'
+        : 'changed'
   const lastAnalyzeTranscriptPreview =
     lastAnalyzeTranscriptText.trim().length > 0
       ? `${lastAnalyzeTranscriptText
@@ -906,6 +922,25 @@ export const buildLiveTestCockpitItems = ({
             : undefined,
       tone: ignoredSummary.total === 0 ? 'ok' : 'warning',
       title: 'Final other-speaker lines ignored before automatic assistant analysis.'
+    },
+    {
+      id: 'boundary',
+      label: 'Boundary',
+      value:
+        ignoredSummary.total === 0
+          ? 'clean'
+          : lastIgnoredReason ?? ignoredSummary.dominantReason ?? 'ignored',
+      detail:
+        ignoredSummary.total === 0
+          ? 'No ignored EN/FR boundary hits yet.'
+          : lastIgnored
+            ? `Last ignored: ${lastIgnored.text.trim().slice(0, 72)}${
+                lastIgnored.text.trim().length > 72 ? '…' : ''
+              }`
+            : 'Ignored lines stayed outside the live analyze boundary.',
+      tone: ignoredSummary.total === 0 ? 'ok' : 'warning',
+      title:
+        'Latest boundary reason for speech that was heard locally but kept out of automatic assistant analysis.'
     },
     {
       id: 'sent',
@@ -978,6 +1013,32 @@ export const buildLiveTestCockpitItems = ({
             : 'ok',
       title:
         'Included and dropped context that was actually attached to the most recent assistant analyze request.'
+    },
+    {
+      id: 'payload-drift',
+      label: 'Payload drift',
+      value:
+        payloadDriftState === 'not_sent'
+          ? 'not sent yet'
+          : payloadDriftState === 'same'
+            ? 'same as last analyze'
+            : 'changed since last analyze',
+      detail:
+        payloadDriftState === 'not_sent'
+          ? 'No assistant analyze request has been captured yet.'
+          : payloadDriftState === 'same'
+            ? 'Current session payload still matches the last assistant request.'
+            : `Now: ${currentPayloadSummary || 'none'} · Last: ${
+                lastAnalyzePayloadSummary || 'none'
+              }`,
+      tone:
+        payloadDriftState === 'same'
+          ? 'ok'
+          : payloadDriftState === 'changed'
+            ? 'warning'
+            : 'info',
+      title:
+        'Whether the current selected context still matches the payload used by the last assistant analyze request.'
     },
     {
       id: 'assistant',

@@ -989,7 +989,7 @@ test('ignored auto analysis summary separates background short and acknowledgeme
   assert.equal(summary.latestIgnored?.id, 'u-summary-short')
 })
 
-test('live test cockpit summarizes listening, ignored, sent, context, and freshness', () => {
+test('live test cockpit summarizes listening, ignored, boundary, payload drift, and freshness', () => {
   const englishQuestion = makeUtterance({
     id: 'u-cockpit-eligible',
     language: 'en',
@@ -1037,6 +1037,8 @@ test('live test cockpit summarizes listening, ignored, sent, context, and freshn
   assert.equal(byId.ignored.tone, 'warning')
   assert.match(byId.ignored.detail ?? '', /1 bg · 0 short · 1 ack/)
   assert.match(byId.ignored.detail ?? '', /Okay, thanks/)
+  assert.equal(byId.boundary.value, 'ack noise')
+  assert.match(byId.boundary.detail ?? '', /Okay, thanks/)
   assert.equal(byId.sent.value, `1 lines / ${englishQuestion.text.length} chars`)
   assert.match(byId.sent.detail ?? '', /Trigger: Can you describe your product management background/)
   assert.match(byId.sent.detail ?? '', /product management background/)
@@ -1053,6 +1055,9 @@ test('live test cockpit summarizes listening, ignored, sent, context, and freshn
   )
   assert.equal(byId.payload.tone, 'ok')
   assert.match(byId.payload.detail ?? '', /No analyze payload captured yet|draft none|in no pack|in Acme/)
+  assert.equal(byId['payload-drift'].value, 'changed since last analyze')
+  assert.equal(byId['payload-drift'].tone, 'warning')
+  assert.match(byId['payload-drift'].detail ?? '', /Now: included packs 1 · dropped 1/)
   assert.equal(byId.assistant.value, 'Ready / fresh')
   assert.equal(byId.assistant.tone, 'ok')
   assert.match(byId.assistant.detail ?? '', /matches the latest relevant line/)
@@ -1088,6 +1093,7 @@ test('live test cockpit exposes no-pack and stale assistant state', () => {
 
   assert.equal(byId.listening.value, 'FR / idle')
   assert.equal(byId.scope.value, 'FR final other lines')
+  assert.equal(byId.boundary.value, 'clean')
   assert.equal(byId.sent.tone, 'warning')
   assert.match(byId.sent.detail ?? '', /No eligible transcript window yet/)
   assert.equal(
@@ -1099,6 +1105,8 @@ test('live test cockpit exposes no-pack and stale assistant state', () => {
   assert.equal(byId.payload.value, 'No analyze sent yet')
   assert.equal(byId.payload.tone, 'warning')
   assert.match(byId.payload.detail ?? '', /No analyze payload captured yet/)
+  assert.equal(byId['payload-drift'].value, 'not sent yet')
+  assert.equal(byId['payload-drift'].tone, 'info')
   assert.equal(byId.assistant.value, 'Ready / stale')
   assert.equal(byId.assistant.tone, 'warning')
   assert.match(byId.assistant.detail ?? '', /older than the latest relevant line/)
