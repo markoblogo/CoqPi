@@ -1,4 +1,7 @@
 import type {
+  FinderCandidateDecisionState,
+  FinderCandidateResult,
+  FinderOutreachDraft,
   CounterpartyContextPack,
   CounterpartyContextPackDraft,
   SessionContext
@@ -167,3 +170,101 @@ export const getSessionContextWithImportedCounterpartyPacks = (
     availablePacks,
     importedCandidates
   )
+
+export type FinderQueueSessionEffect = {
+  selectedPackIdsAdded: string[]
+  selectedPackIdsRemoved: string[]
+  clearedSelectedDraftId: string | null
+  changed: boolean
+}
+
+export const reconcileSessionContextWithFinderQueueDecision = ({
+  context,
+  availablePacks,
+  availableOutreachDrafts = [],
+  affectedResults,
+  nextDecisionState
+}: {
+  context: SessionContext
+  availablePacks: CounterpartyContextPack[]
+  availableOutreachDrafts?: FinderOutreachDraft[]
+  affectedResults: readonly FinderCandidateResult[]
+  nextDecisionState: FinderCandidateDecisionState
+}): {
+  context: SessionContext
+  effect: FinderQueueSessionEffect
+} => {
+  const selectedPackIds = new Set(
+    getSessionSelectedCounterpartyPackIds(context, availablePacks)
+  )
+  const selectedPackIdsBefore = new Set(selectedPackIds)
+  const selectedDraftId = context.selectedFinderOutreachDraftId.trim()
+  const affectedCandidateIds = new Set(affectedResults.map((result) => result.id))
+  const affectedSourceKeys = new Set(
+    affectedResults.map((result) =>
+      buildCounterpartySourceKey(result.sourceId, result.kind)
+    )
+  )
+  const eligiblePackBySourceKey = new Map(
+    availablePacks.filter(isSessionEligibleCounterpartyPack).map((pack) => [
+      buildCounterpartySourceKey(pack.sourceId, pack.kind),
+      pack.id
+    ])
+  )
+  const selectedDraft = selectedDraftId
+    ? availableOutreachDrafts.find((draft) => draft.id === selectedDraftId) ?? null
+    : null
+
+  if (nextDecisionState === 'import_now') {
+    for (const key of affectedSourceKeys) {
+      const packId = eligiblePackBySourceKey.get(key)
+      if (packId) {
+        selectedPackIds.add(packId)
+      }
+    }
+  }
+
+  if (nextDecisionState === 'rejected') {
+    for (const key of affectedSourceKeys) {
+      const packId = eligiblePackBySourceKey.get(key)
+      if (packId) {
+        selectedPackIds.delete(packId)
+      }
+    }
+  }
+
+  const nextSelectedDraftId =
+    nextDecisionState === 'rejected' &&
+    selectedDraft &&
+    affectedCandidateIds.has(selectedDraft.candidateResultId)
+      ? ''
+      : selectedDraftId
+
+  const selectedPackIdsAdded = [...selectedPackIds].filter(
+    (id) => !selectedPackIdsBefore.has(id)
+  )
+  const selectedPackIdsRemoved = [...selectedPackIdsBefore].filter(
+    (id) => !selectedPackIds.has(id)
+  )
+  const clearedSelectedDraftId =
+    selectedDraftId && nextSelectedDraftId !== selectedDraftId
+      ? selectedDraftId
+      : null
+
+  return {
+    context: {
+      ...context,
+      selectedCounterpartyPackIds: [...selectedPackIds],
+      selectedFinderOutreachDraftId: nextSelectedDraftId
+    },
+    effect: {
+      selectedPackIdsAdded,
+      selectedPackIdsRemoved,
+      clearedSelectedDraftId,
+      changed:
+        selectedPackIdsAdded.length > 0 ||
+        selectedPackIdsRemoved.length > 0 ||
+        clearedSelectedDraftId !== null
+    }
+  }
+}

@@ -6,16 +6,22 @@ const {
   getCounterpartyPackSessionEligibility,
   getSessionContextWithImportedCounterpartyPacks,
   getSessionContextWithCounterpartyPacks,
-  getSessionSelectedCounterpartyPackIds
+  getSessionSelectedCounterpartyPackIds,
+  reconcileSessionContextWithFinderQueueDecision
 } = require('../dist-electron/shared/session-pack-selection.js')
 
-const makeSession = (selectedCounterpartyPackIds = []) => ({
+const makeSession = (
+  selectedCounterpartyPackIds = [],
+  overrides = {}
+) => ({
   company: 'Acme',
   role: 'Founder',
   context: 'Interview',
   goal: 'Keep context scoped',
   notes: '',
-  selectedCounterpartyPackIds
+  selectedCounterpartyPackIds,
+  selectedFinderOutreachDraftId: '',
+  ...overrides
 })
 
 const makePack = (overrides = {}) => ({
@@ -45,6 +51,46 @@ const makePack = (overrides = {}) => ({
   },
   retrievalScopes: ['coqpi_interview_en_fr'],
   promotion: 'explicit_audit_required',
+  ...overrides
+})
+
+const makeResult = (overrides = {}) => ({
+  version: 1,
+  id: 'result-A',
+  jobId: 'job-A',
+  sourceId: 'finder:job:a',
+  kind: 'job',
+  partnerName: 'Acme',
+  title: 'Role',
+  summary: 'Summary',
+  status: 'ready',
+  decision: {
+    state: 'auto',
+    updatedAt: '2026-07-28T10:00:00.000Z'
+  },
+  createdAt: '2026-07-28T10:00:00.000Z',
+  ...overrides
+})
+
+const makeDraft = (overrides = {}) => ({
+  version: 1,
+  id: 'draft-A',
+  jobId: 'job-A',
+  candidateResultId: 'result-A',
+  sourceId: 'finder:job:a',
+  kind: 'job',
+  targetName: 'Acme',
+  opportunity: 'Role',
+  fitLabel: '88/100 strong',
+  whyRelevant: 'Strong match',
+  knownContext: [],
+  questionsToAsk: [],
+  openingMessage: 'Hello',
+  nextAction: 'Follow up',
+  warnings: [],
+  status: 'draft',
+  createdAt: '2026-07-28T10:00:00.000Z',
+  statusHistory: [],
   ...overrides
 })
 
@@ -227,4 +273,69 @@ test('session selection prunes selected pack immediately when pack is removed or
     ]).selectedCounterpartyPackIds,
     []
   )
+})
+
+test('finder queue import_now re-attaches matching eligible pack to session', () => {
+  const pack = makePack({ id: 'pack-A', sourceId: 'finder:job:a' })
+  const context = makeSession([])
+
+  const reconciled = reconcileSessionContextWithFinderQueueDecision({
+    context,
+    availablePacks: [pack],
+    availableOutreachDrafts: [],
+    affectedResults: [
+      makeResult({
+        sourceId: 'finder:job:a',
+        kind: 'job',
+        decision: {
+          state: 'import_now',
+          updatedAt: '2026-07-28T10:30:00.000Z'
+        }
+      })
+    ],
+    nextDecisionState: 'import_now'
+  })
+
+  assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, ['pack-A'])
+  assert.deepEqual(reconciled.effect.selectedPackIdsAdded, ['pack-A'])
+  assert.equal(reconciled.effect.clearedSelectedDraftId, null)
+  assert.equal(reconciled.effect.changed, true)
+})
+
+test('finder queue rejected clears matching selected pack and selected draft from session', () => {
+  const pack = makePack({ id: 'pack-A', sourceId: 'finder:job:a' })
+  const context = makeSession(['pack-A'], {
+    selectedFinderOutreachDraftId: 'draft-A'
+  })
+
+  const reconciled = reconcileSessionContextWithFinderQueueDecision({
+    context,
+    availablePacks: [pack],
+    availableOutreachDrafts: [
+      makeDraft({
+        id: 'draft-A',
+        candidateResultId: 'result-A',
+        sourceId: 'finder:job:a'
+      })
+    ],
+    affectedResults: [
+      makeResult({
+        id: 'result-A',
+        sourceId: 'finder:job:a',
+        kind: 'job',
+        status: 'rejected',
+        decision: {
+          state: 'rejected',
+          updatedAt: '2026-07-28T11:00:00.000Z'
+        }
+      })
+    ],
+    nextDecisionState: 'rejected'
+  })
+
+  assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, [])
+  assert.equal(reconciled.context.selectedFinderOutreachDraftId, '')
+  assert.deepEqual(reconciled.effect.selectedPackIdsRemoved, ['pack-A'])
+  assert.equal(reconciled.effect.clearedSelectedDraftId, 'draft-A')
+  assert.equal(reconciled.effect.changed, true)
 })

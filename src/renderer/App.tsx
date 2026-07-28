@@ -106,6 +106,7 @@ import {
   buildCounterpartySourceKey,
   getSessionContextWithImportedCounterpartyPacks,
   getSessionContextWithCounterpartyPacks,
+  reconcileSessionContextWithFinderQueueDecision,
 } from '@shared/session-pack-selection'
 import {
   buildSmokeChecklistSummary,
@@ -2348,12 +2349,52 @@ export const App = () => {
         state,
         reason
       )
+      const affectedResults = payload.store.results.filter(
+        (result) => result.id === resultId
+      )
+
       applyFinderSearchStore(payload.store)
+      const {
+        context: nextContext,
+        effect
+      } = reconcileSessionContextWithFinderQueueDecision({
+        context: sessionContext,
+        availablePacks: counterpartyPacks,
+        availableOutreachDrafts: payload.store.outreachDrafts ?? finderOutreachDrafts,
+        affectedResults,
+        nextDecisionState: state
+      })
+
+      if (effect.changed) {
+        setSessionContext(nextContext)
+        setSessionContextDraft(nextContext)
+        setActiveSessionDroppedPackAudit([])
+        setDraftSessionDroppedPackAudit([])
+
+        try {
+          const saved = await window.coqpi.session.saveContext(nextContext)
+          setSessionContext(saved.context)
+          setSessionContextDraft(saved.context)
+        } catch (error) {
+          setSessionContextError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to save session updates after queue decision change.'
+          )
+        }
+      }
+
       setFinderSearchNotice(
         state === 'hold_later'
           ? 'Candidate marked to review later.'
           : state === 'rejected'
-          ? 'Candidate rejected with reason.'
+          ? effect.changed
+            ? 'Candidate rejected with reason. Session selection was updated.'
+            : 'Candidate rejected with reason.'
+          : state === 'import_now'
+          ? effect.selectedPackIdsAdded.length > 0
+            ? 'Candidate marked for import. Matching session pack was attached.'
+            : 'Candidate marked for import.'
           : 'Candidate decision updated.'
       )
     } catch (error) {
@@ -2374,6 +2415,7 @@ export const App = () => {
     setFinderSearchNotice(null)
 
     let latestStore: FinderSearchStore | null = null
+    const affectedResultIds = new Set(results.map((result) => result.id))
 
     try {
       for (const result of results) {
@@ -2389,14 +2431,61 @@ export const App = () => {
         applyFinderSearchStore(latestStore)
       }
 
+      const affectedResults = latestStore?.results.filter((result) =>
+        affectedResultIds.has(result.id)
+      ) ?? []
+      const {
+        context: nextContext,
+        effect
+      } = reconcileSessionContextWithFinderQueueDecision({
+        context: sessionContext,
+        availablePacks: counterpartyPacks,
+        availableOutreachDrafts: latestStore?.outreachDrafts ?? finderOutreachDrafts,
+        affectedResults,
+        nextDecisionState: state
+      })
+
+      if (effect.changed) {
+        setSessionContext(nextContext)
+        setSessionContextDraft(nextContext)
+        setActiveSessionDroppedPackAudit([])
+        setDraftSessionDroppedPackAudit([])
+
+        try {
+          const saved = await window.coqpi.session.saveContext(nextContext)
+          setSessionContext(saved.context)
+          setSessionContextDraft(saved.context)
+        } catch (error) {
+          setSessionContextError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to save session updates after queue changes.'
+          )
+        }
+      }
+
       setFinderSearchNotice(
         state === 'hold_later'
           ? `${results.length} candidate${results.length === 1 ? '' : 's'} moved to hold.`
           : state === 'import_now'
-          ? `${results.length} candidate${results.length === 1 ? '' : 's'} marked for import.`
+          ? `${results.length} candidate${results.length === 1 ? '' : 's'} marked for import.${
+              effect.selectedPackIdsAdded.length > 0
+                ? ` ${effect.selectedPackIdsAdded.length} matching session pack${
+                    effect.selectedPackIdsAdded.length === 1 ? ' was' : 's were'
+                  } attached.`
+                : ''
+            }`
           : state === 'auto'
           ? `${results.length} candidate${results.length === 1 ? '' : 's'} restored to auto review.`
-          : `${results.length} candidate${results.length === 1 ? '' : 's'} updated.`
+          : `${results.length} candidate${results.length === 1 ? '' : 's'} updated.${
+              effect.changed
+                ? ` Session selection changed: ${effect.selectedPackIdsRemoved.length} pack${
+                    effect.selectedPackIdsRemoved.length === 1 ? '' : 's'
+                  } removed${
+                    effect.clearedSelectedDraftId ? ' and selected draft cleared' : ''
+                  }.`
+                : ''
+            }`
       )
     } catch (error) {
       setFinderSearchError(
