@@ -41,6 +41,23 @@ Expected role:
 - fix-or-reject with reason;
 - still run governance receipts, smoke checks, and selected-context review.
 
+## Example local runbook
+
+Current diff:
+
+```bash
+ocr review --audience agent \
+  -b "CoqPi local assistant code. Check provider and realtime boundaries, IPC/session state, selected-context retrieval, governance receipts, failover, and assistant routing. Ignore Russian editorial-only changes."
+```
+
+Branch range:
+
+```bash
+ocr review --audience agent \
+  -b "CoqPi local assistant code. Check provider and realtime boundaries, IPC/session state, selected-context retrieval, governance receipts, failover, and assistant routing. Ignore Russian editorial-only changes." \
+  --from main --to <branch>
+```
+
 Skip it for:
 
 - docs-only edits;
