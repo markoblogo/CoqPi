@@ -10,6 +10,14 @@ iteration.
 - `pre-push` or `before-pr` branch review is allowed;
 - `post-commit optional` is allowed only as a local developer choice.
 
+Current local helper:
+
+- `Open Code Review` (`ocr`) may be used as the second reviewer on a diff
+  before push or PR;
+- default target is the current working diff or a branch range, not the whole
+  repository;
+- `scan` is reserved for unfamiliar or high-risk files only.
+
 ## Not allowed by default
 
 - no mandatory daemon for every session;
@@ -26,6 +34,12 @@ Use it when touching:
 - context-source capture and selected-pack retrieval;
 - IPC and session-state behavior;
 - governance receipts, failover, or assistant routing.
+
+Expected role:
+
+- precise local findings with file/line anchors;
+- fix-or-reject with reason;
+- still run governance receipts, smoke checks, and selected-context review.
 
 Skip it for:
 

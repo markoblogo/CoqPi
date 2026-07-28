@@ -177,6 +177,10 @@ Detailed version: [docs/REALTIME_SMOKE_TEST.md](docs/REALTIME_SMOKE_TEST.md)
 - [docs/SESSION_MEMORY_BOUNDARY.md](docs/SESSION_MEMORY_BOUNDARY.md)
 - [docs/CONTINUOUS_REVIEW_BOUNDARY.md](docs/CONTINUOUS_REVIEW_BOUNDARY.md)
 
+`docs/CONTINUOUS_REVIEW_BOUNDARY.md` also defines the optional local
+`Open Code Review` (`ocr`) pass used as a second reviewer on diffs before
+push/PR. It is advisory only and does not replace smoke/governance checks.
+
 ## Not in scope yet
 
 - outbound email or message sending;
