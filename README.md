@@ -172,6 +172,13 @@ For operator-facing execution docs and smoke/runbook steps, prefer an
 ADHD-shaped layout: next action first, numbered bounded steps, visible current
 state, concrete estimates when relevant, and one explicit next move.
 
+For live-assist, Finder, and governance work, keep one compact loop
+vocabulary: `Discuss -> Plan -> Execute -> Verify -> Ship`.
+Heavy research, planning, and execution belong in bounded fresh packets while
+the main operator thread stays lean. No ship or workflow-ready claim is valid
+without a verification artifact, receipt, smoke note, or reviewed evidence for
+the scoped path.
+
 ## Important local docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
