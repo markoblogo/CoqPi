@@ -17,11 +17,30 @@ export type AssistantStatusLabelInfo = {
 export type LiveTestCockpitTone = 'ok' | 'info' | 'warning' | 'error'
 
 export type LiveTestCockpitItem = {
-  id: 'listening' | 'ignored' | 'assistant' | 'sent' | 'context'
+  id:
+    | 'listening'
+    | 'scope'
+    | 'ignored'
+    | 'assistant'
+    | 'sent'
+    | 'context'
+    | 'payload'
   label: string
   value: string
   tone: LiveTestCockpitTone
   title: string
+}
+
+const getListeningScopeLabel = (callLanguage: AssistantCallLanguage) => {
+  if (callLanguage === 'en') {
+    return 'EN final other lines'
+  }
+
+  if (callLanguage === 'fr') {
+    return 'FR final other lines'
+  }
+
+  return 'EN/FR final other lines'
 }
 
 export const getAutoAnalysisFingerprint = (
@@ -484,10 +503,15 @@ export const buildLiveTestCockpitItems = ({
   autoTranscriptText,
   selectedPackLabel,
   selectedPackState = 'none',
+  currentPayloadSummary = '',
+  currentPayloadHasWarnings = false,
   selectedPackCount,
   transcriptUtterances,
   latestRelevantUtteranceId,
   lastAnalyzedUtteranceId,
+  lastAnalyzePayloadSummary = '',
+  lastAnalyzePayloadHasWarnings = false,
+  lastAnalyzeTranscriptText = '',
   cooldownRemainingSeconds = 0
 }: {
   callLanguage: AssistantCallLanguage
@@ -496,10 +520,15 @@ export const buildLiveTestCockpitItems = ({
   autoTranscriptText: string
   selectedPackLabel: string
   selectedPackState?: 'included' | 'dropped' | 'none'
+  currentPayloadSummary?: string
+  currentPayloadHasWarnings?: boolean
   selectedPackCount: number
   transcriptUtterances: TranscriptUtterance[]
   latestRelevantUtteranceId: string | undefined
   lastAnalyzedUtteranceId: string | null
+  lastAnalyzePayloadSummary?: string
+  lastAnalyzePayloadHasWarnings?: boolean
+  lastAnalyzeTranscriptText?: string
   cooldownRemainingSeconds?: number
 }): LiveTestCockpitItem[] => {
   const eligibleCount = getAutoAnalysisTranscriptUtterances(
@@ -526,6 +555,15 @@ export const buildLiveTestCockpitItems = ({
     cooldownRemainingSeconds > 0
       ? `${assistantStatus.label} / ${cooldownRemainingSeconds}s`
       : assistantStatus.label
+  const lastAnalyzeTranscriptPreview =
+    lastAnalyzeTranscriptText.trim().length > 0
+      ? `${lastAnalyzeTranscriptText
+          .trim()
+          .split('\n')
+          .filter((line) => line.trim().length > 0).length} lines / ${
+          lastAnalyzeTranscriptText.trim().length
+        } chars`
+      : `${eligibleCount} lines / pending`
 
   return [
     {
@@ -534,6 +572,14 @@ export const buildLiveTestCockpitItems = ({
       value: `${callLanguage.toUpperCase()} / ${realtimeLabel}`,
       tone: realtimeLabel.toLowerCase().includes('error') ? 'error' : 'info',
       title: 'Current call-language filter and realtime listening state.'
+    },
+    {
+      id: 'scope',
+      label: 'Scope',
+      value: getListeningScopeLabel(callLanguage),
+      tone: 'info',
+      title:
+        'Only final other-speaker lines inside this language scope can trigger automatic assistant analysis.'
     },
     {
       id: 'ignored',
@@ -547,28 +593,59 @@ export const buildLiveTestCockpitItems = ({
     },
     {
       id: 'sent',
-      label: 'Auto window',
+      label: 'Last sent',
       value:
-        autoTranscriptText.trim().length === 0
-          ? `${eligibleCount} lines`
-          : `${eligibleCount} lines / ${autoTranscriptText.trim().length} chars`,
-      tone: autoTranscriptText.trim().length === 0 ? 'warning' : 'ok',
-      title: 'Eligible transcript window that automatic analysis can send.'
+        lastAnalyzeTranscriptText.trim().length > 0
+          ? lastAnalyzeTranscriptPreview
+          : autoTranscriptText.trim().length === 0
+            ? `${eligibleCount} lines`
+            : `${eligibleCount} lines / ${autoTranscriptText.trim().length} chars`,
+      tone:
+        lastAnalyzeTranscriptText.trim().length > 0
+          ? 'ok'
+          : autoTranscriptText.trim().length === 0
+            ? 'warning'
+            : 'ok',
+      title:
+        lastAnalyzeTranscriptText.trim().length > 0
+          ? 'Transcript window that was sent in the most recent assistant analyze request.'
+          : 'Eligible transcript window that automatic analysis can send.'
     },
     {
       id: 'context',
-      label: 'Context',
+      label: 'Current payload',
       value:
-        selectedPackState === 'none'
-          ? 'No pack'
-          : selectedPackLabel,
+        currentPayloadSummary.trim().length > 0
+          ? currentPayloadSummary
+          : selectedPackState === 'none'
+            ? 'No pack'
+            : selectedPackLabel,
       tone:
-        selectedPackState === 'included'
+        currentPayloadHasWarnings
+          ? 'warning'
+          : selectedPackState === 'included'
           ? 'ok'
           : selectedPackState === 'dropped'
             ? 'warning'
             : 'warning',
-      title: 'Selected counterparty packs active for assistant retrieval.'
+      title:
+        'Current selected packs and draft that would be considered if analysis runs now.'
+    },
+    {
+      id: 'payload',
+      label: 'Last payload',
+      value:
+        lastAnalyzePayloadSummary.trim().length > 0
+          ? lastAnalyzePayloadSummary
+          : 'No analyze sent yet',
+      tone:
+        lastAnalyzePayloadSummary.trim().length === 0
+          ? 'warning'
+          : lastAnalyzePayloadHasWarnings
+            ? 'warning'
+            : 'ok',
+      title:
+        'Included and dropped context that was actually attached to the most recent assistant analyze request.'
     },
     {
       id: 'assistant',

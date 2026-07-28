@@ -60,6 +60,8 @@ Keep this diagram updated when CoqPi changes its main surfaces, assistant routes
 - Finder import preview now uses an explicit decision layer by candidate: `ready`, `usable`, `weak`.
   - `ready` / `usable`: auto-select by default and importable immediately when selected.
   - `weak`: not auto-selected and requires explicit "confirm import despite weak quality" before it can be imported.
+  - Mixed selection is now gated: if weak selected entries are still unconfirmed, import/session attach is blocked instead of silently importing only the stronger subset.
+  - The generic Finder payload preview now has the same decision controls as owner-source preview: `Select ready`, `Select usable`, `Select weak`, plus visible blocked-selection counts before import.
 - Real Finder Source Adapter v1 accepts owner-pasted URLs, vacancy/export text, LinkedIn-style job snippets, accelerator/program snippets, investor/fund lists, partner exports, and CSV-like candidate exports for the selected job. It now uses deterministic format-specific parsers (`url`, `structured_fields`, `linkedin_job`, `accelerator_snippet`, `investor_list`, `partner_export`) to extract and enrich company/partner, role/opportunity, location, contact, deadline, relevance, and missing information before preview. URLs are normalized locally only; no fetch is performed.
 - Candidate review fields (`fitScore`, `whyRelevant`, `missingInfo`, `nextAction`) are scenario-aware for job, partner, investor, and accelerator flows; the UI explains fit score signals and missing improvements before outreach prep.
 - Prioritized pipeline view sorts and filters candidates by fit score, status, next action, and decision state so the Finder tab works as a review funnel.
@@ -126,6 +128,7 @@ Selected `12-factor-agents` principles are adapted in [`docs/AGENT_EVENT_THREAD_
 - `pnpm build`
 - `pnpm format`
 - `pnpm test:finder-prepare-live-ui` to verify the full Finder -> Prepare -> Live selected-context path without manual selected-ID overrides.
+- `pnpm test:finder-ui-state` to verify Finder preview gating, ready/usable/weak selection behavior, and deterministic source-adapter parsing.
 
 ## API key setup
 

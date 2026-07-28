@@ -41,6 +41,10 @@ export type FinderPreviewSelectionStats = {
   selected: number
   duplicate: number
   importableCount: number
+  readyCount: number
+  usableCount: number
+  weakCount: number
+  blockedSelectedCount: number
   areAllSelected: boolean
   pendingWeakConfirmations: number
 }
@@ -50,10 +54,13 @@ export type FinderPreviewControls = {
   selectedCount: number
   importableCount: number
   duplicateCount: number
+  blockedSelectedCount: number
   canToggleSelectAll: boolean
   canImportSelected: boolean
   toggleLabel: 'Select all' | 'Deselect all'
 }
+
+export type FinderPreviewTier = 'ready' | 'usable' | 'weak'
 
 export const getFinderPreviewItemCanImport = <
   T extends FinderPreviewSelectionBase
@@ -140,6 +147,15 @@ export const getFinderPreviewSelectionStats = (
 ): FinderPreviewSelectionStats => {
   const nonDuplicateItems = items.filter((item) => !item.duplicate)
   const selectedItems = nonDuplicateItems.filter((item) => item.selected)
+  const readyCount = nonDuplicateItems.filter(
+    (item) => item.qualityReview.level === 'ready'
+  ).length
+  const usableCount = nonDuplicateItems.filter(
+    (item) => item.qualityReview.level === 'usable'
+  ).length
+  const weakCount = nonDuplicateItems.filter(
+    (item) => item.qualityReview.level === 'weak'
+  ).length
   const pendingWeakConfirmations = nonDuplicateItems.filter(
     (item) =>
       item.qualityReview.level === 'weak' &&
@@ -149,6 +165,9 @@ export const getFinderPreviewSelectionStats = (
   const importableCount = nonDuplicateItems.filter((item) =>
     getFinderPreviewItemCanImport(item)
   ).length
+  const blockedSelectedCount = nonDuplicateItems.filter(
+    (item) => item.selected && !getFinderPreviewItemCanImport(item)
+  ).length
 
   return {
     total: items.length,
@@ -156,6 +175,10 @@ export const getFinderPreviewSelectionStats = (
     selected: selectedItems.length,
     duplicate: items.length - nonDuplicateItems.length,
     importableCount,
+    readyCount,
+    usableCount,
+    weakCount,
+    blockedSelectedCount,
     pendingWeakConfirmations,
     areAllSelected:
       nonDuplicateItems.length > 0 &&
@@ -174,8 +197,10 @@ export const getFinderPreviewControls = (
     selectedCount: stats.selected,
     importableCount: stats.importableCount,
     duplicateCount: stats.duplicate,
+    blockedSelectedCount: stats.blockedSelectedCount,
     canToggleSelectAll: !isSaving && stats.nonDuplicate > 0,
-    canImportSelected: !isSaving && stats.importableCount > 0,
+    canImportSelected:
+      !isSaving && stats.importableCount > 0 && stats.blockedSelectedCount === 0,
     toggleLabel: stats.areAllSelected ? 'Deselect all' : 'Select all'
   }
 }
@@ -257,3 +282,20 @@ export const toggleSelectAllFinderCandidates = <
               : false
             : false
       }))
+
+export const selectFinderPreviewItemsByTier = <
+  T extends FinderPreviewSelectionBase
+>(
+  items: readonly T[],
+  tier: FinderPreviewTier
+): T[] =>
+  items.map((item) => ({
+    ...item,
+    selected: item.duplicate ? false : item.qualityReview.level === tier,
+    weakConfirmed:
+      item.duplicate || item.qualityReview.level !== tier
+        ? false
+        : item.qualityReview.level === 'weak'
+          ? item.weakConfirmed
+          : false
+  }))

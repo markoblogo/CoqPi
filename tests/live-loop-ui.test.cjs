@@ -837,19 +837,33 @@ test('live test cockpit summarizes listening, ignored, sent, context, and freshn
     },
     autoTranscriptText: englishQuestion.text,
     selectedPackLabel: 'Acme',
+    currentPayloadSummary: 'included packs 1 · dropped 1 · draft included · profile 120 chars',
+    currentPayloadHasWarnings: true,
     selectedPackCount: 1,
     transcriptUtterances: [englishQuestion, ignoredBackground],
     latestRelevantUtteranceId: englishQuestion.id,
-    lastAnalyzedUtteranceId: englishQuestion.id
+    lastAnalyzedUtteranceId: englishQuestion.id,
+    lastAnalyzePayloadSummary:
+      'included packs 1 · dropped 0 · draft included · profile 120 chars',
+    lastAnalyzeTranscriptText: englishQuestion.text
   })
   const byId = Object.fromEntries(items.map((item) => [item.id, item]))
 
   assert.equal(byId.listening.value, 'AUTO / listening')
+  assert.equal(byId.scope.value, 'EN/FR final other lines')
   assert.equal(byId.ignored.value, '1 / non EN/FR')
   assert.equal(byId.ignored.tone, 'warning')
   assert.equal(byId.sent.value, `1 lines / ${englishQuestion.text.length} chars`)
-  assert.equal(byId.context.value, 'Acme')
-  assert.equal(byId.context.tone, 'ok')
+  assert.equal(
+    byId.context.value,
+    'included packs 1 · dropped 1 · draft included · profile 120 chars'
+  )
+  assert.equal(byId.context.tone, 'warning')
+  assert.equal(
+    byId.payload.value,
+    'included packs 1 · dropped 0 · draft included · profile 120 chars'
+  )
+  assert.equal(byId.payload.tone, 'ok')
   assert.equal(byId.assistant.value, 'Ready / fresh')
   assert.equal(byId.assistant.tone, 'ok')
 })
@@ -870,6 +884,8 @@ test('live test cockpit exposes no-pack and stale assistant state', () => {
     },
     autoTranscriptText: '',
     selectedPackLabel: 'No pack selected',
+    currentPayloadSummary: 'included packs 0 · dropped 1 · draft dropped · profile off',
+    currentPayloadHasWarnings: true,
     selectedPackCount: 0,
     transcriptUtterances: [latestQuestion],
     latestRelevantUtteranceId: latestQuestion.id,
@@ -878,9 +894,15 @@ test('live test cockpit exposes no-pack and stale assistant state', () => {
   const byId = Object.fromEntries(items.map((item) => [item.id, item]))
 
   assert.equal(byId.listening.value, 'FR / idle')
+  assert.equal(byId.scope.value, 'FR final other lines')
   assert.equal(byId.sent.tone, 'warning')
-  assert.equal(byId.context.value, 'No pack')
+  assert.equal(
+    byId.context.value,
+    'included packs 0 · dropped 1 · draft dropped · profile off'
+  )
   assert.equal(byId.context.tone, 'warning')
+  assert.equal(byId.payload.value, 'No analyze sent yet')
+  assert.equal(byId.payload.tone, 'warning')
   assert.equal(byId.assistant.value, 'Ready / stale')
   assert.equal(byId.assistant.tone, 'warning')
 })

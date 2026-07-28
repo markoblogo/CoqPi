@@ -132,6 +132,7 @@ import {
   getFinderPreviewControls,
   getFinderPreviewSelectionStats,
   getFinderPreviewItemCanImport,
+  selectFinderPreviewItemsByTier,
   type CounterpartyFinderPreviewItem,
   type FinderOwnerSourcePreviewItem,
   setFinderPreviewItemSelected,
@@ -846,6 +847,8 @@ export const App = () => {
     finderPayloadSelectionStats.areAllSelected
   const finderPayloadWeakConfirmationsPending =
     finderPayloadSelectionStats.pendingWeakConfirmations
+  const finderPayloadBlockedSelectedCount =
+    finderPayloadSelectionStats.blockedSelectedCount
   const selectedFinderSearchJobKind = selectedFinderSearchJob?.kind ?? 'other'
   const getOwnerSourceDecision = (item: FinderOwnerSourcePreviewItem) => {
     const qualityReview = reviewFinderPreviewCandidateQuality({
@@ -1086,6 +1089,10 @@ export const App = () => {
   const [lastAnalyzedUtteranceId, setLastAnalyzedUtteranceId] = useState<
     string | null
   >(null)
+  const [lastAnalyzePayloadInspector, setLastAnalyzePayloadInspector] =
+    useState<SessionPayloadInspector | null>(null)
+  const [lastAnalyzeTranscriptText, setLastAnalyzeTranscriptText] =
+    useState<string>('')
   const [copiedAnswerText, setCopiedAnswerText] = useState<string | null>(null)
   const [realtimeStatus, setRealtimeStatus] =
     useState<RealtimeConnectionStatus>('idle')
@@ -2173,6 +2180,15 @@ export const App = () => {
   const canImportFinderCandidates = finderPreviewControls.canImportSelected
 
   const importSelectedFinderCandidates = async () => {
+    if (finderPreviewControls.blockedSelectedCount > 0) {
+      setCounterpartyPackDraftNotice(
+        `${finderPreviewControls.blockedSelectedCount} selected candidate${
+          finderPreviewControls.blockedSelectedCount === 1 ? '' : 's'
+        } still blocked. Confirm weak entries or deselect them before import.`
+      )
+      return
+    }
+
     const selected = counterpartyFinderPayloadItems.filter((candidate) =>
       getFinderPreviewItemCanImport(candidate)
     )
@@ -2774,6 +2790,15 @@ export const App = () => {
       return
     }
 
+    if (pendingFinderOwnerSourceConfirmationsCount > 0) {
+      setFinderSearchError(
+        `${pendingFinderOwnerSourceConfirmationsCount} selected weak candidate${
+          pendingFinderOwnerSourceConfirmationsCount === 1 ? '' : 's'
+        } still require confirmation before import.`
+      )
+      return
+    }
+
     const selectedDrafts = finderOwnerSourcePreviewItems
       .filter((item) => {
         if (item.duplicate || !item.selected) {
@@ -2836,6 +2861,15 @@ export const App = () => {
 
   const importSelectedFinderOwnerSourceToSession = async () => {
     if (!selectedFinderSearchJob || isImportingFinderOwnerSource) {
+      return
+    }
+
+    if (pendingFinderOwnerSourceConfirmationsCount > 0) {
+      setFinderSearchError(
+        `${pendingFinderOwnerSourceConfirmationsCount} selected weak candidate${
+          pendingFinderOwnerSourceConfirmationsCount === 1 ? '' : 's'
+        } still require confirmation before session attach.`
+      )
       return
     }
 
@@ -3733,6 +3767,8 @@ export const App = () => {
     setAssistantErrorSource(null)
     setAssistantResult(emptyAnalysis)
     setAssistantResultUpdatedAt(null)
+    setLastAnalyzePayloadInspector(null)
+    setLastAnalyzeTranscriptText('')
     setLastAnalyzedUtteranceId(latestUtteranceId ?? null)
     setAnalysisCooldownUntil(0)
   }
@@ -4057,6 +4093,8 @@ export const App = () => {
     setAssistantErrorCode(null)
     setAssistantErrorSource(null)
     setAnalysisCooldownUntil(Date.now() + ANALYSIS_COOLDOWN_MS)
+    setLastAnalyzePayloadInspector(activeSessionPayloadInspector)
+    setLastAnalyzeTranscriptText(transcriptToSend)
 
     try {
       const response =
@@ -4341,10 +4379,16 @@ export const App = () => {
     autoTranscriptText: autoAnalysisTranscriptText,
     selectedPackLabel: activeSessionPackSummary.label,
     selectedPackState: activeSessionPackSummary.state,
+    currentPayloadSummary: activeSessionPayloadInspector.summaryLabel,
+    currentPayloadHasWarnings: activeSessionPayloadInspector.warningCount > 0,
     selectedPackCount: activeSessionPackSummary.includedCount,
     transcriptUtterances,
     latestRelevantUtteranceId: assistantRelevantLastUtterance?.id,
     lastAnalyzedUtteranceId,
+    lastAnalyzePayloadSummary: lastAnalyzePayloadInspector?.summaryLabel ?? '',
+    lastAnalyzePayloadHasWarnings:
+      (lastAnalyzePayloadInspector?.warningCount ?? 0) > 0,
+    lastAnalyzeTranscriptText,
     cooldownRemainingSeconds
   })
   const smokeChecklistSummary = buildSmokeChecklistSummary(
@@ -5906,6 +5950,12 @@ export const App = () => {
             activeSessionPayloadInspector,
             'Active assistant payload'
           )}
+          {lastAnalyzePayloadInspector ? (
+            renderSessionPayloadInspector(
+              lastAnalyzePayloadInspector,
+              'Last analyze payload'
+            )
+          ) : null}
 
           {!isMiniLayout ? (
             <section className="live-main">
@@ -8668,14 +8718,64 @@ export const App = () => {
                       {' '}
                       {finderPayloadCandidatesCount}
                       {' '}
-                      candidates are currently importable. selected:
+                      parsed candidates. {finderPayloadSelectionStats.readyCount} ready /{' '}
+                      {finderPayloadSelectionStats.usableCount} usable /{' '}
+                      {finderPayloadSelectionStats.weakCount} weak. selected importable:
                       {' '}
                       {selectedFinderCandidatesCount}
                       {finderPayloadWeakConfirmationsPending > 0
                         ? ` · ${finderPayloadWeakConfirmationsPending} weak awaiting confirm`
                         : ''}
+                      {finderPayloadBlockedSelectedCount > 0
+                        ? ` · ${finderPayloadBlockedSelectedCount} selected still blocked`
+                        : ''}
                     </div>
                     <div className="button-row settings-actions">
+                      <button
+                        className="button-small"
+                        disabled={
+                          isSavingCounterpartyPacks ||
+                          finderPayloadSelectionStats.readyCount === 0
+                        }
+                        onClick={() => {
+                          setCounterpartyFinderPayloadItems((current) =>
+                            selectFinderPreviewItemsByTier(current, 'ready')
+                          )
+                        }}
+                        type="button"
+                      >
+                        Select ready
+                      </button>
+                      <button
+                        className="button-small"
+                        disabled={
+                          isSavingCounterpartyPacks ||
+                          finderPayloadSelectionStats.usableCount === 0
+                        }
+                        onClick={() => {
+                          setCounterpartyFinderPayloadItems((current) =>
+                            selectFinderPreviewItemsByTier(current, 'usable')
+                          )
+                        }}
+                        type="button"
+                      >
+                        Select usable
+                      </button>
+                      <button
+                        className="button-small"
+                        disabled={
+                          isSavingCounterpartyPacks ||
+                          finderPayloadSelectionStats.weakCount === 0
+                        }
+                        onClick={() => {
+                          setCounterpartyFinderPayloadItems((current) =>
+                            selectFinderPreviewItemsByTier(current, 'weak')
+                          )
+                        }}
+                        type="button"
+                      >
+                        Select weak
+                      </button>
                       <button
                         className="button-small"
                         disabled={!finderPreviewControls.canToggleSelectAll}

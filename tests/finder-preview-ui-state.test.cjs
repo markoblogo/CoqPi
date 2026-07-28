@@ -12,6 +12,7 @@ const {
   getFinderPreviewItemCanImport,
   getFinderPreviewControls,
   getFinderPreviewSelectionStats,
+  selectFinderPreviewItemsByTier,
   setFinderPreviewItemSelected,
   toggleSelectAllFinderCandidates: toggleSelectAllFinderCandidatesModel
 } = require('../dist-electron/shared/finder-preview-state.js')
@@ -542,6 +543,7 @@ test('finder preview gating blocks weak candidates until confirmed', async () =>
 
     assert.equal(weakItem?.selected, false)
     assert.equal(readyItem?.selected, true)
+    assert.equal(getFinderPreviewSelectionStats(items).blockedSelectedCount, 0)
     assert.equal(
       getFinderPreviewItemCanImport(weakItem),
       false
@@ -556,7 +558,16 @@ test('finder preview gating blocks weak candidates until confirmed', async () =>
     )
     assert.equal(selectedWithoutConfirm.length, 1)
 
-    const weakConfirmed = items.map((item) =>
+    const selectedWeak = selectFinderPreviewItemsByTier(items, 'weak')
+    const blockedStats = getFinderPreviewSelectionStats(selectedWeak)
+    const blockedControls = getFinderPreviewControls(selectedWeak, false)
+
+    assert.equal(blockedStats.weakCount, 1)
+    assert.equal(blockedStats.blockedSelectedCount, 1)
+    assert.equal(blockedStats.pendingWeakConfirmations, 1)
+    assert.equal(blockedControls.canImportSelected, false)
+
+    const weakConfirmed = selectedWeak.map((item) =>
       item.draft.sourceId === 'finder:job:weak-001'
         ? { ...item, selected: true, weakConfirmed: true }
         : item
@@ -565,6 +576,11 @@ test('finder preview gating blocks weak candidates until confirmed', async () =>
       getFinderPreviewItemCanImport(item)
     )
 
-    assert.equal(selectedWithConfirm.length, 2)
+    const confirmedStats = getFinderPreviewSelectionStats(weakConfirmed)
+    const confirmedControls = getFinderPreviewControls(weakConfirmed, false)
+
+    assert.equal(selectedWithConfirm.length, 1)
+    assert.equal(confirmedStats.blockedSelectedCount, 0)
+    assert.equal(confirmedControls.canImportSelected, true)
   })
 })

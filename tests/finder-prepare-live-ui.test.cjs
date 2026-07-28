@@ -16,6 +16,7 @@ const {
   createContextPackDraftFromFinderResult
 } = require('../dist-electron/shared/finder-search-module.js')
 const {
+  getSessionContextWithCounterpartyPacks,
   getSessionContextWithImportedCounterpartyPacks
 } = require('../dist-electron/shared/session-pack-selection.js')
 
@@ -478,4 +479,192 @@ test('finder queue import now updates session payload and assistant selected pac
   assert.match(observed.capturedPrompt, /Northfield Labs/)
   assert.match(observed.capturedPrompt, /Partner outreach lead/)
   assert.equal(observed.capturedPrompt.includes('Sideline Venture'), false)
+})
+
+test('full App-style finder import -> prepare selection -> live analyze keeps only chosen pack in prompt', async () => {
+  const observed = {
+    prepareSelectedPackLabel: '',
+    prepareIncludedSourceId: '',
+    savedSelectedCounterpartyPackIds: undefined,
+    reloadedSelectedCounterpartyPackIds: undefined,
+    retrievalSelectedCounterpartyPackIds: undefined,
+    capturedPrompt: ''
+  }
+  let expectedSelectedPackIds = []
+  let expectedIncludedSourceId = ''
+  let expectedExcludedSourceId = ''
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      beforeAnalyze: async (services) => {
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'job',
+          label: 'Finder full app path',
+          query: 'product roles france',
+          goal: 'Prove finder import to live assistant path.'
+        })
+        const job = afterJob.store.jobs[0]
+        const preview =
+          await services.finderSearchService.previewFinderOwnerPastedSource(
+            job.id,
+            [
+              'Company: Northfield Labs',
+              'Role: Senior Product Manager',
+              'Location: Paris, France',
+              'Website: https://northfield.example/careers',
+              'Contact: hiring@northfield.example',
+              'Why relevant: Strong fit for product leadership in agtech.',
+              '',
+              'Company: Secondwind Systems',
+              'Role: Product Operations Lead',
+              'Location: Lyon, France',
+              'Website: https://secondwind.example/jobs',
+              'Contact: jobs@secondwind.example',
+              'Why relevant: Useful backup option but should stay out of the chosen session.'
+            ].join('\n')
+          )
+
+        const finderPayload =
+          await services.finderSearchService.ingestFinderOwnerPastedSourceCandidates(
+            job.id,
+            preview.candidates.map((candidate) => candidate.draft)
+          )
+        const finderResults = finderPayload.store.results.filter(
+          (result) => result.jobId === job.id
+        )
+
+        const drafts = finderResults.map((result) =>
+          createContextPackDraftFromFinderResult(result)
+        )
+        const manifestPayload =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts(
+            drafts
+          )
+        const nextPacks = manifestPayload.manifest.counterpartyPacks ?? []
+
+        const chosenPack = nextPacks.find(
+          (pack) => pack.partnerName === 'Northfield Labs'
+        )
+        const excludedPack = nextPacks.find(
+          (pack) => pack.partnerName === 'Secondwind Systems'
+        )
+
+        if (!chosenPack || !excludedPack) {
+          throw new Error('Expected imported finder packs were not created.')
+        }
+
+        expectedSelectedPackIds = [chosenPack.id]
+        expectedIncludedSourceId = chosenPack.sourceId
+        expectedExcludedSourceId = excludedPack.sourceId
+
+        await services.contextSourceService.setCounterpartyContextPackSelected(
+          chosenPack.id,
+          true
+        )
+        await services.contextSourceService.setCounterpartyContextPackSelected(
+          excludedPack.id,
+          false
+        )
+
+        const currentSession =
+          (await services.sessionContextService.getSessionContext()).context
+        const nextContext = getSessionContextWithCounterpartyPacks(
+          {
+            ...currentSession,
+            company: 'Northfield Labs',
+            role: 'Senior Product Manager',
+            context: 'Prepare selected one imported finder pack.',
+            goal: 'Keep only the chosen pack in the live assistant request.',
+            notes: 'Second candidate remains imported but unselected for this session.',
+            selectedCounterpartyPackIds: [chosenPack.id]
+          },
+          nextPacks
+        )
+        const saved =
+          await services.sessionContextService.saveSessionContext(nextContext)
+        observed.savedSelectedCounterpartyPackIds =
+          saved.context.selectedCounterpartyPackIds
+
+        const reloaded = await services.sessionContextService.getSessionContext()
+        observed.reloadedSelectedCounterpartyPackIds =
+          reloaded.context.selectedCounterpartyPackIds
+
+        const reloadedManifest =
+          await services.contextSourceService.getContextSourceManifest()
+        const surface = buildSessionSelectionSurface({
+          activeContext: reloaded.context,
+          draftContext: reloaded.context,
+          availablePacks: reloadedManifest.manifest.counterpartyPacks ?? [],
+          availableFinderResults: finderPayload.store.results,
+          availableOutreachDrafts: finderPayload.store.outreachDrafts,
+          includeProfileContext: false,
+          profileChars: 0
+        })
+
+        observed.prepareSelectedPackLabel =
+          surface.activePrepPreview.selectedPackLabel
+        observed.prepareIncludedSourceId =
+          surface.activePayloadInspector.includedPacks[0]?.sourceId ?? ''
+      },
+      onSelectedPackIds: (selectedPackIds) => {
+        observed.retrievalSelectedCounterpartyPackIds = [
+          ...(selectedPackIds ?? [])
+        ]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = JSON.parse(init.body)
+        observed.capturedPrompt = body.messages[1].content
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu:
+                'Полный finder -> prepare -> live путь удержал только выбранный pack.',
+              detectedQuestion: 'Which imported candidate context is active now?',
+              intent: 'full finder app path check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I prepared using the selected Northfield Labs context.',
+                  answerMeaningRu:
+                    'Я подготовился по выбранному контексту Northfield Labs.'
+                }
+              ],
+              keywordsToRemember: ['selected pack', 'Northfield Labs'],
+              openingPhrase: 'Yes.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.deepEqual(
+    observed.savedSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.deepEqual(
+    observed.reloadedSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.deepEqual(
+    observed.retrievalSelectedCounterpartyPackIds,
+    expectedSelectedPackIds
+  )
+  assert.equal(
+    observed.prepareSelectedPackLabel,
+    'Northfield Labs · Senior Product Manager'
+  )
+  assert.equal(observed.prepareIncludedSourceId, expectedIncludedSourceId)
+  assert.equal(observed.capturedPrompt.includes(expectedIncludedSourceId), true)
+  assert.equal(observed.capturedPrompt.includes(expectedExcludedSourceId), false)
+  assert.match(observed.capturedPrompt, /Northfield Labs/)
+  assert.match(observed.capturedPrompt, /Senior Product Manager/)
+  assert.equal(observed.capturedPrompt.includes('Secondwind Systems'), false)
+  assert.equal(observed.capturedPrompt.includes('Product Operations Lead'), false)
 })
