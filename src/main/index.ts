@@ -57,9 +57,13 @@ import {
   addFinderCandidateResult,
   addFinderSearchJob,
   getFinderSearchStore,
+  ingestFinderManualComplexPageSourceCandidates,
+  ingestFinderPublicPageSourceCandidates,
   ingestFinderOwnerPastedSource,
   ingestFinderOwnerPastedSourceCandidates,
   ingestFinderRunnerPayload,
+  previewFinderManualComplexPageSource,
+  previewFinderPublicPageSource,
   previewFinderOwnerPastedSource,
   runManualFinderSearchJob,
   saveFinderOutreachDraft,
@@ -69,6 +73,8 @@ import {
   setFinderSearchJobStatus
 } from '../backend/services/finder-search-service'
 import {
+  ingestFinderManualComplexPageCandidatesToSession,
+  ingestFinderPublicPageCandidatesToSession,
   ingestFinderOwnerSourceCandidatesToSession
 } from '../backend/services/finder-session-ingress-service'
 import {
@@ -349,6 +355,27 @@ const registerIpcHandlers = () => {
   )
 
   ipcMain.handle(
+    'coqpi:finder-search:preview-public-page-source',
+    async (
+      _event,
+      jobId: string,
+      sourceUrl: string
+    ): Promise<FinderSourceAdapterPreviewResult> =>
+      previewFinderPublicPageSource(jobId, sourceUrl)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:preview-manual-complex-page-source',
+    async (
+      _event,
+      jobId: string,
+      sourceUrl: string,
+      sourceText: string
+    ): Promise<FinderSourceAdapterPreviewResult> =>
+      previewFinderManualComplexPageSource(jobId, sourceUrl, sourceText)
+  )
+
+  ipcMain.handle(
     'coqpi:finder-search:ingest-owner-source',
     async (
       _event,
@@ -369,6 +396,26 @@ const registerIpcHandlers = () => {
   )
 
   ipcMain.handle(
+    'coqpi:finder-search:ingest-public-page-source-candidates',
+    async (
+      _event,
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ): Promise<FinderSearchStoreResult> =>
+      ingestFinderPublicPageSourceCandidates(jobId, drafts)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:ingest-manual-complex-page-source-candidates',
+    async (
+      _event,
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ): Promise<FinderSearchStoreResult> =>
+      ingestFinderManualComplexPageSourceCandidates(jobId, drafts)
+  )
+
+  ipcMain.handle(
     'coqpi:finder-search:ingest-owner-source-to-session',
     async (
       _event,
@@ -376,6 +423,26 @@ const registerIpcHandlers = () => {
       drafts: FinderCandidateResultDraft[]
     ): Promise<FinderOwnerSourceSessionIngressResult> =>
       ingestFinderOwnerSourceCandidatesToSession(jobId, drafts)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:ingest-public-page-source-to-session',
+    async (
+      _event,
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ): Promise<FinderOwnerSourceSessionIngressResult> =>
+      ingestFinderPublicPageCandidatesToSession(jobId, drafts)
+  )
+
+  ipcMain.handle(
+    'coqpi:finder-search:ingest-manual-complex-page-source-to-session',
+    async (
+      _event,
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ): Promise<FinderOwnerSourceSessionIngressResult> =>
+      ingestFinderManualComplexPageCandidatesToSession(jobId, drafts)
   )
 
   ipcMain.handle(

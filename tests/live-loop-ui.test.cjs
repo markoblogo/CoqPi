@@ -3,11 +3,13 @@ const test = require('node:test')
 
 const {
   AUTO_ANALYSIS_DEBOUNCE_MS,
+  AUTO_ANALYSIS_RAPID_FOLLOW_UP_DELAY_MS,
   buildLiveTestCockpitItems,
   buildAutoAnalysisSchedule,
   decideAutoAnalysis,
   getAutoAnalysisTranscriptUtterances,
   getAutoAnalysisUtteranceEligibility,
+  summarizeIgnoredAutoAnalysisUtterances,
   isRetryButtonDisabled,
   isRetryNowButtonDisabled,
   getAssistantStatusRecoveryGuide,
@@ -146,6 +148,39 @@ test('buildAutoAnalysisSchedule extends delay by remaining cooldown window', () 
     true
   )
   assert.notEqual(base.fingerprint, delayed.fingerprint)
+})
+
+test('buildAutoAnalysisSchedule adds extra delay for rapid consecutive eligible finals', () => {
+  const first = makeUtterance({
+    id: 'u-rapid-prev',
+    language: 'en',
+    text: 'I led product operations for agricultural trade workflows.',
+    timestampStart: '2026-07-28T10:00:00.000Z',
+    timestampEnd: '2026-07-28T10:00:00.000Z'
+  })
+  const second = makeUtterance({
+    id: 'u-rapid-next',
+    language: 'en',
+    text: 'Mostly across France and cross-border logistics teams.',
+    timestampStart: '2026-07-28T10:00:01.500Z',
+    timestampEnd: '2026-07-28T10:00:01.500Z'
+  })
+
+  const plan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: second,
+    transcriptText: `${first.text}\n${second.text}`,
+    allUtterances: [first, second],
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: Date.now()
+  })
+
+  assert.equal(plan.shouldRun, true)
+  assert.equal(
+    plan.delayMs,
+    AUTO_ANALYSIS_DEBOUNCE_MS + AUTO_ANALYSIS_RAPID_FOLLOW_UP_DELAY_MS
+  )
 })
 
 test('selected/unselected change still reschedules during error state', () => {
@@ -758,6 +793,37 @@ test('auto analyze skips too-short transcript noise', () => {
   assert.equal(decision.fingerprint, null)
 })
 
+test('auto analyze skips rapid duplicate final transcript boundary noise', () => {
+  const first = makeUtterance({
+    id: 'u-dup-prev',
+    language: 'en',
+    text: 'Can you describe your product management background?',
+    timestampStart: '2026-07-28T10:00:00.000Z',
+    timestampEnd: '2026-07-28T10:00:00.000Z'
+  })
+  const duplicate = makeUtterance({
+    id: 'u-dup-next',
+    language: 'en',
+    text: 'Can you describe your product management background?',
+    timestampStart: '2026-07-28T10:00:01.200Z',
+    timestampEnd: '2026-07-28T10:00:01.200Z'
+  })
+
+  const decision = decideAutoAnalysis({
+    latestFinalUtterance: duplicate,
+    transcriptText: `${first.text}\n${duplicate.text}`,
+    allUtterances: [first, duplicate],
+    callLanguage: 'auto',
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle'
+  })
+
+  assert.equal(decision.shouldRun, false)
+  assert.equal(decision.reason, 'duplicate-boundary-transcript')
+  assert.equal(decision.fingerprint, null)
+})
+
 test('auto analyze skips low-signal English acknowledgement noise', () => {
   const lowSignal = makeUtterance({
     id: 'u-low-signal-en',
@@ -888,6 +954,41 @@ test('auto analysis transcript window excludes ignored background speech', () =>
   )
 })
 
+test('ignored auto analysis summary separates background short and acknowledgement noise', () => {
+  const englishQuestion = makeUtterance({
+    id: 'u-summary-eligible',
+    language: 'en',
+    text: 'Can you describe your product management background?'
+  })
+  const ignoredBackground = makeUtterance({
+    id: 'u-summary-bg',
+    language: 'ru',
+    text: 'Сделай мне пожалуйста чай.'
+  })
+  const ignoredAck = makeUtterance({
+    id: 'u-summary-ack',
+    language: 'en',
+    text: 'Okay, thanks.'
+  })
+  const ignoredShort = makeUtterance({
+    id: 'u-summary-short',
+    language: 'en',
+    text: 'yes'
+  })
+
+  const summary = summarizeIgnoredAutoAnalysisUtterances(
+    [englishQuestion, ignoredBackground, ignoredAck, ignoredShort],
+    'auto'
+  )
+
+  assert.equal(summary.total, 3)
+  assert.equal(summary.unsupportedLanguageCount, 1)
+  assert.equal(summary.lowSignalCount, 1)
+  assert.equal(summary.tooShortCount, 1)
+  assert.equal(summary.dominantReason, 'unsupported-language')
+  assert.equal(summary.latestIgnored?.id, 'u-summary-short')
+})
+
 test('live test cockpit summarizes listening, ignored, sent, context, and freshness', () => {
   const englishQuestion = makeUtterance({
     id: 'u-cockpit-eligible',
@@ -932,10 +1033,12 @@ test('live test cockpit summarizes listening, ignored, sent, context, and freshn
   assert.equal(byId.listening.value, 'AUTO / listening')
   assert.equal(byId.listening.detail, '1 eligible final other-speaker line in current scope')
   assert.equal(byId.scope.value, 'EN/FR final other lines')
-  assert.equal(byId.ignored.value, '2 / low signal')
+  assert.equal(byId.ignored.value, '2 / background/non EN-FR')
   assert.equal(byId.ignored.tone, 'warning')
+  assert.match(byId.ignored.detail ?? '', /1 bg · 0 short · 1 ack/)
   assert.match(byId.ignored.detail ?? '', /Okay, thanks/)
   assert.equal(byId.sent.value, `1 lines / ${englishQuestion.text.length} chars`)
+  assert.match(byId.sent.detail ?? '', /Trigger: Can you describe your product management background/)
   assert.match(byId.sent.detail ?? '', /product management background/)
   assert.equal(
     byId.context.value,

@@ -97,6 +97,12 @@ export type FinderResolvedSessionOutreachDraft = {
   linkedPackIds: string[]
 }
 
+export type FinderTargetSessionHandoffPreview = {
+  state: 'selected' | 'follow_up' | 'review' | 'blocked' | 'available'
+  label: string
+  detail: string
+}
+
 export const getFinderOutreachDraftSessionEligibility = (
   draft: PickerOutreachDraftLike
 ): { eligible: boolean; reasons: FinderOutreachDraftSessionIneligibilityReason[] } => {
@@ -490,5 +496,104 @@ export const resolveFinderSessionOutreachDraft = ({
     relationshipMemory: selected.relationshipMemory,
     selectionMode: 'linked_selected_pack',
     linkedPackIds: [selected.linkedPackId]
+  }
+}
+
+export const buildFinderTargetSessionHandoffPreview = ({
+  context,
+  result,
+  draft,
+  availablePacks = []
+}: {
+  context: {
+    selectedCounterpartyPackIds: string[]
+    selectedFinderOutreachDraftId: string
+  }
+  result: FinderCandidateResult
+  draft?: FinderOutreachDraft | null
+  availablePacks?: CounterpartyContextPack[]
+}): FinderTargetSessionHandoffPreview => {
+  const linkedPack = availablePacks.find(
+    (pack) => pack.sourceId === result.sourceId && pack.kind === result.kind
+  ) ?? null
+  const isSelectedPack = linkedPack
+    ? context.selectedCounterpartyPackIds.includes(linkedPack.id)
+    : false
+  const isSelectedDraft =
+    Boolean(draft) && context.selectedFinderOutreachDraftId.trim() === draft?.id
+  const handoff = draft ? buildFinderOutreachDraftSessionHandoff(draft, result) : null
+
+  if (result.status === 'rejected' || result.decision?.state === 'rejected') {
+    return {
+      state: 'blocked',
+      label: 'blocked from next call',
+      detail:
+        handoff?.hint ??
+        'Rejected queue targets are dropped from the next session handoff.'
+    }
+  }
+
+  if (isSelectedDraft && handoff) {
+    return {
+      state:
+        handoff.state === 'ready'
+          ? 'selected'
+          : handoff.state === 'follow_up'
+            ? 'follow_up'
+            : handoff.state === 'blocked'
+              ? 'blocked'
+              : 'review',
+      label: `selected draft · ${handoff.label}`,
+      detail: handoff.hint
+    }
+  }
+
+  if (isSelectedPack && handoff) {
+    return {
+      state:
+        handoff.state === 'ready'
+          ? 'selected'
+          : handoff.state === 'follow_up'
+            ? 'follow_up'
+            : handoff.state === 'blocked'
+              ? 'blocked'
+              : 'review',
+      label: `selected pack · ${handoff.label}`,
+      detail: handoff.hint
+    }
+  }
+
+  if (isSelectedPack) {
+    return {
+      state: 'selected',
+      label: 'selected pack in next call',
+      detail: 'This target pack is already attached to the current session payload.'
+    }
+  }
+
+  if (handoff?.state === 'follow_up') {
+    return {
+      state: 'follow_up',
+      label: handoff.label,
+      detail: handoff.hint
+    }
+  }
+
+  if (result.decision?.state === 'hold_later' || handoff?.state === 'review') {
+    return {
+      state: 'review',
+      label: handoff?.label ?? 'hold for later',
+      detail:
+        handoff?.hint ??
+        'This target stays outside the selected session context until you restore it or attach it explicitly.'
+    }
+  }
+
+  return {
+    state: 'available',
+    label: draft ? 'available draft' : 'not in session yet',
+    detail: draft
+      ? 'Draft exists locally but is not attached to the current session.'
+      : 'Import or attach this target before relying on it in the next call.'
   }
 }

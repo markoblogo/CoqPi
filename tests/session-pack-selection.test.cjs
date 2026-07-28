@@ -2,6 +2,7 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 
 const {
+  describeFinderQueueSessionEffect,
   formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
   getSessionContextWithImportedCounterpartyPacks,
@@ -302,6 +303,23 @@ test('finder queue import_now re-attaches matching eligible pack to session', ()
   assert.deepEqual(reconciled.effect.selectedPackIdsAdded, ['pack-A'])
   assert.equal(reconciled.effect.clearedSelectedDraftId, null)
   assert.equal(reconciled.effect.changed, true)
+})
+
+test('finder queue session effect description includes pack and draft handoff changes', () => {
+  const label = describeFinderQueueSessionEffect({
+    effect: {
+      selectedPackIdsAdded: ['pack-A'],
+      selectedPackIdsRemoved: ['pack-B'],
+      clearedSelectedDraftId: null,
+      selectedDraftIdChanged: false,
+      changed: true
+    },
+    includedDraftLabel: 'follow-up due'
+  })
+
+  assert.match(label, /1 pack attached/)
+  assert.match(label, /1 pack removed/)
+  assert.match(label, /draft follow-up due/)
 })
 
 test('finder queue hold_later removes matching selected pack but keeps selected draft', () => {

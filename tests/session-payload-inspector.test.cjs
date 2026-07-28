@@ -5,6 +5,9 @@ const {
   buildSessionPayloadInspector,
   buildSessionPayloadPackSummary
 } = require('../dist-electron/shared/session-payload-inspector.js')
+const {
+  buildFinderTargetSessionHandoffPreview
+} = require('../dist-electron/shared/finder-relationship-memory.js')
 
 const makeContext = (overrides = {}) => ({
   company: 'Acme',
@@ -221,6 +224,50 @@ test('session payload inspector reports stale outreach draft and profile off', (
   assert.equal(inspector.profileLabel, 'profile off')
   assert.equal(inspector.warningCount, 3)
   assert.equal(inspector.droppedOutreachDraft?.decisionKind, 'ineligible')
+})
+
+test('finder target handoff preview reflects selected draft follow-up and rejected blocks', () => {
+  const selectedPreview = buildFinderTargetSessionHandoffPreview({
+    context: makeContext({
+      selectedCounterpartyPackIds: ['pack-ready'],
+      selectedFinderOutreachDraftId: 'draft-A'
+    }),
+    result: makeCandidateResult({
+      decision: {
+        state: 'import_now',
+        updatedAt: '2026-07-28T10:00:00.000Z'
+      }
+    }),
+    draft: makeDraft({
+      status: 'follow_up'
+    }),
+    availablePacks: [makePack()]
+  })
+
+  assert.equal(selectedPreview.state, 'follow_up')
+  assert.match(selectedPreview.label, /selected draft/i)
+  assert.match(selectedPreview.detail, /next call/i)
+
+  const blockedPreview = buildFinderTargetSessionHandoffPreview({
+    context: makeContext({
+      selectedCounterpartyPackIds: [],
+      selectedFinderOutreachDraftId: ''
+    }),
+    result: makeCandidateResult({
+      status: 'rejected',
+      decision: {
+        state: 'rejected',
+        updatedAt: '2026-07-28T10:00:00.000Z'
+      }
+    }),
+    draft: makeDraft({
+      status: 'ready_for_contact'
+    }),
+    availablePacks: [makePack()]
+  })
+
+  assert.equal(blockedPreview.state, 'blocked')
+  assert.match(blockedPreview.label, /blocked/i)
 })
 
 test('session payload inspector reports weak and ineligible outreach draft decisions', () => {

@@ -17,6 +17,9 @@ const makeInput = (overrides = {}) => ({
   transcriptCount: 1,
   eligibleTranscriptCount: 1,
   ignoredTranscriptCount: 0,
+  ignoredUnsupportedLanguageCount: 0,
+  ignoredTooShortCount: 0,
+  ignoredLowSignalCount: 0,
   lastIgnoredReasonLabel: null,
   lastIgnoredText: null,
   assistantFreshness: 'fresh',
@@ -66,7 +69,8 @@ test('smoke execution diagnostics reports ignored transcript boundary before ass
       transcriptCount: 1,
       eligibleTranscriptCount: 0,
       ignoredTranscriptCount: 1,
-      lastIgnoredReasonLabel: 'low signal',
+      ignoredLowSignalCount: 1,
+      lastIgnoredReasonLabel: 'ack noise',
       lastIgnoredText: 'Okay, thanks.',
       assistantFreshness: 'waiting'
     })
@@ -75,7 +79,28 @@ test('smoke execution diagnostics reports ignored transcript boundary before ass
   assert.equal(diagnostics.status, 'attention')
   assert.equal(diagnostics.firstFailure?.stage, 'transcript')
   assert.match(diagnostics.summary, /Okay, thanks/)
-  assert.match(diagnostics.notePrefill.nextFix, /Use one clear EN\/FR sentence/)
+  assert.match(diagnostics.notePrefill.nextFix, /avoid short acknowledgements/)
+})
+
+test('smoke execution diagnostics distinguishes background non EN/FR noise', () => {
+  const diagnostics = buildSmokeExecutionDiagnostics(
+    makeInput({
+      transcriptCount: 2,
+      eligibleTranscriptCount: 0,
+      ignoredTranscriptCount: 2,
+      ignoredUnsupportedLanguageCount: 2,
+      lastIgnoredReasonLabel: 'background/non EN-FR',
+      lastIgnoredText: 'Сделай мне пожалуйста чай.',
+      assistantFreshness: 'waiting'
+    })
+  )
+
+  assert.equal(diagnostics.firstFailure?.stage, 'transcript')
+  assert.match(diagnostics.firstFailure?.recovery ?? '', /background non EN\/FR speech/)
+  assert.match(
+    diagnostics.trace.find((item) => item.id === 'ignored-boundary')?.detail ?? '',
+    /2 bg\/non EN-FR · 0 short · 0 ack/
+  )
 })
 
 test('smoke execution diagnostics reports ready state when live path is healthy', () => {

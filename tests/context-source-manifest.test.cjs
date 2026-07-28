@@ -5,6 +5,7 @@ const path = require('node:path')
 const test = require('node:test')
 
 const service = require('../dist-electron/backend/services/context-source-service.js')
+const markitdownService = require('../dist-electron/backend/services/markitdown-service.js')
 
 test('stages and selects source pointers without reading their contents', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-context-'))
@@ -617,6 +618,7 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
     assert.match(manifestMarkdown, /Knowledge readiness: 1\/1 sources ready/)
     assert.match(manifestMarkdown, /Vector contract: legacy-only/)
     assert.match(manifestMarkdown, /extraction_format: markdown/)
+    assert.match(manifestMarkdown, /parser_pack: job_page_v1/)
     assert.match(manifestMarkdown, /extraction_owner_facts: [1-9]/)
 
     const retrieval = await service.getPersonalInterviewRetrieval(
@@ -626,6 +628,60 @@ test('captures an explicitly selected text file for EN/FR interview retrieval', 
     assert.match(retrieval, /AI product strategy/)
     assert.doesNotMatch(retrieval, new RegExp(filePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
   } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('captures an explicitly selected document file through markitdown adapter', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-capture-document-'))
+  const filePath = path.join(directory, 'partner-deck.pdf')
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+  await fs.writeFile(filePath, 'fake pdf bytes', 'utf8')
+
+  markitdownService.setMarkItDownRunnerForTests(async (location) => {
+    assert.equal(location, filePath)
+    return [
+      '# Partner deck',
+      'Owner profile: AI product strategy and agri ecosystem work.',
+      'Partner target: French accelerator for climate founders.',
+      'Website: https://example.com/accelerator',
+      'Deadline: 2026-09-30'
+    ].join('\n')
+  })
+
+  try {
+    const added = await service.addContextSource({
+      kind: 'counterparty_material_file',
+      location: filePath
+    })
+    const source = added.manifest.sources[0]
+    const captured = await service.captureAndClassifyContextSource(source.id)
+    const classified = captured.manifest.sources[0]
+
+    assert.equal(classified.status, 'retrieval_ready')
+    assert.equal(classified.extraction.parserPack, 'accelerator_program_v1')
+    assert.equal(classified.extraction.sourceFormat, 'pdf')
+    assert.equal(classified.extraction.extractionAdapter, 'markitdown_v1')
+    assert.equal(
+      classified.extraction.ownerFacts.some((fact) => /AI product strategy/.test(fact)),
+      true
+    )
+    assert.equal(
+      classified.extraction.roleFacts.some((fact) => /French accelerator/.test(fact)),
+      true
+    )
+    assert.deepEqual(classified.extraction.links, ['https://example.com/accelerator'])
+    assert.deepEqual(classified.extraction.dates, ['2026-09-30'])
+  } finally {
+    markitdownService.setMarkItDownRunnerForTests(null)
     if (previousDirectory === undefined) {
       delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
     } else {

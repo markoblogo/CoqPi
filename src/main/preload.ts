@@ -80,6 +80,23 @@ contextBridge.exposeInMainWorld('coqpi', {
         jobId,
         sourceText
       ) as Promise<FinderSourceAdapterPreviewResult>,
+    previewPublicPageSource: (jobId: string, sourceUrl: string) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:preview-public-page-source',
+        jobId,
+        sourceUrl
+      ) as Promise<FinderSourceAdapterPreviewResult>,
+    previewManualComplexPageSource: (
+      jobId: string,
+      sourceUrl: string,
+      sourceText: string
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:preview-manual-complex-page-source',
+        jobId,
+        sourceUrl,
+        sourceText
+      ) as Promise<FinderSourceAdapterPreviewResult>,
     ingestOwnerSource: (jobId: string, sourceText: string) =>
       ipcRenderer.invoke(
         'coqpi:finder-search:ingest-owner-source',
@@ -95,12 +112,48 @@ contextBridge.exposeInMainWorld('coqpi', {
         jobId,
         drafts
       ),
+    ingestPublicPageSourceCandidates: (
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:ingest-public-page-source-candidates',
+        jobId,
+        drafts
+      ),
+    ingestManualComplexPageSourceCandidates: (
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:ingest-manual-complex-page-source-candidates',
+        jobId,
+        drafts
+      ),
     ingestOwnerSourceToSession: (
       jobId: string,
       drafts: FinderCandidateResultDraft[]
     ) =>
       ipcRenderer.invoke(
         'coqpi:finder-search:ingest-owner-source-to-session',
+        jobId,
+        drafts
+      ) as Promise<FinderOwnerSourceSessionIngressResult>,
+    ingestPublicPageSourceToSession: (
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:ingest-public-page-source-to-session',
+        jobId,
+        drafts
+      ) as Promise<FinderOwnerSourceSessionIngressResult>,
+    ingestManualComplexPageSourceToSession: (
+      jobId: string,
+      drafts: FinderCandidateResultDraft[]
+    ) =>
+      ipcRenderer.invoke(
+        'coqpi:finder-search:ingest-manual-complex-page-source-to-session',
         jobId,
         drafts
       ) as Promise<FinderOwnerSourceSessionIngressResult>,

@@ -41,6 +41,10 @@ import {
 } from '../../shared/retrieval-quality'
 import { buildVectorReadyRetrievalCandidateSet } from '../../shared/vector-ready-retrieval'
 import { getAppInfo } from './app-state'
+import {
+  convertDocumentSourceToMarkdown,
+  isMarkItDownSupportedLocation
+} from './markitdown-service'
 
 type IngressEvent =
   | { version: 1; type: 'ingress_added'; source: ContextSource }
@@ -93,7 +97,17 @@ const allowedPackKinds = contextPackKindValues
 const RETENTION_DAYS = 30
 const MAX_CAPTURE_BYTES = 10 * 1024 * 1024
 const MAX_CAPTURE_TEXT_CHARS = 12000
-const readableExtensions = new Set(['.md', '.txt', '.csv', '.json'])
+const directReadableExtensions = new Set(['.md', '.txt', '.csv', '.json'])
+const readableExtensions = new Set([
+  ...directReadableExtensions,
+  '.pdf',
+  '.docx',
+  '.pptx',
+  '.xlsx',
+  '.xls',
+  '.html',
+  '.htm'
+])
 
 type CounterpartyContextPackEventedManifest = ContextSourceManifest & {
   counterpartyPacks: CounterpartyContextPack[]
@@ -167,7 +181,7 @@ const sanitizeExtraction = (value: unknown): ContextSourceExtraction | null => {
   const sourceFormat = sanitizeText(candidate.sourceFormat)
   if (
     candidate.version !== 1 ||
-    !['markdown', 'text', 'json', 'csv'].includes(sourceFormat) ||
+    !['markdown', 'text', 'json', 'csv', 'html', 'pdf', 'docx', 'pptx', 'xlsx', 'xls'].includes(sourceFormat) ||
     !sanitizeText(candidate.extractedAt)
   ) {
     return null
@@ -175,7 +189,18 @@ const sanitizeExtraction = (value: unknown): ContextSourceExtraction | null => {
 
   return {
     version: 1,
+    parserPack:
+      candidate.parserPack === 'job_page_v1' ||
+      candidate.parserPack === 'investor_fund_v1' ||
+      candidate.parserPack === 'accelerator_program_v1' ||
+      candidate.parserPack === 'company_profile_v1'
+        ? candidate.parserPack
+        : undefined,
     sourceFormat: sourceFormat as ContextSourceExtraction['sourceFormat'],
+    extractionAdapter:
+      candidate.extractionAdapter === 'markitdown_v1'
+        ? 'markitdown_v1'
+        : 'readable_text_v1',
     extractedAt: sanitizeText(candidate.extractedAt),
     ownerFacts: sanitizeStringList(candidate.ownerFacts, 8),
     roleFacts: sanitizeStringList(candidate.roleFacts, 8),
@@ -618,6 +643,7 @@ const writeManifestArtifacts = async (
       `- classification: ${source.classification}`,
       `- content_hash: ${source.contentHash ?? 'pending'}`,
       `- extraction_format: ${source.extraction?.sourceFormat ?? 'not_extracted'}`,
+      `- parser_pack: ${source.extraction?.parserPack ?? 'not_inferred'}`,
       `- extraction_missing: ${source.extraction?.missingFields.join(', ') || 'none'}`,
       `- extraction_owner_facts: ${source.extraction?.ownerFacts.length ?? 0}`,
       `- extraction_role_facts: ${source.extraction?.roleFacts.length ?? 0}`,
@@ -1147,12 +1173,23 @@ export const removeCounterpartyContextPack = async (
 }
 
 const captureReadableText = (source: ContextSource, bytes: Buffer) => {
-  if (!readableExtensions.has(path.extname(source.location).toLowerCase())) {
+  if (!directReadableExtensions.has(path.extname(source.location).toLowerCase())) {
     return null
   }
 
   const text = bytes.toString('utf8').replace(/\0/g, '').trim()
   return text ? text.slice(0, MAX_CAPTURE_TEXT_CHARS) : null
+}
+
+const captureMarkItDownText = async (source: ContextSource) => {
+  if (!isMarkItDownSupportedLocation(source.location)) {
+    return null
+  }
+
+  const markdown = (await convertDocumentSourceToMarkdown(source.location))
+    .replace(/\0/g, '')
+    .trim()
+  return markdown ? markdown.slice(0, MAX_CAPTURE_TEXT_CHARS) : null
 }
 
 export const captureAndClassifyContextSource = async (
@@ -1181,9 +1218,19 @@ export const captureAndClassifyContextSource = async (
   }
 
   const bytes = await fs.readFile(source.location)
-  const capturedText = captureReadableText(source, bytes)
+  const capturedText =
+    captureReadableText(source, bytes) ?? (await captureMarkItDownText(source))
+  const extractionAdapter = directReadableExtensions.has(
+    path.extname(source.location).toLowerCase()
+  )
+    ? 'readable_text_v1'
+    : 'markitdown_v1'
   const extraction = capturedText
-    ? extractKnowledgeFieldsFromReadableText(capturedText, source.location)
+    ? extractKnowledgeFieldsFromReadableText(capturedText, source.location, undefined, {
+        extractionAdapter,
+        sourceKind: source.kind,
+        sourceLabel: source.label
+      })
     : null
   await appendEvent({
     version: 1,

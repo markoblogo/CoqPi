@@ -54,6 +54,7 @@ import {
   getAutoAnalysisIgnoreReasonLabel,
   getAutoAnalysisUtteranceEligibility,
   getLatestAutoAnalysisUtterance,
+  summarizeIgnoredAutoAnalysisUtterances,
   isRetryButtonDisabled,
   isRetryNowButtonDisabled,
   getAssistantRunHint,
@@ -106,6 +107,7 @@ import {
   formatCounterpartyPackSessionEligibility,
   getCounterpartyPackSessionEligibility,
   buildCounterpartySourceKey,
+  describeFinderQueueSessionEffect,
   getSessionContextWithImportedCounterpartyPacks,
   getSessionContextWithCounterpartyPacks,
   reconcileSessionContextWithFinderOutreachDraftSelection,
@@ -151,7 +153,10 @@ import {
 import {
   buildContextPackDraftFromKnowledgeExtraction
 } from '@shared/knowledge-extraction'
-import { finderOutreachDraftStatusLabels } from '@shared/finder-relationship-memory'
+import {
+  buildFinderTargetSessionHandoffPreview,
+  finderOutreachDraftStatusLabels
+} from '@shared/finder-relationship-memory'
 import {
   buildKnowledgePackLifecycleReview,
   buildKnowledgePackReviewSurface,
@@ -367,6 +372,7 @@ const finderSourceDetectedFormatLabels: Record<
   string
 > = {
   url: 'URL',
+  public_page: 'Public page',
   structured_fields: 'Structured',
   partner_export: 'Partner export',
   investor_list: 'Investor list',
@@ -817,6 +823,8 @@ export const App = () => {
   )
   const [isRunningFinderJob, setIsRunningFinderJob] = useState(false)
   const [finderOwnerSourceText, setFinderOwnerSourceText] = useState('')
+  const [finderManualComplexPageText, setFinderManualComplexPageText] =
+    useState('')
   const [finderOwnerSourcePreview, setFinderOwnerSourcePreview] =
     useState<FinderSourceAdapterPreviewResult | null>(null)
   const [finderOwnerSourcePreviewItems, setFinderOwnerSourcePreviewItems] =
@@ -900,6 +908,10 @@ export const App = () => {
   const finderOwnerSourceWeakCount = finderOwnerSourceDecisionItems.filter(
     ({ decision, item }) => !item.duplicate && decision.tier === 'weak'
   ).length
+  const showManualComplexPageMode =
+    (finderOwnerSourcePreview?.mode === 'public_page_v1' &&
+      finderOwnerSourceWeakCount > 0) ||
+    finderOwnerSourcePreview?.mode === 'manual_complex_page_v1'
   const selectedFinderOwnerSourceCount = finderOwnerSourceDecisionItems.filter(
     ({ item, decision }) =>
       item.selected && !item.duplicate && decision.canImport
@@ -994,6 +1006,35 @@ export const App = () => {
     setFinderSearchJobs(store.jobs)
     setFinderCandidateResults(store.results)
     setFinderOutreachDrafts(store.outreachDrafts ?? [])
+  }
+  const buildSessionPayloadInspectorForContext = (
+    context: SessionContext,
+    store?: Pick<FinderSearchStore, 'results' | 'outreachDrafts'>
+  ) =>
+    buildSessionPayloadInspector({
+      context,
+      availablePacks: counterpartyPacks,
+      availableFinderResults: store?.results ?? finderCandidateResults,
+      availableOutreachDrafts: store?.outreachDrafts ?? finderOutreachDrafts,
+      includeProfileContext,
+      profileChars: profileContext.length
+    })
+  const getFinderSessionEffectDetail = (
+    effect: ReturnType<typeof reconcileSessionContextWithFinderQueueDecision>['effect'],
+    nextContext: SessionContext,
+    store?: Pick<FinderSearchStore, 'results' | 'outreachDrafts'>
+  ) => {
+    const inspector = buildSessionPayloadInspectorForContext(nextContext, store)
+
+    return describeFinderQueueSessionEffect({
+      effect,
+      includedDraftLabel:
+        inspector.includedOutreachDraft?.handoffLabel ??
+        inspector.includedOutreachDraft?.reason,
+      droppedDraftLabel:
+        inspector.droppedOutreachDraft?.handoffLabel ??
+        inspector.droppedOutreachDraft?.reason
+    })
   }
   const [contextSources, setContextSources] = useState<ContextSource[]>([])
   const [knowledgePackLifecycle, setKnowledgePackLifecycle] = useState<
@@ -2378,6 +2419,11 @@ export const App = () => {
         affectedResults,
         nextDecisionState: state
       })
+      const sessionEffectDetail = getFinderSessionEffectDetail(
+        effect,
+        nextContext,
+        payload.store
+      )
 
       if (effect.changed) {
         setSessionContext(nextContext)
@@ -2396,23 +2442,17 @@ export const App = () => {
               : 'Unable to save session updates after queue decision change.'
           )
         }
+
+        setSessionContextNotice(`Session handoff updated: ${sessionEffectDetail}.`)
       }
 
       setFinderSearchNotice(
         state === 'hold_later'
-          ? effect.selectedPackIdsRemoved.length > 0
-            ? `Candidate marked to review later. ${effect.selectedPackIdsRemoved.length} session pack${
-                effect.selectedPackIdsRemoved.length === 1 ? ' was' : 's were'
-              } removed from live handoff.`
-            : 'Candidate marked to review later.'
+          ? `Candidate marked to review later. Next call: ${sessionEffectDetail}.`
           : state === 'rejected'
-          ? effect.changed
-            ? 'Candidate rejected with reason. Session selection was updated.'
-            : 'Candidate rejected with reason.'
+          ? `Candidate rejected with reason. Next call: ${sessionEffectDetail}.`
           : state === 'import_now'
-          ? effect.selectedPackIdsAdded.length > 0
-            ? 'Candidate marked for import. Matching session pack was attached.'
-            : 'Candidate marked for import.'
+          ? `Candidate marked for import. Next call: ${sessionEffectDetail}.`
           : 'Candidate decision updated.'
       )
     } catch (error) {
@@ -2462,6 +2502,11 @@ export const App = () => {
         affectedResults,
         nextDecisionState: state
       })
+      const sessionEffectDetail = getFinderSessionEffectDetail(
+        effect,
+        nextContext,
+        latestStore ?? undefined
+      )
 
       if (effect.changed) {
         setSessionContext(nextContext)
@@ -2480,30 +2525,18 @@ export const App = () => {
               : 'Unable to save session updates after queue changes.'
           )
         }
+
+        setSessionContextNotice(`Session handoff updated: ${sessionEffectDetail}.`)
       }
 
       setFinderSearchNotice(
         state === 'hold_later'
-          ? `${results.length} candidate${results.length === 1 ? '' : 's'} moved to hold.`
+          ? `${results.length} candidate${results.length === 1 ? '' : 's'} moved to hold. Next call: ${sessionEffectDetail}.`
           : state === 'import_now'
-          ? `${results.length} candidate${results.length === 1 ? '' : 's'} marked for import.${
-              effect.selectedPackIdsAdded.length > 0
-                ? ` ${effect.selectedPackIdsAdded.length} matching session pack${
-                    effect.selectedPackIdsAdded.length === 1 ? ' was' : 's were'
-                  } attached.`
-                : ''
-            }`
+          ? `${results.length} candidate${results.length === 1 ? '' : 's'} marked for import. Next call: ${sessionEffectDetail}.`
           : state === 'auto'
-          ? `${results.length} candidate${results.length === 1 ? '' : 's'} restored to auto review.`
-          : `${results.length} candidate${results.length === 1 ? '' : 's'} updated.${
-              effect.changed
-                ? ` Session selection changed: ${effect.selectedPackIdsRemoved.length} pack${
-                    effect.selectedPackIdsRemoved.length === 1 ? '' : 's'
-                  } removed${
-                    effect.clearedSelectedDraftId ? ' and selected draft cleared' : ''
-                  }.`
-                : ''
-            }`
+          ? `${results.length} candidate${results.length === 1 ? '' : 's'} restored to auto review. Next call: ${sessionEffectDetail}.`
+          : `${results.length} candidate${results.length === 1 ? '' : 's'} updated. Next call: ${sessionEffectDetail}.`
       )
     } catch (error) {
       setFinderSearchError(
@@ -2618,6 +2651,11 @@ export const App = () => {
         affectedDrafts,
         nextStatus: status
       })
+      const sessionEffectDetail = getFinderSessionEffectDetail(
+        effect,
+        nextContext,
+        payload.store
+      )
 
       if (effect.changed) {
         setSessionContext(nextContext)
@@ -2636,18 +2674,12 @@ export const App = () => {
               : 'Unable to save session updates after outreach draft status change.'
           )
         }
+
+        setSessionContextNotice(`Session handoff updated: ${sessionEffectDetail}.`)
       }
 
       setFinderSearchNotice(
-        `Draft moved to ${finderOutreachDraftStatusLabels[status]}.${
-          effect.clearedSelectedDraftId
-            ? ' Selected session draft was cleared.'
-            : effect.selectedPackIdsAdded.length > 0
-              ? ` ${effect.selectedPackIdsAdded.length} matching session pack${
-                  effect.selectedPackIdsAdded.length === 1 ? ' was' : 's were'
-                } attached.`
-              : ''
-        }`
+        `Draft moved to ${finderOutreachDraftStatusLabels[status]}. Next call: ${sessionEffectDetail}.`
       )
     } catch (error) {
       setFinderSearchError(
@@ -2703,6 +2735,11 @@ export const App = () => {
         affectedDrafts,
         nextStatus: status
       })
+      const sessionEffectDetail = getFinderSessionEffectDetail(
+        effect,
+        nextContext,
+        latestStore ?? undefined
+      )
 
       if (effect.changed) {
         setSessionContext(nextContext)
@@ -2721,20 +2758,14 @@ export const App = () => {
               : 'Unable to save session updates after outreach draft status changes.'
           )
         }
+
+        setSessionContextNotice(`Session handoff updated: ${sessionEffectDetail}.`)
       }
 
       setFinderSearchNotice(
         `${targetDrafts.length} draft${
           targetDrafts.length === 1 ? '' : 's'
-        } moved to ${finderOutreachDraftStatusLabels[status]}.${
-          effect.clearedSelectedDraftId
-            ? ' Selected session draft was cleared.'
-            : effect.selectedPackIdsAdded.length > 0
-              ? ` ${effect.selectedPackIdsAdded.length} matching session pack${
-                  effect.selectedPackIdsAdded.length === 1 ? ' was' : 's were'
-                } attached.`
-              : ''
-        }`
+        } moved to ${finderOutreachDraftStatusLabels[status]}. Next call: ${sessionEffectDetail}.`
       )
     } catch (error) {
       setFinderSearchError(
@@ -2869,6 +2900,86 @@ export const App = () => {
     }
   }
 
+  const previewFinderPublicPageSource = async () => {
+    if (
+      !selectedFinderSearchJob ||
+      isImportingFinderOwnerSource ||
+      !finderOwnerSourceText.trim()
+    ) {
+      return
+    }
+
+    setIsImportingFinderOwnerSource(true)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const preview = await window.coqpi.finderSearch.previewPublicPageSource(
+        selectedFinderSearchJob.id,
+        finderOwnerSourceText.trim()
+      )
+      setFinderOwnerSourcePreview(preview)
+      setFinderOwnerSourcePreviewItems(
+        createFinderOwnerSourcePreviewItems(preview, selectedFinderSearchJob.kind)
+      )
+      setFinderSearchNotice(
+        `Public page preview: ${preview.validCount} candidate${
+          preview.validCount === 1 ? '' : 's'
+        } from 1 URL. ${preview.duplicateCount} duplicate skipped by default.`
+      )
+    } catch (error) {
+      setFinderOwnerSourcePreview(null)
+      setFinderOwnerSourcePreviewItems([])
+      setFinderSearchError(
+        error instanceof Error ? error.message : 'Unable to fetch public page preview.'
+      )
+    } finally {
+      setIsImportingFinderOwnerSource(false)
+    }
+  }
+
+  const previewFinderManualComplexPageSource = async () => {
+    if (
+      !selectedFinderSearchJob ||
+      isImportingFinderOwnerSource ||
+      !finderOwnerSourceText.trim() ||
+      !finderManualComplexPageText.trim()
+    ) {
+      return
+    }
+
+    setIsImportingFinderOwnerSource(true)
+    setFinderSearchError(null)
+    setFinderSearchNotice(null)
+
+    try {
+      const preview = await window.coqpi.finderSearch.previewManualComplexPageSource(
+        selectedFinderSearchJob.id,
+        finderOwnerSourceText.trim(),
+        finderManualComplexPageText
+      )
+      setFinderOwnerSourcePreview(preview)
+      setFinderOwnerSourcePreviewItems(
+        createFinderOwnerSourcePreviewItems(preview, selectedFinderSearchJob.kind)
+      )
+      setFinderSearchNotice(
+        `Manual complex-page preview: ${preview.validCount} candidate${
+          preview.validCount === 1 ? '' : 's'
+        } from owner-reviewed notes.`
+      )
+    } catch (error) {
+      setFinderOwnerSourcePreview(null)
+      setFinderOwnerSourcePreviewItems([])
+      setFinderSearchError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to preview manual complex-page notes.'
+      )
+    } finally {
+      setIsImportingFinderOwnerSource(false)
+    }
+  }
+
   const importSelectedFinderOwnerSourceCandidates = async () => {
     if (!selectedFinderSearchJob || isImportingFinderOwnerSource) {
       return
@@ -2916,15 +3027,26 @@ export const App = () => {
 
     try {
       const payload =
-        await window.coqpi.finderSearch.ingestOwnerSourceCandidates(
-          selectedFinderSearchJob.id,
-          selectedDrafts
-        )
+        finderOwnerSourcePreview?.mode === 'public_page_v1'
+          ? await window.coqpi.finderSearch.ingestPublicPageSourceCandidates(
+              selectedFinderSearchJob.id,
+              selectedDrafts
+            )
+          : finderOwnerSourcePreview?.mode === 'manual_complex_page_v1'
+            ? await window.coqpi.finderSearch.ingestManualComplexPageSourceCandidates(
+                selectedFinderSearchJob.id,
+                selectedDrafts
+              )
+          : await window.coqpi.finderSearch.ingestOwnerSourceCandidates(
+              selectedFinderSearchJob.id,
+              selectedDrafts
+            )
       const summary = payload.finderSourceAdapterSummary
 
       applyFinderSearchStore(payload.store)
       setSelectedFinderSearchJobId(selectedFinderSearchJob.id)
       setFinderOwnerSourceText('')
+      setFinderManualComplexPageText('')
       setFinderOwnerSourcePreview(null)
       setFinderOwnerSourcePreviewItems([])
       setFinderSearchNotice(
@@ -2994,10 +3116,21 @@ export const App = () => {
     setSessionContextNotice(null)
 
     try {
-      const payload = await window.coqpi.finderSearch.ingestOwnerSourceToSession(
-        selectedFinderSearchJob.id,
-        selectedDrafts
-      )
+      const payload =
+        finderOwnerSourcePreview?.mode === 'public_page_v1'
+          ? await window.coqpi.finderSearch.ingestPublicPageSourceToSession(
+              selectedFinderSearchJob.id,
+              selectedDrafts
+            )
+          : finderOwnerSourcePreview?.mode === 'manual_complex_page_v1'
+            ? await window.coqpi.finderSearch.ingestManualComplexPageSourceToSession(
+                selectedFinderSearchJob.id,
+                selectedDrafts
+              )
+          : await window.coqpi.finderSearch.ingestOwnerSourceToSession(
+              selectedFinderSearchJob.id,
+              selectedDrafts
+            )
 
       applyFinderSearchStore(payload.store)
       applyCounterpartyPackManifest(
@@ -3011,6 +3144,7 @@ export const App = () => {
       setDraftSessionDroppedPackAudit([])
       setSelectedFinderSearchJobId(selectedFinderSearchJob.id)
       setFinderOwnerSourceText('')
+      setFinderManualComplexPageText('')
       setFinderOwnerSourcePreview(null)
       setFinderOwnerSourcePreviewItems([])
       setSessionContextNotice(
@@ -4278,6 +4412,7 @@ export const App = () => {
       latestFinalUtterance,
       transcriptText: analysisText,
       callLanguage: assistantCallLanguage,
+      allUtterances: transcriptUtterances,
       lastAutoAnalyzedFingerprint: lastAutoAnalyzedFingerprintRef.current,
       scheduledAutoAnalysisFingerprint: scheduledAutoAnalysisFingerprintRef.current,
       assistantState,
@@ -4426,6 +4561,10 @@ export const App = () => {
     30
   )
   const ignoredAutoAnalysisUtterances = getIgnoredAutoAnalysisUtterances(
+    transcriptUtterances,
+    assistantCallLanguage
+  )
+  const ignoredAutoAnalysisSummary = summarizeIgnoredAutoAnalysisUtterances(
     transcriptUtterances,
     assistantCallLanguage
   )
@@ -4591,6 +4730,10 @@ export const App = () => {
       assistantCallLanguage
     ).length,
     ignoredTranscriptCount: ignoredAutoAnalysisUtterances.length,
+    ignoredUnsupportedLanguageCount:
+      ignoredAutoAnalysisSummary.unsupportedLanguageCount,
+    ignoredTooShortCount: ignoredAutoAnalysisSummary.tooShortCount,
+    ignoredLowSignalCount: ignoredAutoAnalysisSummary.lowSignalCount,
     lastIgnoredReasonLabel: lastIgnoredAutoAnalysisUtterance
       ? getAutoAnalysisIgnoreReasonLabel(
           getAutoAnalysisUtteranceEligibility(
@@ -6933,17 +7076,18 @@ export const App = () => {
                           <div>
                             <strong>Source adapter v1</strong>
                             <span>
-                              Paste one URL, a vacancy/export block, or several URL lines.
-                              CoqPi extracts fields locally, previews candidates, then imports
-                              only what you select.
+                              Paste one public URL for web preview, or paste a vacancy/export
+                              block for local normalization. CoqPi previews candidates first,
+                              then imports only what you select.
                             </span>
                           </div>
-                          <span>owner_paste_v0</span>
+                          <span>{finderOwnerSourcePreview?.mode ?? 'owner_paste_v0'}</span>
                         </div>
                         <textarea
                           className="prepare-textarea"
                           onChange={(event) => {
                             setFinderOwnerSourceText(event.target.value)
+                            setFinderManualComplexPageText('')
                             setFinderOwnerSourcePreview(null)
                             setFinderOwnerSourcePreviewItems([])
                             setFinderSearchError(null)
@@ -6953,6 +7097,27 @@ export const App = () => {
                           rows={4}
                           value={finderOwnerSourceText}
                         />
+                        {showManualComplexPageMode ? (
+                          <label className="settings-row settings-row-textarea">
+                            <span className="settings-row-label">
+                              Manual complex-page notes
+                            </span>
+                            <textarea
+                              className="prepare-textarea"
+                              disabled={isImportingFinderOwnerSource}
+                              onChange={(event) => {
+                                setFinderManualComplexPageText(event.target.value)
+                                setFinderSearchError(null)
+                                setFinderSearchNotice(null)
+                              }}
+                              placeholder={
+                                'Paste reviewed page notes or markdown here when the fetched preview is still weak.'
+                              }
+                              rows={5}
+                              value={finderManualComplexPageText}
+                            />
+                          </label>
+                        ) : null}
                         {finderOwnerSourcePreview ? (
                           <div className="finder-preview-list">
                             <div className="settings-row settings-row-inline">
@@ -7495,12 +7660,43 @@ export const App = () => {
                               selectedFinderSearchJob.status === 'rejected' ||
                               !finderOwnerSourceText.trim()
                             }
+                            onClick={() => void previewFinderPublicPageSource()}
+                            type="button"
+                          >
+                            {isImportingFinderOwnerSource
+                              ? 'Fetching...'
+                              : 'Fetch public URL'}
+                          </button>
+                          {showManualComplexPageMode ? (
+                            <button
+                              disabled={
+                                isImportingFinderOwnerSource ||
+                                selectedFinderSearchJob.status === 'rejected' ||
+                                !finderOwnerSourceText.trim() ||
+                                !finderManualComplexPageText.trim()
+                              }
+                              onClick={() =>
+                                void previewFinderManualComplexPageSource()
+                              }
+                              type="button"
+                            >
+                              {isImportingFinderOwnerSource
+                                ? 'Reviewing...'
+                                : 'Preview manual notes'}
+                            </button>
+                          ) : null}
+                          <button
+                            disabled={
+                              isImportingFinderOwnerSource ||
+                              selectedFinderSearchJob.status === 'rejected' ||
+                              !finderOwnerSourceText.trim()
+                            }
                             onClick={() => void previewFinderOwnerSource()}
                             type="button"
                           >
                             {isImportingFinderOwnerSource
                               ? 'Previewing...'
-                              : 'Preview source'}
+                              : 'Preview pasted source'}
                           </button>
                           <button
                             disabled={
@@ -7542,6 +7738,7 @@ export const App = () => {
                             }
                             onClick={() => {
                               setFinderOwnerSourceText('')
+                              setFinderManualComplexPageText('')
                               setFinderOwnerSourcePreview(null)
                               setFinderOwnerSourcePreviewItems([])
                               setFinderSearchError(null)
@@ -8026,6 +8223,13 @@ export const App = () => {
                                               item.result
                                             ).openingMessage
                                           : item.result.summary)
+                                      const handoffPreview =
+                                        buildFinderTargetSessionHandoffPreview({
+                                          context: sessionContext,
+                                          result: item.result,
+                                          draft: outreachDraft,
+                                          availablePacks: counterpartyPacks
+                                        })
 
                                       return (
                                         <div className="finder-queue-item" key={item.result.id}>
@@ -8072,6 +8276,12 @@ export const App = () => {
                                               </code>
                                             </div>
                                           ) : null}
+                                          <div className="finder-queue-opening">
+                                            <span>Next call handoff</span>
+                                            <code title={handoffPreview.detail}>
+                                              {handoffPreview.label}
+                                            </code>
+                                          </div>
                                           <div className="button-row settings-actions">
                                             <button
                                               className="button-small"
@@ -8753,6 +8963,10 @@ export const App = () => {
                                 )}{' '}
                                 · {extractionPreview.sourceFormatLabel}
                               </strong>
+                            </div>
+                            <div>
+                              <span>Parser pack</span>
+                              <strong>{extractionPreview.parserPackLabel}</strong>
                             </div>
                           </div>
                           <span

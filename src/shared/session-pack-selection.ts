@@ -180,6 +180,44 @@ export type FinderQueueSessionEffect = {
   changed: boolean
 }
 
+export const describeFinderQueueSessionEffect = ({
+  effect,
+  includedDraftLabel,
+  droppedDraftLabel
+}: {
+  effect: FinderQueueSessionEffect
+  includedDraftLabel?: string | null
+  droppedDraftLabel?: string | null
+}) => {
+  const parts: string[] = []
+
+  if (effect.selectedPackIdsAdded.length > 0) {
+    parts.push(
+      `${effect.selectedPackIdsAdded.length} pack${
+        effect.selectedPackIdsAdded.length === 1 ? '' : 's'
+      } attached`
+    )
+  }
+
+  if (effect.selectedPackIdsRemoved.length > 0) {
+    parts.push(
+      `${effect.selectedPackIdsRemoved.length} pack${
+        effect.selectedPackIdsRemoved.length === 1 ? '' : 's'
+      } removed`
+    )
+  }
+
+  if (effect.clearedSelectedDraftId) {
+    parts.push('selected draft cleared')
+  } else if (includedDraftLabel) {
+    parts.push(`draft ${includedDraftLabel}`)
+  } else if (droppedDraftLabel) {
+    parts.push(`draft dropped: ${droppedDraftLabel}`)
+  }
+
+  return parts.length > 0 ? parts.join(' · ') : 'no session handoff change'
+}
+
 const getEligiblePackIdBySourceKey = (
   availablePacks: CounterpartyContextPack[]
 ) =>

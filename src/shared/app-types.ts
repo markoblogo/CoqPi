@@ -190,7 +190,23 @@ export interface ContextSource {
 
 export interface ContextSourceExtraction {
   version: 1
-  sourceFormat: 'markdown' | 'text' | 'json' | 'csv'
+  parserPack?:
+    | 'job_page_v1'
+    | 'investor_fund_v1'
+    | 'accelerator_program_v1'
+    | 'company_profile_v1'
+  sourceFormat:
+    | 'markdown'
+    | 'text'
+    | 'json'
+    | 'csv'
+    | 'html'
+    | 'pdf'
+    | 'docx'
+    | 'pptx'
+    | 'xlsx'
+    | 'xls'
+  extractionAdapter?: 'readable_text_v1' | 'markitdown_v1'
   extractedAt: string
   ownerFacts: string[]
   roleFacts: string[]
@@ -201,6 +217,11 @@ export interface ContextSourceExtraction {
 
 export interface CounterpartyContextPackDraft {
   sourceId: string
+  parserPack?:
+    | 'job_page_v1'
+    | 'investor_fund_v1'
+    | 'accelerator_program_v1'
+    | 'company_profile_v1'
   kind: CounterpartyContextPackKind
   partnerName: string
   title: string
@@ -230,6 +251,11 @@ export interface FinderSearchJob extends FinderSearchJobDraft {
 
 export interface FinderCandidateResultDraft {
   sourceId: string
+  parserPack?:
+    | 'job_page_v1'
+    | 'investor_fund_v1'
+    | 'accelerator_program_v1'
+    | 'company_profile_v1'
   partnerName: string
   title: string
   summary: string
@@ -274,10 +300,14 @@ export interface FinderRunnerRunSummary {
   reason: string
 }
 
-export type FinderSourceAdapterMode = 'owner_paste_v0'
+export type FinderSourceAdapterMode =
+  | 'owner_paste_v0'
+  | 'public_page_v1'
+  | 'manual_complex_page_v1'
 
 export type FinderSourceAdapterDetectedFormat =
   | 'url'
+  | 'public_page'
   | 'structured_fields'
   | 'partner_export'
   | 'investor_list'

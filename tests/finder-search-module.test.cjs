@@ -284,6 +284,7 @@ test('owner pasted source adapter normalizes urls and text blocks', () => {
   assert.equal(parsed.candidates[0].partnerName, 'Example')
   assert.equal(parsed.candidates[0].title, 'Product Lead')
   assert.equal(parsed.candidates[0].detectedFormat, 'url')
+  assert.equal(parsed.candidates[0].parserPack, 'job_page_v1')
   assert.deepEqual(parsed.candidates[0].links, [
     'https://example.com/jobs/product-lead'
   ])
@@ -320,6 +321,7 @@ test('owner pasted source adapter extracts structured vacancy fields before prev
   assert.equal(parsed.errors.length, 0)
   assert.equal(candidate.partnerName, 'Northfield Labs')
   assert.equal(candidate.title, 'Senior Product Manager')
+  assert.equal(candidate.parserPack, 'job_page_v1')
   assert.deepEqual(candidate.links, ['https://northfield.example/careers'])
   assert.match(candidate.summary, /Paris, France/)
   assert.match(candidate.summary, /2026-08-15/)
@@ -391,6 +393,7 @@ test('owner pasted source adapter extracts partner export fields before preview'
   assert.equal(candidate.partnerName, 'AgroTrade France')
   assert.equal(candidate.title, 'Pilot distribution partner')
   assert.equal(candidate.detectedFormat, 'partner_export')
+  assert.equal(candidate.parserPack, 'company_profile_v1')
   assert.match(candidate.summary, /Lyon, France/)
   assert.match(candidate.context, /Marie Dupont/)
   assert.match(candidate.missingInfo, /decision maker and pilot budget/)
@@ -420,6 +423,7 @@ test('owner pasted source adapter parses LinkedIn-style job snippets', () => {
   assert.equal(candidate.partnerName, 'Northfield Labs')
   assert.equal(candidate.title, 'Senior Product Manager')
   assert.equal(candidate.detectedFormat, 'linkedin_job')
+  assert.equal(candidate.parserPack, 'job_page_v1')
   assert.match(candidate.summary, /Paris, Île-de-France, France/)
   assert.deepEqual(candidate.links, ['https://www.linkedin.com/jobs/view/12345'])
   assert.match(candidate.missingInfo, /contact/)
@@ -449,6 +453,7 @@ test('owner pasted source adapter parses generic job-board snippets without stru
   const candidate = parsed.candidates[0]
 
   assert.equal(candidate.detectedFormat, 'linkedin_job')
+  assert.equal(candidate.parserPack, 'job_page_v1')
   assert.equal(candidate.partnerName, 'Northfield Labs')
   assert.equal(candidate.title, 'Senior Product Manager')
   assert.match(candidate.summary, /Paris, France \(Hybrid\)/)
@@ -482,6 +487,7 @@ test('owner pasted source adapter parses accelerator-style snippets', () => {
   assert.equal(candidate.partnerName, 'AgriTech Europe Accelerator')
   assert.equal(candidate.title, 'Accelerator program')
   assert.equal(candidate.detectedFormat, 'accelerator_snippet')
+  assert.equal(candidate.parserPack, 'accelerator_program_v1')
   assert.match(candidate.summary, /September 30, 2026/)
   assert.match(candidate.summary, /Paris \/ Remote/)
   assert.match(candidate.whyRelevant, /agricultural infrastructure/)
@@ -511,6 +517,7 @@ test('owner pasted source adapter enriches accelerator entries with cohort terms
   const candidate = parsed.candidates[0]
 
   assert.equal(candidate.detectedFormat, 'accelerator_snippet')
+  assert.equal(candidate.parserPack, 'accelerator_program_v1')
   assert.equal(candidate.title, 'Fall 2026 cohort')
   assert.match(candidate.context, /Program terms: 12 weeks, 2 percent equity/)
   assert.match(
@@ -544,6 +551,7 @@ test('owner pasted source adapter parses messy accelerator snippets with who-sho
   const candidate = parsed.candidates[0]
 
   assert.equal(candidate.detectedFormat, 'accelerator_snippet')
+  assert.equal(candidate.parserPack, 'accelerator_program_v1')
   assert.equal(candidate.partnerName, 'Agri Launchpad')
   assert.equal(candidate.title, 'Spring 2027')
   assert.match(candidate.summary, /January 15, 2027/)
@@ -577,6 +585,7 @@ test('owner pasted source adapter parses CSV-like investor lists as multiple can
   assert.equal(parsed.candidates[0].partnerName, 'Green Seed Capital')
   assert.equal(parsed.candidates[0].title, 'Agri infrastructure')
   assert.equal(parsed.candidates[0].detectedFormat, 'investor_list')
+  assert.equal(parsed.candidates[0].parserPack, 'investor_fund_v1')
   assert.match(parsed.candidates[0].summary, /Europe/)
   assert.match(parsed.candidates[0].context, /intro@greenseed\.example/)
   assert.equal(parsed.candidates[1].partnerName, 'Blue Fields Fund')
@@ -608,6 +617,7 @@ test('owner pasted source adapter enriches investor entries with stage ticket si
   const candidate = parsed.candidates[0]
 
   assert.equal(candidate.detectedFormat, 'investor_list')
+  assert.equal(candidate.parserPack, 'investor_fund_v1')
   assert.equal(candidate.partnerName, 'Green Seed Capital')
   assert.equal(candidate.title, 'Agri infrastructure')
   assert.match(candidate.whyRelevant, /Pre-seed \/ Seed/)
@@ -680,6 +690,161 @@ test('owner pasted source adapter recognizes investor aliases like HQ, sector fo
   assert.match(candidate.context, /Ticket size: €500k/)
   assert.match(candidate.context, /Thesis: Looks for workflow and infrastructure leverage/)
   assert.match(candidate.context, /Extracted contact: team@deltafield\.example/)
+})
+
+test('owner pasted source adapter parses messy real-world job pages with section-style fields', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech'
+    },
+    { id: 'job-realworld-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Company: Verdant Systems',
+      'Role / Title: Staff Product Manager, Commodity Workflows',
+      'Location: Paris, France or remote within France',
+      'Compensation & Benefits: €85k-€110k + equity',
+      'Type: CDI',
+      'Apply by: August 18, 2026',
+      'Why this role matters: Lead the operator workflow layer for agricultural trade and logistics.',
+      'Source: https://verdant.example/careers/staff-product-manager'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'structured_fields')
+  assert.equal(candidate.parserPack, 'job_page_v1')
+  assert.equal(candidate.partnerName, 'Verdant Systems')
+  assert.equal(candidate.title, 'Staff Product Manager, Commodity Workflows')
+  assert.match(candidate.summary, /Paris, France or remote within France/)
+  assert.match(candidate.summary, /€85k-€110k \+ equity/)
+  assert.match(candidate.summary, /August 18, 2026/)
+  assert.match(candidate.context, /Compensation: €85k-€110k \+ equity/)
+  assert.match(candidate.context, /Contract type: CDI/)
+  assert.match(
+    candidate.whyRelevant,
+    /Lead the operator workflow layer for agricultural trade and logistics/
+  )
+  assert.doesNotMatch(candidate.missingInfo, /salary range/)
+})
+
+test('owner pasted source adapter parses messy real-world investor pages with alias-rich thesis fields', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'investor',
+      label: 'Agri seed funds',
+      query: 'agri commodity seed funds europe'
+    },
+    { id: 'investor-realworld-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Fund name: Orchard Capital',
+      'What we back: agricultural software, market infrastructure, and supply-chain tooling',
+      'Where we invest: France, Benelux, and Germany',
+      'Stages: pre-seed to Series A',
+      'First cheque: €300k-€1.2m',
+      'Contact us: team@orchard.example',
+      'Website: https://orchard.example'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'investor_list')
+  assert.equal(candidate.parserPack, 'investor_fund_v1')
+  assert.equal(candidate.partnerName, 'Orchard Capital')
+  assert.equal(
+    candidate.title,
+    'agricultural software, market infrastructure, and supply-chain tooling'
+  )
+  assert.match(candidate.summary, /France, Benelux, and Germany/)
+  assert.match(candidate.context, /Stage: pre-seed to Series A/i)
+  assert.match(candidate.context, /Ticket size: €300k-€1.2m/)
+  assert.match(
+    candidate.context,
+    /Thesis: agricultural software, market infrastructure, and supply-chain tooling/i
+  )
+  assert.match(candidate.context, /Extracted contact: team@orchard\.example/)
+})
+
+test('owner pasted source adapter parses messy real-world accelerator pages with section headings and support terms', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'accelerator',
+      label: 'Agri accelerators Europe',
+      query: 'agtech accelerator europe seed program'
+    },
+    { id: 'accelerator-realworld-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Program name: Farm Launch Europe',
+      'Based in: Paris and Lyon',
+      "Who it's for: seed-stage agri, climate, and market-plumbing startups",
+      'What you get: 10 weeks, pilot design support, and investor introductions',
+      'Apply before: September 12, 2026',
+      'Website: https://farmlaunch.example/apply'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'accelerator_snippet')
+  assert.equal(candidate.parserPack, 'accelerator_program_v1')
+  assert.equal(candidate.partnerName, 'Farm Launch Europe')
+  assert.equal(candidate.title, 'Farm Launch Europe')
+  assert.match(candidate.summary, /September 12, 2026/)
+  assert.match(candidate.summary, /Paris and Lyon/)
+  assert.match(
+    candidate.context,
+    /Program terms: 10 weeks, pilot design support, and investor introductions/
+  )
+  assert.match(
+    candidate.context,
+    /Selection criteria: seed-stage agri, climate, and market-plumbing startups/i
+  )
+})
+
+test('owner pasted source adapter parses messy real-world partner pages with collaboration fields', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'partner',
+      label: 'Agro partners France',
+      query: 'agri commodity ecosystem implementation partners france'
+    },
+    { id: 'partner-realworld-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Partner name: Delta Operations',
+      'Ideal collaboration: pilot deployment partner for commodity workflow tooling',
+      'Regions served: France, Spain, and Belgium',
+      'Contact us: ops-partnerships@delta.example',
+      'Why this matters: already works with cross-border agricultural trade operators',
+      'Website: https://delta.example/partnerships'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'partner_export')
+  assert.equal(candidate.parserPack, 'company_profile_v1')
+  assert.equal(candidate.partnerName, 'Delta Operations')
+  assert.equal(
+    candidate.title,
+    'pilot deployment partner for commodity workflow tooling'
+  )
+  assert.match(candidate.summary, /France, Spain, and Belgium/)
+  assert.match(candidate.context, /Extracted contact: ops-partnerships@delta\.example/)
+  assert.match(
+    candidate.whyRelevant,
+    /already works with cross-border agricultural trade operators/i
+  )
 })
 
 test('owner pasted source adapter scores job candidates by interview readiness', () => {

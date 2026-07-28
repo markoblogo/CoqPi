@@ -5,6 +5,7 @@ import type {
 } from './app-types'
 
 export const AUTO_ANALYSIS_DEBOUNCE_MS = 900
+export const AUTO_ANALYSIS_RAPID_FOLLOW_UP_DELAY_MS = 1200
 
 export type AssistantState = 'idle' | 'analyzing' | 'error' | 'done'
 export type AssistantStatusCode = AssistantAnalysisError['code'] | null
@@ -339,6 +340,7 @@ export type LiveLoopDecisionReason =
   | 'unsupported-language'
   | 'too-short-transcript'
   | 'low-signal-transcript'
+  | 'duplicate-boundary-transcript'
   | 'already-analyzed'
   | 'already-scheduled'
   | 'assistant-busy'
@@ -353,6 +355,7 @@ export type LiveLoopScheduleInput = {
   latestFinalUtterance: TranscriptUtterance | undefined
   transcriptText: string
   callLanguage?: AssistantCallLanguage
+  allUtterances?: TranscriptUtterance[]
   lastAutoAnalyzedFingerprint: string | null
   scheduledAutoAnalysisFingerprint: string | null
   assistantState: AssistantState
@@ -396,6 +399,16 @@ const lowSignalTranscriptPatterns = new Set([
   'alright',
   'great thanks',
   'perfect thanks',
+  'yes exactly',
+  'yeah exactly',
+  'right exactly',
+  'exactly',
+  'absolutely',
+  'definitely',
+  'for sure',
+  'i see',
+  'got it',
+  'makes sense',
   'yes thanks',
   'sure thanks',
   'd accord',
@@ -406,10 +419,121 @@ const lowSignalTranscriptPatterns = new Set([
   'très bien',
   'parfait',
   'oui merci',
+  'oui exact',
+  'tout a fait',
+  'tout à fait',
+  'je vois',
+  'bien compris',
   'ca marche',
   'ça marche',
   'super merci'
 ])
+
+const rapidFollowUpWindowMs = 2500
+
+const toUtteranceTimestamp = (utterance: TranscriptUtterance | undefined | null) => {
+  if (!utterance) {
+    return 0
+  }
+
+  const timestamp = new Date(
+    utterance.timestampEnd ?? utterance.timestampStart
+  ).getTime()
+
+  return Number.isNaN(timestamp) ? 0 : timestamp
+}
+
+const getUtteranceWordCount = (text: string) =>
+  normalizeTranscriptBoundaryText(text)
+    .split(' ')
+    .filter(Boolean).length
+
+const getNormalizedBoundaryText = (text: string) =>
+  normalizeTranscriptBoundaryText(text)
+    .replace(/\b(a|an|the|and|but|so|well|just|really|very)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const isRapidBoundaryDuplicate = (
+  utterance: TranscriptUtterance,
+  previousEligibleUtterance?: TranscriptUtterance
+) => {
+  if (!previousEligibleUtterance) {
+    return false
+  }
+
+  const gapMs =
+    toUtteranceTimestamp(utterance) - toUtteranceTimestamp(previousEligibleUtterance)
+
+  if (gapMs <= 0 || gapMs > rapidFollowUpWindowMs) {
+    return false
+  }
+
+  const current = getNormalizedBoundaryText(utterance.text)
+  const previous = getNormalizedBoundaryText(previousEligibleUtterance.text)
+
+  if (!current || !previous) {
+    return false
+  }
+
+  return (
+    current === previous ||
+    (current.length >= 12 && previous.includes(current)) ||
+    (previous.length >= 12 && current.includes(previous))
+  )
+}
+
+const getPreviousEligibleUtterance = (
+  utterances: TranscriptUtterance[],
+  latestUtterance: TranscriptUtterance,
+  callLanguage: AssistantCallLanguage = 'auto'
+) => {
+  const latestIndex = utterances.findIndex(
+    (utterance) => utterance.id === latestUtterance.id
+  )
+
+  if (latestIndex <= 0) {
+    return null
+  }
+
+  for (let index = latestIndex - 1; index >= 0; index -= 1) {
+    const candidate = utterances[index]
+
+    if (candidate.id === latestUtterance.id) {
+      continue
+    }
+
+    if (isAutoAnalysisTranscriptCandidate(candidate, callLanguage)) {
+      return candidate
+    }
+  }
+
+  return null
+}
+
+const shouldDelayRapidEligibleFollowUp = (
+  utterance: TranscriptUtterance,
+  previousEligibleUtterance?: TranscriptUtterance | null
+) => {
+  if (!previousEligibleUtterance) {
+    return false
+  }
+
+  const gapMs =
+    toUtteranceTimestamp(utterance) - toUtteranceTimestamp(previousEligibleUtterance)
+
+  if (gapMs <= 0 || gapMs > rapidFollowUpWindowMs) {
+    return false
+  }
+
+  if (utterance.text.includes('?')) {
+    return false
+  }
+
+  const wordCount = getUtteranceWordCount(utterance.text)
+
+  return wordCount >= 4 && wordCount <= 16
+}
 
 const hasEnoughAutoAnalysisText = (text: string) => {
   const trimmed = text.trim()
@@ -526,17 +650,31 @@ export const getLatestAutoAnalysisUtterance = (
 ) =>
   [...utterances]
     .reverse()
-    .find((utterance) =>
-      isAutoAnalysisTranscriptCandidate(utterance, callLanguage)
-    )
+    .find((utterance) => {
+      if (!isAutoAnalysisTranscriptCandidate(utterance, callLanguage)) {
+        return false
+      }
+
+      return !isRapidBoundaryDuplicate(
+        utterance,
+        getPreviousEligibleUtterance(utterances, utterance, callLanguage) ?? undefined
+      )
+    })
 
 export const getAutoAnalysisTranscriptUtterances = (
   utterances: TranscriptUtterance[],
   callLanguage: AssistantCallLanguage = 'auto'
 ) =>
-  utterances.filter((utterance) =>
-    isAutoAnalysisTranscriptCandidate(utterance, callLanguage)
-  )
+  utterances.filter((utterance) => {
+    if (!isAutoAnalysisTranscriptCandidate(utterance, callLanguage)) {
+      return false
+    }
+
+    return !isRapidBoundaryDuplicate(
+      utterance,
+      getPreviousEligibleUtterance(utterances, utterance, callLanguage) ?? undefined
+    )
+  })
 
 export const getIgnoredAutoAnalysisUtterances = (
   utterances: TranscriptUtterance[],
@@ -554,19 +692,99 @@ export const getIgnoredAutoAnalysisUtterances = (
     return !getAutoAnalysisUtteranceEligibility(utterance, callLanguage).eligible
   })
 
+export type IgnoredAutoAnalysisSummary = {
+  total: number
+  unsupportedLanguageCount: number
+  tooShortCount: number
+  lowSignalCount: number
+  dominantReason: AutoAnalysisUtteranceEligibility['reason']
+  latestIgnored: TranscriptUtterance | null
+  latestIgnoredReason: AutoAnalysisUtteranceEligibility['reason']
+}
+
+export const summarizeIgnoredAutoAnalysisUtterances = (
+  utterances: TranscriptUtterance[],
+  callLanguage: AssistantCallLanguage = 'auto'
+): IgnoredAutoAnalysisSummary => {
+  const ignoredUtterances = getIgnoredAutoAnalysisUtterances(
+    utterances,
+    callLanguage
+  )
+  const summary = {
+    total: ignoredUtterances.length,
+    unsupportedLanguageCount: 0,
+    tooShortCount: 0,
+    lowSignalCount: 0,
+    dominantReason: null as AutoAnalysisUtteranceEligibility['reason'],
+    latestIgnored: ignoredUtterances.at(-1) ?? null,
+    latestIgnoredReason: null as AutoAnalysisUtteranceEligibility['reason']
+  }
+
+  for (const utterance of ignoredUtterances) {
+    const reason = getAutoAnalysisUtteranceEligibility(
+      utterance,
+      callLanguage
+    ).reason
+
+    if (reason === 'unsupported-language') {
+      summary.unsupportedLanguageCount += 1
+    } else if (reason === 'too-short-transcript') {
+      summary.tooShortCount += 1
+    } else if (reason === 'low-signal-transcript') {
+      summary.lowSignalCount += 1
+    }
+  }
+
+  summary.latestIgnoredReason = summary.latestIgnored
+    ? getAutoAnalysisUtteranceEligibility(summary.latestIgnored, callLanguage).reason
+    : null
+
+  const rankedReasons: Array<AutoAnalysisUtteranceEligibility['reason']> = [
+    'unsupported-language',
+    'low-signal-transcript',
+    'too-short-transcript'
+  ]
+  summary.dominantReason =
+    rankedReasons
+      .map((reason) => ({
+        reason,
+        count:
+          reason === 'unsupported-language'
+            ? summary.unsupportedLanguageCount
+            : reason === 'low-signal-transcript'
+              ? summary.lowSignalCount
+              : summary.tooShortCount
+      }))
+      .sort((left, right) => right.count - left.count)[0]?.count
+      ? rankedReasons
+          .map((reason) => ({
+            reason,
+            count:
+              reason === 'unsupported-language'
+                ? summary.unsupportedLanguageCount
+                : reason === 'low-signal-transcript'
+                  ? summary.lowSignalCount
+                  : summary.tooShortCount
+          }))
+          .sort((left, right) => right.count - left.count)[0]?.reason ?? null
+      : null
+
+  return summary
+}
+
 export const getAutoAnalysisIgnoreReasonLabel = (
   reason: AutoAnalysisUtteranceEligibility['reason']
 ) => {
   if (reason === 'unsupported-language') {
-    return 'non EN/FR'
+    return 'background/non EN-FR'
   }
 
   if (reason === 'too-short-transcript') {
-    return 'too short'
+    return 'short noise'
   }
 
   if (reason === 'low-signal-transcript') {
-    return 'low signal'
+    return 'ack noise'
   }
 
   return 'not ignored'
@@ -613,16 +831,21 @@ export const buildLiveTestCockpitItems = ({
     transcriptUtterances,
     callLanguage
   ).length
+  const ignoredSummary = summarizeIgnoredAutoAnalysisUtterances(
+    transcriptUtterances,
+    callLanguage
+  )
   const ignoredUtterances = getIgnoredAutoAnalysisUtterances(
     transcriptUtterances,
     callLanguage
   )
-  const lastIgnored = ignoredUtterances.at(-1)
-  const lastIgnoredReason = lastIgnored
-    ? getAutoAnalysisIgnoreReasonLabel(
-        getAutoAnalysisUtteranceEligibility(lastIgnored, callLanguage).reason
-      )
+  const lastIgnored = ignoredSummary.latestIgnored
+  const lastIgnoredReason = ignoredSummary.latestIgnoredReason
+    ? getAutoAnalysisIgnoreReasonLabel(ignoredSummary.latestIgnoredReason)
     : null
+  const latestRelevantUtterance = latestRelevantUtteranceId
+    ? transcriptUtterances.find((utterance) => utterance.id === latestRelevantUtteranceId)
+    : undefined
   const freshness =
     latestRelevantUtteranceId && lastAnalyzedUtteranceId === latestRelevantUtteranceId
       ? 'fresh'
@@ -666,18 +889,22 @@ export const buildLiveTestCockpitItems = ({
       id: 'ignored',
       label: 'Ignored',
       value:
-        ignoredUtterances.length === 0
+        ignoredSummary.total === 0
           ? '0'
-          : `${ignoredUtterances.length} / ${lastIgnoredReason}`,
+          : `${ignoredSummary.total} / ${
+              getAutoAnalysisIgnoreReasonLabel(
+                ignoredSummary.dominantReason ?? ignoredSummary.latestIgnoredReason
+              )
+            }`,
       detail:
-        ignoredUtterances.length === 0
+        ignoredSummary.total === 0
           ? 'No final other-speaker lines ignored yet.'
           : lastIgnored
-            ? `${lastIgnored.text.trim().slice(0, 64)}${
+            ? `${ignoredSummary.unsupportedLanguageCount} bg · ${ignoredSummary.tooShortCount} short · ${ignoredSummary.lowSignalCount} ack. Last: ${lastIgnored.text.trim().slice(0, 64)}${
                 lastIgnored.text.trim().length > 64 ? '…' : ''
               }`
             : undefined,
-      tone: ignoredUtterances.length === 0 ? 'ok' : 'warning',
+      tone: ignoredSummary.total === 0 ? 'ok' : 'warning',
       title: 'Final other-speaker lines ignored before automatic assistant analysis.'
     },
     {
@@ -691,11 +918,15 @@ export const buildLiveTestCockpitItems = ({
             : `${eligibleCount} lines / ${autoTranscriptText.trim().length} chars`,
       detail:
         lastAnalyzeTranscriptText.trim().length > 0
-          ? `${lastAnalyzeTranscriptText.trim().slice(0, 96)}${
+          ? `Trigger: ${
+              latestRelevantUtterance?.text.trim().slice(0, 56) ?? 'n/a'
+            }${(latestRelevantUtterance?.text.trim().length ?? 0) > 56 ? '…' : ''} · Window: ${lastAnalyzeTranscriptText.trim().slice(0, 96)}${
               lastAnalyzeTranscriptText.trim().length > 96 ? '…' : ''
             }`
           : autoTranscriptText.trim().length > 0
-            ? `${autoTranscriptText.trim().slice(0, 96)}${
+            ? `Trigger: ${
+                latestRelevantUtterance?.text.trim().slice(0, 56) ?? 'n/a'
+              }${(latestRelevantUtterance?.text.trim().length ?? 0) > 56 ? '…' : ''} · Window: ${autoTranscriptText.trim().slice(0, 96)}${
                 autoTranscriptText.trim().length > 96 ? '…' : ''
               }`
             : 'No eligible transcript window yet.',
@@ -777,6 +1008,7 @@ export const decideAutoAnalysis = ({
   latestFinalUtterance,
   transcriptText,
   callLanguage = 'auto',
+  allUtterances = [],
   lastAutoAnalyzedFingerprint,
   scheduledAutoAnalysisFingerprint,
   assistantState,
@@ -786,6 +1018,7 @@ export const decideAutoAnalysis = ({
   latestFinalUtterance: TranscriptUtterance | undefined
   transcriptText: string
   callLanguage?: AssistantCallLanguage
+  allUtterances?: TranscriptUtterance[]
   lastAutoAnalyzedFingerprint: string | null
   scheduledAutoAnalysisFingerprint: string | null
   assistantState: AssistantState
@@ -809,6 +1042,20 @@ export const decideAutoAnalysis = ({
     return {
       shouldRun: false,
       reason: utteranceEligibility.reason ?? 'unsupported-language',
+      fingerprint: null
+    }
+  }
+
+  const previousEligibleUtterance = getPreviousEligibleUtterance(
+    allUtterances,
+    latestFinalUtterance,
+    callLanguage
+  )
+
+  if (isRapidBoundaryDuplicate(latestFinalUtterance, previousEligibleUtterance ?? undefined)) {
+    return {
+      shouldRun: false,
+      reason: 'duplicate-boundary-transcript',
       fingerprint: null
     }
   }
@@ -855,6 +1102,7 @@ export const buildAutoAnalysisSchedule = ({
   latestFinalUtterance,
   transcriptText,
   callLanguage,
+  allUtterances = [],
   lastAutoAnalyzedFingerprint,
   scheduledAutoAnalysisFingerprint,
   assistantState,
@@ -867,6 +1115,7 @@ export const buildAutoAnalysisSchedule = ({
     latestFinalUtterance,
     transcriptText,
     callLanguage,
+    allUtterances,
     lastAutoAnalyzedFingerprint,
     scheduledAutoAnalysisFingerprint,
     assistantState,
@@ -885,11 +1134,22 @@ export const buildAutoAnalysisSchedule = ({
 
   const currentNow = nowMs ?? Date.now()
   const cooldownDelay = Math.max(0, analysisCooldownUntil - currentNow)
+  const previousEligibleUtterance = latestFinalUtterance
+    ? getPreviousEligibleUtterance(allUtterances, latestFinalUtterance, callLanguage)
+    : null
+  const rapidFollowUpDelay =
+    latestFinalUtterance &&
+    shouldDelayRapidEligibleFollowUp(
+      latestFinalUtterance,
+      previousEligibleUtterance
+    )
+      ? AUTO_ANALYSIS_RAPID_FOLLOW_UP_DELAY_MS
+      : 0
 
   return {
     shouldRun: true,
     reason: decision.reason,
     fingerprint: decision.fingerprint,
-    delayMs: AUTO_ANALYSIS_DEBOUNCE_MS + cooldownDelay
+    delayMs: AUTO_ANALYSIS_DEBOUNCE_MS + cooldownDelay + rapidFollowUpDelay
   }
 }

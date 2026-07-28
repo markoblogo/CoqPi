@@ -5,7 +5,7 @@
   "private": true,
   "description": "Personal communication cockpit for interviews and professional calls.",
   "main": "dist-electron/main/index.js",
-  "packageManager": "pnpm@10.28.2",
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev": "concurrently -k \"pnpm dev:renderer\" \"pnpm dev:electron\" \"pnpm dev:app\"",
     "dev:renderer": "vite",
@@ -58,6 +58,7 @@
     }
   },
   "dependencies": {
+    "@crawlee/cheerio": "^3.17.0",
     "dotenv": "^16.5.0",
     "openai": "^6.42.0",
     "react": "^19.1.0",

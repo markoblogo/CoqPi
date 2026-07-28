@@ -54,6 +54,7 @@ export type KnowledgeExtractionPreview = {
   retrievalReady: boolean
   extractionMode: 'metadata_only' | 'hash_only' | 'retrieval_context'
   sourceFormatLabel: string
+  parserPackLabel: string
   provenanceLabel: string
   ownerFacts: string[]
   roleFacts: string[]
@@ -89,6 +90,13 @@ const sourceKindLabels: Record<ContextSourceKind, string> = {
   company_link: 'Company/respondent link',
   local_folder_manifest: 'Local folder pointer'
 }
+
+const parserPackLabels = {
+  job_page_v1: 'job_page_v1',
+  investor_fund_v1: 'investor_fund_v1',
+  accelerator_program_v1: 'accelerator_program_v1',
+  company_profile_v1: 'company_profile_v1'
+} as const
 
 const daysUntil = (expiresAt: string, nowMs: number) => {
   const expiresMs = Date.parse(expiresAt)
@@ -127,7 +135,7 @@ export const evaluateContextSourceReadiness = (
     issues.push({
       id: 'hash_only',
       label: 'hash captured only',
-      fix: 'Use a readable .md, .txt, .csv, or .json source for retrieval-ready context.'
+      fix: 'Use a readable .md, .txt, .csv, .json, .pdf, .docx, .pptx, .xlsx, or .html source for retrieval-ready context.'
     })
   }
 
@@ -322,6 +330,9 @@ export const buildKnowledgeExtractionPreview = (
     retrievalReady: readiness.retrievalReady,
     extractionMode,
     sourceFormatLabel: source.extraction?.sourceFormat ?? 'not extracted',
+    parserPackLabel: source.extraction?.parserPack
+      ? parserPackLabels[source.extraction.parserPack]
+      : 'not inferred',
     provenanceLabel: `${source.provenance.sourceId} · locator ${source.provenance.locatorSha256.slice(0, 12)}`,
     ownerFacts: source.extraction?.ownerFacts ?? [],
     roleFacts: source.extraction?.roleFacts ?? [],

@@ -20,6 +20,7 @@ test('extracts compact owner and role fields from markdown without raw body', ()
   )
 
   assert.equal(extraction.sourceFormat, 'markdown')
+  assert.equal(extraction.parserPack, 'job_page_v1')
   assert.match(extraction.ownerFacts[0], /AI product strategy/)
   assert.match(extraction.roleFacts[0], /Senior Product Manager/)
   assert.deepEqual(extraction.links, ['https://example.com/job'])
@@ -41,6 +42,7 @@ test('extracts role fields from json and reports missing owner facts', () => {
   )
 
   assert.equal(extraction.sourceFormat, 'json')
+  assert.equal(extraction.parserPack, 'job_page_v1')
   assert.equal(extraction.ownerFacts.length, 0)
   assert.equal(extraction.roleFacts.some((fact) => /AI Product Lead/.test(fact)), true)
   assert.equal(extraction.missingFields.includes('owner facts'), true)
@@ -58,8 +60,32 @@ test('extracts csv-like candidate rows into compact role facts', () => {
   )
 
   assert.equal(extraction.sourceFormat, 'csv')
+  assert.equal(extraction.parserPack, 'company_profile_v1')
   assert.equal(extraction.roleFacts.some((fact) => /Partner pilot/.test(fact)), true)
   assert.deepEqual(extraction.dates, ['2026-10-01'])
+})
+
+test('extracts compact fields from markitdown-converted document text', () => {
+  const extraction = extractKnowledgeFieldsFromReadableText(
+    [
+      '# Partner deck',
+      'Owner profile: Product strategy for AI and agri workflows.',
+      'Investor target: French climate and agri accelerator.',
+      'Website: https://example.com/accelerator',
+      'Deadline: 2026-11-15'
+    ].join('\n'),
+    '/tmp/partner-deck.pdf',
+    '2026-07-28T00:00:00.000Z',
+    { sourceFormat: 'pdf', extractionAdapter: 'markitdown_v1' }
+  )
+
+  assert.equal(extraction.sourceFormat, 'pdf')
+  assert.equal(extraction.extractionAdapter, 'markitdown_v1')
+  assert.equal(extraction.parserPack, 'accelerator_program_v1')
+  assert.equal(extraction.ownerFacts.some((fact) => /Product strategy/.test(fact)), true)
+  assert.equal(extraction.roleFacts.some((fact) => /accelerator/.test(fact)), true)
+  assert.deepEqual(extraction.links, ['https://example.com/accelerator'])
+  assert.deepEqual(extraction.dates, ['2026-11-15'])
 })
 
 const makeSource = (overrides = {}) => ({

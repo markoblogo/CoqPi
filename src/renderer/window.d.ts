@@ -76,6 +76,15 @@ declare global {
           jobId: string,
           sourceText: string
         ) => Promise<FinderSourceAdapterPreviewResult>
+        previewPublicPageSource: (
+          jobId: string,
+          sourceUrl: string
+        ) => Promise<FinderSourceAdapterPreviewResult>
+        previewManualComplexPageSource: (
+          jobId: string,
+          sourceUrl: string,
+          sourceText: string
+        ) => Promise<FinderSourceAdapterPreviewResult>
         ingestOwnerSource: (
           jobId: string,
           sourceText: string
@@ -84,7 +93,23 @@ declare global {
           jobId: string,
           drafts: FinderCandidateResultDraft[]
         ) => Promise<FinderSearchStoreResult>
+        ingestPublicPageSourceCandidates: (
+          jobId: string,
+          drafts: FinderCandidateResultDraft[]
+        ) => Promise<FinderSearchStoreResult>
+        ingestManualComplexPageSourceCandidates: (
+          jobId: string,
+          drafts: FinderCandidateResultDraft[]
+        ) => Promise<FinderSearchStoreResult>
         ingestOwnerSourceToSession: (
+          jobId: string,
+          drafts: FinderCandidateResultDraft[]
+        ) => Promise<FinderOwnerSourceSessionIngressResult>
+        ingestPublicPageSourceToSession: (
+          jobId: string,
+          drafts: FinderCandidateResultDraft[]
+        ) => Promise<FinderOwnerSourceSessionIngressResult>
+        ingestManualComplexPageSourceToSession: (
           jobId: string,
           drafts: FinderCandidateResultDraft[]
         ) => Promise<FinderOwnerSourceSessionIngressResult>

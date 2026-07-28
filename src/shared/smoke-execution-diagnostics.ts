@@ -55,6 +55,9 @@ export type SmokeExecutionDiagnosticsInput = {
   transcriptCount: number
   eligibleTranscriptCount: number
   ignoredTranscriptCount: number
+  ignoredUnsupportedLanguageCount?: number
+  ignoredTooShortCount?: number
+  ignoredLowSignalCount?: number
   lastIgnoredReasonLabel?: string | null
   lastIgnoredText?: string | null
   assistantFreshness: 'fresh' | 'stale' | 'waiting'
@@ -171,7 +174,11 @@ export const buildSmokeExecutionDiagnostics = (
         ? `Last ignored line (${input.lastIgnoredReasonLabel ?? 'ignored'}): ${input.lastIgnoredText}`
         : `Ignored transcript lines: ${input.ignoredTranscriptCount} (${input.lastIgnoredReasonLabel ?? 'ignored'}).`,
       recovery:
-        'Use one clear EN/FR sentence with enough signal and avoid short acknowledgements or background speech.'
+        (input.ignoredUnsupportedLanguageCount ?? 0) > 0
+          ? 'Limit background non EN/FR speech near the mic or switch call language explicitly before retrying one clear EN/FR sentence.'
+          : (input.ignoredLowSignalCount ?? 0) > 0
+            ? 'Use one clear EN/FR sentence with enough signal and avoid short acknowledgements.'
+            : 'Use one longer EN/FR sentence with enough signal and retry.'
     }
   } else if (input.assistantErrorCode || input.assistantError) {
     firstFailure = {
@@ -256,6 +263,22 @@ export const buildSmokeExecutionDiagnostics = (
           ? 'warning'
           : 'info'
   })
+  if (input.ignoredTranscriptCount > 0) {
+    trace.push({
+      id: 'ignored-boundary',
+      label: 'Ignored boundary',
+      detail: `${
+        input.ignoredUnsupportedLanguageCount ?? 0
+      } bg/non EN-FR · ${
+        input.ignoredTooShortCount ?? 0
+      } short · ${input.ignoredLowSignalCount ?? 0} ack`,
+      tone:
+        (input.ignoredUnsupportedLanguageCount ?? 0) > 0 ||
+        (input.ignoredLowSignalCount ?? 0) > 0
+          ? 'warning'
+          : 'info'
+    })
+  }
 
   const latestLifecycle = input.realtimeLifecycleLog.at(-1)
   if (latestLifecycle) {

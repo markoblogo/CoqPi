@@ -299,10 +299,10 @@ test('finder search service previews and imports reviewed owner source candidate
     assert.equal(preview.duplicateCount, 0)
     assert.deepEqual(preview.detectedFormats, [
       { format: 'url', count: 1 },
-      { format: 'freeform_text', count: 1 }
+      { format: 'linkedin_job', count: 1 }
     ])
     assert.equal(preview.candidates[0].detectedFormat, 'url')
-    assert.equal(preview.candidates[1].detectedFormat, 'freeform_text')
+    assert.equal(preview.candidates[1].detectedFormat, 'linkedin_job')
     assert.equal(unchanged.store.results.length, 0)
     assert.equal(imported.store.jobs[0].status, 'ready')
     assert.equal(imported.store.results.length, 1)
@@ -313,6 +313,266 @@ test('finder search service previews and imports reviewed owner source candidate
     assert.equal(
       secondPreview.candidates.filter((candidate) => candidate.duplicate).length,
       1
+    )
+  })
+})
+
+test('finder search service fetches one public page into preview and import candidates', async () => {
+  await withFinderWorkspace(async (service) => {
+    service.setFinderPublicPageFetcherForTests(async (url) => ({
+      requestedUrl: url,
+      finalUrl: 'https://fund.example/programs/agri-accelerator',
+      title: 'Agri Accelerator Program',
+      description: 'French accelerator for agri supply chain and climate founders.',
+      heading: 'Agri Accelerator Program',
+      excerpt:
+        'Agri Accelerator Program supports founders with pilot access, mentors, and investor introductions in France.',
+      contentType: 'text/html; charset=utf-8',
+      fetchedAt: '2026-07-28T19:00:00.000Z'
+    }))
+
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'accelerator',
+      label: 'France accelerators',
+      query: 'accelerator agri france'
+    })
+    const job = afterJob.store.jobs[0]
+
+    const preview = await service.previewFinderPublicPageSource(
+      job.id,
+      'https://fund.example/programs/agri-accelerator'
+    )
+    const imported = await service.ingestFinderPublicPageSourceCandidates(job.id, [
+      preview.candidates[0].draft
+    ])
+
+    assert.equal(preview.mode, 'public_page_v1')
+    assert.equal(preview.requestedCount, 1)
+    assert.equal(preview.validCount, 1)
+    assert.equal(preview.candidates[0].detectedFormat, 'public_page')
+    assert.equal(preview.candidates[0].draft.links[0], preview.candidates[0].draft.links[0])
+    assert.match(preview.candidates[0].draft.context, /Imported through public_page_v1/)
+    assert.match(preview.reason, /explicit public URL/i)
+    assert.equal(imported.store.results.length, 1)
+    assert.equal(imported.finderSourceAdapterSummary.mode, 'public_page_v1')
+    assert.match(imported.store.results[0].context, /public_page_v1/)
+
+    service.setFinderPublicPageFetcherForTests(null)
+  })
+})
+
+test('finder search service applies optional crawl4ai enrichment only for weak public page previews', async () => {
+  await withFinderWorkspace(async (service) => {
+    let crawl4aiCalls = 0
+
+    service.setFinderPublicPageFetcherForTests(async (url) => ({
+      requestedUrl: url,
+      finalUrl: url,
+      title: 'Blue River Labs',
+      description: '',
+      heading: 'Blue River Labs',
+      excerpt: 'Independent climate and agri workflow company overview.',
+      contentType: 'text/html; charset=utf-8',
+      fetchedAt: '2026-07-28T19:15:00.000Z'
+    }))
+    service.setFinderMarkdownEnrichmentRunnerForTests(async (url) => {
+      crawl4aiCalls += 1
+      return [
+        `Source URL: ${url}`,
+        'Company: Blue River Labs',
+        'Partner pilot for agri workflow automation',
+        'Contact: partnerships@blueriver.example',
+        'Why relevant: already working on French agri workflow pilots',
+        'Next action: confirm the partnerships lead and propose a short intro call',
+        'https://blueriver.example/partners'
+      ].join('\n')
+    })
+
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'France agri partners',
+      query: 'agri workflow partners france'
+    })
+    const job = afterJob.store.jobs[0]
+
+    const preview = await service.previewFinderPublicPageSource(
+      job.id,
+      'https://blueriver.example/partners'
+    )
+
+    assert.equal(crawl4aiCalls, 1)
+    assert.equal(preview.mode, 'public_page_v1')
+    assert.match(preview.reason, /crawl4ai/i)
+    assert.match(preview.candidates[0].draft.context, /crawl4ai_markdown_v1/i)
+    assert.match(
+      preview.candidates[0].draft.context,
+      /partnerships@blueriver\.example/i
+    )
+    assert.match(
+      preview.candidates[0].draft.whyRelevant,
+      /French agri workflow pilots/i
+    )
+
+    service.setFinderMarkdownEnrichmentRunnerForTests(null)
+    service.setFinderPublicPageFetcherForTests(null)
+  })
+})
+
+test('finder search service skips crawl4ai enrichment when deterministic public page preview is already usable', async () => {
+  await withFinderWorkspace(async (service) => {
+    let crawl4aiCalls = 0
+
+    service.setFinderPublicPageFetcherForTests(async (url) => ({
+      requestedUrl: url,
+      finalUrl: url,
+      title: 'Agri Accelerator Program',
+      description: 'French accelerator for agri supply chain and climate founders.',
+      heading: 'Agri Accelerator Program',
+      excerpt:
+        'Agri Accelerator Program supports founders with pilot access, mentors, and investor introductions in France.',
+      contentType: 'text/html; charset=utf-8',
+      fetchedAt: '2026-07-28T19:20:00.000Z'
+    }))
+    service.setFinderMarkdownEnrichmentRunnerForTests(async () => {
+      crawl4aiCalls += 1
+      return 'Unexpected crawl4ai usage'
+    })
+
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'accelerator',
+      label: 'France accelerators',
+      query: 'accelerator agri france'
+    })
+    const job = afterJob.store.jobs[0]
+
+    const preview = await service.previewFinderPublicPageSource(
+      job.id,
+      'https://fund.example/programs/agri-accelerator'
+    )
+
+    assert.equal(crawl4aiCalls, 0)
+    assert.doesNotMatch(preview.reason, /crawl4ai/i)
+    assert.doesNotMatch(preview.candidates[0].draft.context, /crawl4ai_markdown_v1/i)
+
+    service.setFinderMarkdownEnrichmentRunnerForTests(null)
+    service.setFinderPublicPageFetcherForTests(null)
+  })
+})
+
+test('finder search service keeps deterministic public page preview when optional crawl4ai enrichment fails', async () => {
+  await withFinderWorkspace(async (service) => {
+    let crawl4aiCalls = 0
+
+    service.setFinderPublicPageFetcherForTests(async (url) => ({
+      requestedUrl: url,
+      finalUrl: url,
+      title: 'Blue River Labs',
+      description: '',
+      heading: 'Blue River Labs',
+      excerpt: 'Independent climate and agri workflow company overview.',
+      contentType: 'text/html; charset=utf-8',
+      fetchedAt: '2026-07-28T19:30:00.000Z'
+    }))
+    service.setFinderMarkdownEnrichmentRunnerForTests(async () => {
+      crawl4aiCalls += 1
+      throw new Error('crawl4ai unavailable')
+    })
+
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'France agri partners',
+      query: 'agri workflow partners france'
+    })
+    const job = afterJob.store.jobs[0]
+
+    const preview = await service.previewFinderPublicPageSource(
+      job.id,
+      'https://blueriver.example/partners'
+    )
+
+    assert.equal(crawl4aiCalls, 1)
+    assert.equal(preview.mode, 'public_page_v1')
+    assert.doesNotMatch(preview.reason, /crawl4ai/i)
+    assert.doesNotMatch(preview.candidates[0].draft.context, /crawl4ai_markdown_v1/i)
+
+    service.setFinderMarkdownEnrichmentRunnerForTests(null)
+    service.setFinderPublicPageFetcherForTests(null)
+  })
+})
+
+test('finder search service supports supervised manual complex-page preview for a public URL', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'France agri partners',
+      query: 'agri workflow partners france'
+    })
+    const job = afterJob.store.jobs[0]
+
+    const preview = await service.previewFinderManualComplexPageSource(
+      job.id,
+      'https://blueriver.example/partners',
+      [
+        'Company: Blue River Labs',
+        'Partner pilot for agri workflow automation',
+        'Contact: partnerships@blueriver.example',
+        'Why relevant: already working on French agri workflow pilots',
+        'Next action: confirm the partnerships lead and propose a short intro call'
+      ].join('\n')
+    )
+
+    assert.equal(preview.mode, 'manual_complex_page_v1')
+    assert.equal(preview.requestedCount, 1)
+    assert.equal(preview.validCount, 1)
+    assert.match(preview.reason, /owner-reviewed page notes/i)
+    assert.match(preview.candidates[0].draft.context, /manual_complex_page_v1/)
+    assert.match(preview.candidates[0].draft.context, /Requested URL: https:\/\/blueriver\.example\/partners/)
+    assert.match(preview.candidates[0].draft.context, /partnerships@blueriver\.example/)
+    assert.deepEqual(preview.candidates[0].draft.links, [
+      'https://blueriver.example/partners'
+    ])
+  })
+})
+
+test('finder search service rejects empty supervised manual complex-page preview input', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'France agri partners',
+      query: 'agri workflow partners france'
+    })
+    const job = afterJob.store.jobs[0]
+
+    await assert.rejects(
+      service.previewFinderManualComplexPageSource(
+        job.id,
+        'https://blueriver.example/partners',
+        '   '
+      ),
+      /reviewed page notes or markdown/i
+    )
+  })
+})
+
+test('finder search service rejects private or mixed public page URL input', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'job',
+      label: 'France product roles',
+      query: 'product roles france'
+    })
+    const job = afterJob.store.jobs[0]
+
+    await assert.rejects(
+      service.previewFinderPublicPageSource(job.id, 'http://localhost:3000/private'),
+      /local-network URLs are not allowed/i
+    )
+    await assert.rejects(
+      service.previewFinderPublicPageSource(
+        job.id,
+        'https://example.com/job\nextra pasted text'
+      ),
+      /exactly one URL/i
     )
   })
 })

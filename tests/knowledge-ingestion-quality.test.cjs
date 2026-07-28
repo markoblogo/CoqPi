@@ -149,7 +149,9 @@ test('knowledge extraction preview exposes metadata without raw source content',
     contentHash: 'e'.repeat(64),
     extraction: {
       version: 1,
+      parserPack: 'job_page_v1',
       sourceFormat: 'markdown',
+      extractionAdapter: 'readable_text_v1',
       extractedAt: '2026-07-22T00:00:00.000Z',
       ownerFacts: ['Owner profile: AI product strategy in France.'],
       roleFacts: ['Role: Senior product leadership.'],
@@ -175,6 +177,7 @@ test('knowledge extraction preview exposes metadata without raw source content',
   assert.equal(readyPreview.classificationLabel, 'private')
   assert.equal(readyPreview.extractionMode, 'retrieval_context')
   assert.equal(readyPreview.sourceFormatLabel, 'markdown')
+  assert.equal(readyPreview.parserPackLabel, 'job_page_v1')
   assert.equal(readyPreview.retrievalReady, true)
   assert.deepEqual(readyPreview.ownerFacts, [
     'Owner profile: AI product strategy in France.'
@@ -185,6 +188,7 @@ test('knowledge extraction preview exposes metadata without raw source content',
 
   assert.equal(pointerPreview.sourceTypeLabel, 'Company/respondent link')
   assert.equal(pointerPreview.extractionMode, 'metadata_only')
+  assert.equal(pointerPreview.parserPackLabel, 'not inferred')
   assert.equal(pointerPreview.retrievalReady, false)
   assert.equal(
     pointerPreview.missingFields.includes('readable local file adapter'),

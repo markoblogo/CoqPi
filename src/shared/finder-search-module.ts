@@ -5,6 +5,7 @@ import type {
   FinderCandidateResult,
   FinderCandidateResultDraft,
   FinderSourceAdapterDetectedFormat,
+  FinderSourceAdapterMode,
   FinderOutreachDraft,
   FinderSearchJob,
   FinderSearchJobDraft,
@@ -13,6 +14,7 @@ import type {
   FinderRunnerRunSummary,
   FinderSearchStatusCounts
 } from './app-types'
+import { inferFinderParserPackV1 } from './parser-pack-set'
 
 export type FinderPipelineStatusFilter = 'all' | FinderCandidateResult['status']
 export type FinderPipelineDecisionFilter = 'all' | 'import' | 'hold' | 'reject'
@@ -260,7 +262,8 @@ const normalizeCandidate = (
     fitScore: clampScore(candidate.fitScore),
     whyRelevant: sanitizeText(candidate.whyRelevant, 1200),
     missingInfo: sanitizeText(candidate.missingInfo, 1200),
-    nextAction: sanitizeText(candidate.nextAction, 1200)
+    nextAction: sanitizeText(candidate.nextAction, 1200),
+    ...(candidate.parserPack ? { parserPack: candidate.parserPack } : {})
   }
 }
 
@@ -292,7 +295,8 @@ export const createFinderCandidateResult = (
       state: 'auto',
       updatedAt: options.now
     },
-    createdAt: options.now
+    createdAt: options.now,
+    ...(normalized.parserPack ? { parserPack: normalized.parserPack } : {})
   }
 }
 
@@ -318,7 +322,8 @@ export const createContextPackDraftFromFinderResult = (
   summary: result.summary,
   context: buildFinderResultContext(result),
   links: result.links,
-  selected: true
+  selected: true,
+  ...(result.parserPack ? { parserPack: result.parserPack } : {})
 })
 
 export type FinderRunnerPayloadError = {
@@ -639,7 +644,7 @@ const normalizeSourceLine = (value: string) =>
 const getDeadlineFromText = (text: string) =>
   sanitizeText(
     text.match(
-      /(?:applications?|apply|deadline|closes?|closing)\s+(?:close|by|date|on)?\s*:?\s*(.+)$/i
+      /(?:(?:applications?|apply)(?:\s+(?:close|closing|by|before|date|on))?|deadline|closes?|closing(?:\s+date)?)\s*:?\s*(.+)$/i
     )?.[1] ?? '',
     180
   )
@@ -647,7 +652,7 @@ const getDeadlineFromText = (text: string) =>
 const getCompensationFromText = (text: string) =>
   sanitizeText(
     text.match(
-      /(?:salary|compensation|package|pay range|salary range)\s*:?\s*(.+)$/i
+      /(?:salary|compensation(?:\s*&\s*benefits)?|package|pay range|salary range)\s*:?\s*(.+)$/i
     )?.[1] ?? '',
     180
   )
@@ -752,7 +757,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
   const fields = new Map<string, string>()
 
   lines.forEach((line) => {
-    const match = line.match(/^([A-Za-z][A-Za-z0-9 /_-]{1,40})\s*:\s*(.+)$/)
+    const match = line.match(/^([A-Za-z][A-Za-z0-9 '&/,_-]{1,60})\s*:\s*(.+)$/)
 
     if (!match) {
       return
@@ -832,12 +837,15 @@ const extractOwnerSourceFields = (lines: string[]) => {
 
   const company = firstOf([
     'company',
+    'company name',
     'name',
     'employer',
     'organization',
     'organisation',
     'partner',
+    'partner name',
     'fund',
+    'fund name',
     'accelerator',
     'investor',
     'fund manager',
@@ -848,8 +856,10 @@ const extractOwnerSourceFields = (lines: string[]) => {
   const role = firstOf([
     'role',
     'title',
+    'role title',
     'position',
     'job title',
+    'type',
     'opportunity',
     'focus',
     'program',
@@ -857,18 +867,29 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'opportunity title',
     'position title',
     'sector focus',
-    'industry focus'
+    'industry focus',
+    'ideal collaboration',
+    'what we back'
   ]) || (bulletParts.length > 1 ? nonUrlLines[0] : '')
   const country = firstOf(['country'])
   const city = firstOf(['city'])
   const location =
-    firstOf(['location', 'place', 'region', 'geo', 'geography']) ||
+    firstOf([
+      'location',
+      'place',
+      'region',
+      'regions served',
+      'geo',
+      'geography',
+      'where we invest'
+    ]) ||
     firstOf(['hq', 'headquarters', 'based in']) ||
     firstOf(['geography mandate', 'market', 'coverage']) ||
     (bulletParts.length > 1 ? bulletParts[1] : '') ||
     [city, country].filter(Boolean).join(', ')
   const contact = firstOf([
     'contact',
+    'contact us',
     'email',
     'recruiter',
     'contact person',
@@ -891,7 +912,9 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'relevance',
     'fit',
     'why',
-    'match'
+    'match',
+    'why this role matters',
+    'why this matters'
   ]) || inferredRelevance
   const missingInfo = firstOf([
     'missing info',
@@ -904,6 +927,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
   const explicitLink = firstOf(['url', 'link', 'website', 'source'])
   const stage = firstOf([
     'stage',
+    'stages',
     'investment stage',
     'stage preference',
     'round',
@@ -916,7 +940,8 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'investment size',
     'cheque size',
     'initial check',
-    'first check'
+    'first check',
+    'first cheque'
   ])
   const programTerms = firstOf([
     'program terms',
@@ -924,7 +949,8 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'equity',
     'fees',
     'cohort terms',
-    'equity terms'
+    'equity terms',
+    'what you get'
   ])
   const selectionCriteria = firstOf([
     'selection criteria',
@@ -932,7 +958,8 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'admission criteria',
     'who should apply',
     'eligibility',
-    'ideal startup'
+    'ideal startup',
+    'who it s for'
   ])
   const focusArea = firstOf([
     'sector',
@@ -942,7 +969,8 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'sector focus',
     'industry',
     'vertical',
-    'mandate'
+    'mandate',
+    'what we back'
   ])
   const thesis = firstOf([
     'thesis',
@@ -950,10 +978,12 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'investment thesis',
     'thesis fit',
     'notes',
-    'investment notes'
+    'investment notes',
+    'what we back'
   ])
   const compensation = firstOf([
     'compensation',
+    'compensation benefits',
     'salary',
     'salary range',
     'package',
@@ -970,7 +1000,8 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'contract type',
     'employment type',
     'job type',
-    'contract'
+    'contract',
+    'type'
   ]) || inferredContractType
   const cohort = firstOf(['cohort', 'batch', 'program', 'program name'])
   const inferredProgramTitle =
@@ -1019,7 +1050,7 @@ const detectOwnerSourceFormat = ({
   const hasStructuredFields = lines.some(
     (line) =>
       !parseMaybeUrl(line) &&
-      /^([A-Za-z][A-Za-z0-9 /_-]{1,40})\s*:\s*(.+)$/.test(line)
+      /^([A-Za-z][A-Za-z0-9 '&/,_-]{1,60})\s*:\s*(.+)$/.test(line)
   )
 
   if (firstUrl && lines.length === 1) {
@@ -1167,6 +1198,11 @@ const buildOwnerSourceParsedView = ({
 
     return {
       detectedFormat,
+      parserPack: inferFinderParserPackV1({
+        jobKind: job.kind,
+        detectedFormat,
+        text: [role, parsed.company, parsed.location, body].filter(Boolean).join(' ')
+      }),
       partnerName:
         parsed.company ||
         sanitizeText(nonUrlLines[1] ?? '', 180) ||
@@ -1211,6 +1247,11 @@ const buildOwnerSourceParsedView = ({
 
     return {
       detectedFormat,
+      parserPack: inferFinderParserPackV1({
+        jobKind: job.kind,
+        detectedFormat,
+        text: [entityLine, relevanceLine, body].filter(Boolean).join(' ')
+      }),
       partnerName: sanitizeText(entityLine, 220) || defaultPartnerName,
       title:
         fields.cohort ||
@@ -1271,6 +1312,11 @@ const buildOwnerSourceParsedView = ({
 
     return {
       detectedFormat,
+      parserPack: inferFinderParserPackV1({
+        jobKind: job.kind,
+        detectedFormat,
+        text: [partnerName, title, whyRelevant].filter(Boolean).join(' ')
+      }),
       partnerName,
       title,
       location,
@@ -1290,6 +1336,11 @@ const buildOwnerSourceParsedView = ({
 
     return {
       detectedFormat,
+      parserPack: inferFinderParserPackV1({
+        jobKind: job.kind,
+        detectedFormat,
+        text: [partnerName, title, body, contact].filter(Boolean).join(' ')
+      }),
       partnerName,
       title,
       location: fields.location || defaultLocation,
@@ -1310,6 +1361,11 @@ const buildOwnerSourceParsedView = ({
   if (detectedFormat === 'url') {
     return {
       detectedFormat,
+      parserPack: inferFinderParserPackV1({
+        jobKind: job.kind,
+        detectedFormat,
+        text: [defaultPartnerName, defaultTitle, headline, firstUrl?.toString() ?? ''].filter(Boolean).join(' ')
+      }),
       partnerName: defaultPartnerName,
       title: defaultTitle,
       location: defaultLocation,
@@ -1324,6 +1380,11 @@ const buildOwnerSourceParsedView = ({
 
   return {
     detectedFormat,
+    parserPack: inferFinderParserPackV1({
+      jobKind: job.kind,
+      detectedFormat,
+      text: [defaultPartnerName, defaultTitle, body, headline].filter(Boolean).join(' ')
+    }),
     partnerName: defaultPartnerName,
     title: defaultTitle,
     location: defaultLocation,
@@ -1342,6 +1403,9 @@ const getScenarioMissingInfo = (
     deadline: string
     location: string
     whyRelevant: string
+    compensation: string
+    remotePolicy: string
+    contractType: string
   }
 ) => {
   const common = [
@@ -1353,8 +1417,9 @@ const getScenarioMissingInfo = (
   const byKind: Record<CounterpartyContextPackKind, string[]> = {
     job: [
       evidence.deadline ? '' : 'application deadline',
-      'salary range',
-      'remote policy',
+      evidence.compensation ? '' : 'salary range',
+      evidence.remotePolicy ? '' : 'remote policy',
+      evidence.contractType ? '' : 'contract type',
       'interview process',
       evidence.whyRelevant ? '' : 'fit to your product/agtech experience'
     ],
@@ -1536,7 +1601,10 @@ export const createFinderCandidatesFromOwnerPastedSource = (
         contact,
         deadline: parsed.deadline,
         location: parsed.location,
-        whyRelevant: parsed.whyRelevant
+        whyRelevant: parsed.whyRelevant,
+        compensation: fields.compensation,
+        remotePolicy: fields.remotePolicy,
+        contractType: fields.contractType
       })
     const nextAction =
       fields.nextAction ||
@@ -1554,6 +1622,7 @@ export const createFinderCandidatesFromOwnerPastedSource = (
 
     candidates.push({
       detectedFormat: parsed.detectedFormat,
+      parserPack: parsed.parserPack,
       sourceId: `coqpi:source-adapter:${job.kind}:${jobSlug}:${sourceHash}`,
       partnerName: parsed.partnerName,
       title: parsed.title,
@@ -1561,6 +1630,7 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       context: [
         'Imported through owner_paste_v0 from owner-provided URL/text/export.',
         `Detected source format: ${parsed.detectedFormat}.`,
+        `Parser pack: ${parsed.parserPack}.`,
         'No web fetch, scraping, search API, scheduler, or outbound action was performed.',
         `Original job query: ${job.query}.`,
         job.goal ? `Job goal: ${job.goal}.` : '',
@@ -1598,16 +1668,21 @@ export const summarizeFinderSourceAdapterRun = (
   requestedCount: number,
   generatedCount: number,
   skippedDuplicateCount: number,
-  errors: { index?: number; reason: string }[]
+  errors: { index?: number; reason: string }[],
+  mode: FinderSourceAdapterMode = 'owner_paste_v0'
 ): FinderSourceAdapterRunSummary => ({
   jobId,
-  mode: 'owner_paste_v0',
+  mode,
   requestedCount,
   generatedCount,
   skippedDuplicateCount,
   errors,
   reason:
-    'Owner-pasted URL/text/export was normalized locally; no web fetch, scraping, search API, scheduler, or outbound action was performed.'
+    mode === 'public_page_v1'
+      ? 'One explicit public URL was fetched and normalized into preview/import candidates; no scheduler, batch crawl, browser automation, auth session, search API, or outbound action was performed.'
+      : mode === 'manual_complex_page_v1'
+        ? 'One explicit public URL plus owner-reviewed page notes were normalized into preview/import candidates; no scheduler, browser automation, auth session, search API, or outbound action was performed.'
+      : 'Owner-pasted URL/text/export was normalized locally; no web fetch, scraping, search API, scheduler, or outbound action was performed.'
 })
 
 export const getFinderSourceAdapterDetectedFormatSummary = (

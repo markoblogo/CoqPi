@@ -4,6 +4,7 @@ import type {
   CounterpartyContextPackDraft,
   CounterpartyContextPackKind
 } from './app-types'
+import { inferKnowledgeParserPackV1 } from './parser-pack-set'
 
 type ExtractionBucket = {
   ownerFacts: string[]
@@ -11,6 +12,8 @@ type ExtractionBucket = {
   links: string[]
   dates: string[]
 }
+
+type ExtractionSourceFormat = ContextSourceExtraction['sourceFormat']
 
 const MAX_FACTS = 8
 const MAX_LINKS = 10
@@ -103,10 +106,13 @@ const parseCsvRows = (text: string) => {
   )
 }
 
-const formatForLocation = (location: string): ContextSourceExtraction['sourceFormat'] => {
+const formatForLocation = (location: string): ExtractionSourceFormat => {
   const extension = location.match(/\.[a-z0-9]+$/iu)?.[0]?.toLowerCase() ?? ''
   if (extension === '.md') {
     return 'markdown'
+  }
+  if (extension === '.html' || extension === '.htm') {
+    return 'html'
   }
   if (extension === '.json') {
     return 'json'
@@ -114,15 +120,38 @@ const formatForLocation = (location: string): ContextSourceExtraction['sourceFor
   if (extension === '.csv') {
     return 'csv'
   }
+  if (extension === '.pdf') {
+    return 'pdf'
+  }
+  if (extension === '.docx') {
+    return 'docx'
+  }
+  if (extension === '.pptx') {
+    return 'pptx'
+  }
+  if (extension === '.xlsx') {
+    return 'xlsx'
+  }
+  if (extension === '.xls') {
+    return 'xls'
+  }
   return 'text'
+}
+
+type KnowledgeExtractionOptions = {
+  sourceFormat?: ExtractionSourceFormat
+  extractionAdapter?: ContextSourceExtraction['extractionAdapter']
+  sourceKind?: ContextSource['kind']
+  sourceLabel?: string
 }
 
 export const extractKnowledgeFieldsFromReadableText = (
   text: string,
   location: string,
-  extractedAt = new Date().toISOString()
+  extractedAt = new Date().toISOString(),
+  options: KnowledgeExtractionOptions = {}
 ): ContextSourceExtraction => {
-  const sourceFormat = formatForLocation(location)
+  const sourceFormat = options.sourceFormat ?? formatForLocation(location)
   const bucket: ExtractionBucket = {
     ownerFacts: [],
     roleFacts: [],
@@ -158,7 +187,21 @@ export const extractKnowledgeFieldsFromReadableText = (
 
   return {
     version: 1,
+    parserPack: inferKnowledgeParserPackV1({
+      kind: options.sourceKind ?? 'counterparty_material_file',
+      label: options.sourceLabel ?? location.split(/[\\/]/u).pop() ?? location,
+      sourceFormat,
+      extraction: {
+        ownerFacts,
+        roleFacts
+      }
+    }),
     sourceFormat,
+    extractionAdapter:
+      options.extractionAdapter ??
+      (['pdf', 'docx', 'pptx', 'xlsx', 'xls', 'html'].includes(sourceFormat)
+        ? 'markitdown_v1'
+        : 'readable_text_v1'),
     extractedAt,
     ownerFacts,
     roleFacts,
@@ -227,6 +270,7 @@ export const buildContextPackDraftFromKnowledgeExtraction = (
 
   return {
     sourceId: `knowledge:${source.id}`,
+    parserPack: source.extraction.parserPack,
     kind: inferPackKind(source),
     partnerName:
       source.kind === 'owner_profile_file' ? 'Owner profile' : source.label,
