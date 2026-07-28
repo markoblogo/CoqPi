@@ -26,6 +26,9 @@ import {
   summarizeManualFinderRunnerRun,
   updateFinderSearchJobStatus
 } from '../../shared/finder-search-module'
+import {
+  getFinderOutreachDraftSessionEligibility
+} from '../../shared/finder-relationship-memory'
 import { getAppInfo } from './app-state'
 
 type FinderSearchEvent =
@@ -298,7 +301,15 @@ export const resolveSessionSelectedFinderOutreachDraftId = async (
 
   const store = await getFinderSearchStoreRaw()
 
-  return store.outreachDrafts.some((draft) => draft.id === trimmed)
+  const selectedDraft = store.outreachDrafts.find(
+    (draft) => draft.id === trimmed
+  )
+
+  if (!selectedDraft) {
+    return ''
+  }
+
+  return getFinderOutreachDraftSessionEligibility(selectedDraft).eligible
     ? trimmed
     : ''
 }

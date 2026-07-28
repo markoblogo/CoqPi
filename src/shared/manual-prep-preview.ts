@@ -3,7 +3,11 @@ import type {
   FinderOutreachDraft,
   SessionContext
 } from './app-types'
-import { buildFinderRelationshipMemory } from './finder-relationship-memory'
+import {
+  buildFinderRelationshipMemory,
+  getFinderOutreachDraftSessionDecision,
+  finderOutreachDraftSessionDecisionReasonLabels
+} from './finder-relationship-memory'
 import {
   evaluateCounterpartyPackQuality,
   type CounterpartyPackQualityLevel
@@ -21,13 +25,33 @@ export type ManualPrepWeakField = {
     | 'missing_goal'
     | 'missing_context'
     | 'missing_notes'
-    | 'missing_pack'
-    | 'weak_pack'
-    | 'blocked_pack'
-    | 'missing_outreach_draft'
+  | 'missing_pack'
+  | 'weak_pack'
+  | 'blocked_pack'
+  | 'missing_outreach_draft'
+  | 'ineligible_outreach_draft'
+  | 'weak_outreach_draft'
   label: string
   fix: string
 }
+
+const describeOutreachDraftDecision = (
+  decision: ReturnType<
+    typeof getFinderOutreachDraftSessionDecision
+  > | null,
+  hasSelectedDraft: boolean
+) =>
+  !decision
+    ? hasSelectedDraft
+      ? 'missing selected draft'
+      : 'no draft selected'
+    : decision.kind === 'ineligible'
+      ? 'ineligible'
+      : decision.reason
+        ? `${decision.kind}: ${finderOutreachDraftSessionDecisionReasonLabels[decision.reason]}`
+        : decision.kind === 'ready'
+          ? 'ready for live call'
+          : `${decision.kind}: review readiness`
 
 export type ManualPrepPreview = {
   sessionLabel: string
@@ -39,6 +63,8 @@ export type ManualPrepPreview = {
   selectedOutreachDraftStatusLabel: string
   selectedOutreachDraftLastContactLabel: string
   selectedOutreachDraftFollowUpLabel: string
+  selectedOutreachDraftDecisionKind: 'ready' | 'usable' | 'weak' | 'ineligible'
+  selectedOutreachDraftDecisionReasonLabel: string
   selectedPackQualityLabel: string
   selectedPackQualityLevel: CounterpartyPackQualityLevel | 'none'
   assistantPayloadLabel: string
@@ -115,6 +141,9 @@ export const buildManualPrepPreview = ({
         (draft) => draft.id === context.selectedFinderOutreachDraftId
       )
     : null
+  const selectedOutreachDraftDecision = selectedOutreachDraft
+    ? getFinderOutreachDraftSessionDecision(selectedOutreachDraft)
+    : null
   const selectedOutreachRelationshipMemory = selectedOutreachDraft
     ? buildFinderRelationshipMemory(selectedOutreachDraft)
     : null
@@ -182,6 +211,27 @@ export const buildManualPrepPreview = ({
       label: 'draft missing',
       fix: 'Select an existing outreach draft or clear the stale draft link.'
     })
+  } else if (
+    selectedOutreachDraft &&
+    selectedOutreachDraftDecision &&
+    selectedOutreachDraftDecision.kind === 'ineligible'
+  ) {
+    weakFields.push({
+      id: 'ineligible_outreach_draft',
+      label: `${selectedOutreachDraft.targetName}: ineligible draft`,
+      fix: 'Use a draft in an active status (not closed) or switch to another draft.'
+    })
+  }
+
+  if (
+    selectedOutreachDraftDecision &&
+    selectedOutreachDraftDecision.kind === 'weak'
+  ) {
+    weakFields.push({
+      id: 'weak_outreach_draft',
+      label: `${selectedOutreachDraft?.targetName}: weak decision state`,
+      fix: 'Use "Mark as ready" in queue or confirm draft intent before call.'
+    })
   }
 
   for (const { pack, quality } of selectedPackQualities) {
@@ -239,6 +289,11 @@ export const buildManualPrepPreview = ({
       : context.selectedFinderOutreachDraftId
         ? 'Select a valid draft to restore follow-up context.'
         : 'No follow-up context selected.',
+    selectedOutreachDraftDecisionKind: selectedOutreachDraftDecision?.kind ?? 'ineligible',
+    selectedOutreachDraftDecisionReasonLabel: describeOutreachDraftDecision(
+      selectedOutreachDraftDecision,
+      Boolean(context.selectedFinderOutreachDraftId)
+    ),
     selectedPackQualityLabel,
     selectedPackQualityLevel,
     assistantPayloadLabel: `session ${sessionChars} chars · packs ${packSummary.includedCount} · profile ${

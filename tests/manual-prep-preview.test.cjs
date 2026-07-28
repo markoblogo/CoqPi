@@ -100,7 +100,29 @@ test('manual prep preview shows selected outreach draft label', () => {
   assert.equal(preview.selectedOutreachDraftStatusLabel, 'working draft')
   assert.match(preview.selectedOutreachDraftLastContactLabel, /No contact recorded/)
   assert.match(preview.selectedOutreachDraftFollowUpLabel, /Use this context before the call/)
-  assert.deepEqual(preview.weakFields, [])
+  assert.equal(preview.selectedOutreachDraftDecisionKind, 'weak')
+  assert.match(preview.selectedOutreachDraftDecisionReasonLabel, /weak/)
+  assert.deepEqual(
+    preview.weakFields.some((field) => field.id === 'weak_outreach_draft'),
+    true
+  )
+})
+
+test('manual prep preview marks ineligible draft when status is closed', () => {
+  const preview = buildManualPrepPreview({
+    context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
+    availablePacks: [makePack()],
+    availableOutreachDrafts: [makeDraft({ status: 'closed' })],
+    includeProfileContext: true,
+    profileChars: 1234
+  })
+
+  assert.equal(preview.selectedOutreachDraftDecisionKind, 'ineligible')
+  assert.match(preview.selectedOutreachDraftDecisionReasonLabel, /ineligible/)
+  assert.deepEqual(
+    preview.weakFields.some((field) => field.id === 'ineligible_outreach_draft'),
+    true
+  )
 })
 
 test('manual prep preview shows relationship memory for selected outreach draft', () => {

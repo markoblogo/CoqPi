@@ -12,7 +12,10 @@ import {
   getPersonalInterviewRetrieval,
   resolveSessionSelectedCounterpartyPackIds
 } from './context-source-service'
-import { buildFinderRelationshipMemory } from '../../shared/finder-relationship-memory'
+import {
+  buildFinderRelationshipMemory,
+  getFinderOutreachDraftSessionEligibility
+} from '../../shared/finder-relationship-memory'
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
 import { getSessionContext } from './session-context-service'
@@ -364,6 +367,12 @@ const compactSelectedOutreachDraft = async (
   const draft = await getFinderOutreachDraftById(draftId)
 
   if (!draft) {
+    return ''
+  }
+
+  const draftEligibility = getFinderOutreachDraftSessionEligibility(draft)
+
+  if (!draftEligibility.eligible) {
     return ''
   }
 

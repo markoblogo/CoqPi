@@ -16,6 +16,105 @@ export const finderOutreachDraftStatusLabels: Record<
   closed: 'closed'
 }
 
+export const finderOutreachDraftSessionIneligibilityReasonLabels: Record<
+  'closed',
+  string
+> = {
+  closed: 'draft status is closed'
+}
+
+export const finderOutreachDraftSessionDecisionKindLabels: Record<
+  'ready' | 'usable' | 'weak',
+  string
+> = {
+  ready: 'ready for live call',
+  usable: 'usable for follow-up flow',
+  weak: 'weak / confirm before call'
+}
+
+export const finderOutreachDraftSessionDecisionReasonLabels: Record<
+  'draft' | 'contacted' | 'waiting' | 'follow_up' | 'closed',
+  string
+> = {
+  draft: 'draft needs explicit readiness confirmation',
+  contacted: 'active contact already started',
+  waiting: 'active contact thread is waiting',
+  follow_up: 'active follow-up state',
+  closed: 'draft is marked closed'
+}
+
+export type FinderOutreachDraftSessionDecisionKind =
+  'ready' | 'usable' | 'weak' | 'ineligible'
+
+export type FinderOutreachDraftSessionDecisionReason =
+  keyof typeof finderOutreachDraftSessionDecisionReasonLabels
+
+export type FinderOutreachDraftSessionIneligibilityReason =
+  keyof typeof finderOutreachDraftSessionIneligibilityReasonLabels
+
+export type FinderOutreachDraftSessionDecision = {
+  kind: FinderOutreachDraftSessionDecisionKind
+  reason: FinderOutreachDraftSessionDecisionReason | null
+  ineligibilityReason: FinderOutreachDraftSessionIneligibilityReason | null
+}
+
+export const getFinderOutreachDraftSessionEligibility = (
+  draft: PickerOutreachDraftLike
+): { eligible: boolean; reasons: FinderOutreachDraftSessionIneligibilityReason[] } => {
+  const reasons: FinderOutreachDraftSessionIneligibilityReason[] = []
+
+  if (draft.status === 'closed') {
+    reasons.push('closed')
+  }
+
+  return {
+    eligible: reasons.length === 0,
+    reasons
+  }
+}
+
+export const getFinderOutreachDraftSessionDecision = (
+  draft: PickerOutreachDraftLike
+): FinderOutreachDraftSessionDecision => {
+  const ineligibility = getFinderOutreachDraftSessionEligibility(draft)
+
+  if (!ineligibility.eligible) {
+    return {
+      kind: 'ineligible',
+      reason: 'closed',
+      ineligibilityReason: 'closed'
+    }
+  }
+
+  if (draft.status === 'ready_for_contact') {
+    return {
+      kind: 'ready',
+      reason: null,
+      ineligibilityReason: null
+    }
+  }
+
+  if (
+    draft.status === 'contacted' ||
+    draft.status === 'waiting' ||
+    draft.status === 'follow_up'
+  ) {
+    return {
+      kind: 'usable',
+      reason: draft.status,
+      ineligibilityReason: null
+    }
+  }
+
+  return {
+    kind: 'weak',
+    reason: 'draft',
+    ineligibilityReason: null
+  }
+}
+
+type PickerOutreachDraftLike = Pick<FinderOutreachDraft, 'status'>
+
 const contactLikeStatuses = new Set<FinderOutreachDraftStatus>([
   'contacted',
   'waiting',

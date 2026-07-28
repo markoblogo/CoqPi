@@ -139,6 +139,8 @@ test('session payload inspector includes relationship memory for contacted outre
     inspector.includedOutreachDraft.followUpContextLabel,
     /Prepare short follow-up/
   )
+  assert.equal(inspector.includedOutreachDraft.decisionKind, 'usable')
+  assert.match(inspector.includedOutreachDraft.decisionReason ?? '', /active/)
 })
 
 test('session payload inspector reports stale outreach draft and profile off', () => {
@@ -155,6 +157,38 @@ test('session payload inspector reports stale outreach draft and profile off', (
   assert.match(inspector.droppedOutreachDraft.reason, /missing/)
   assert.equal(inspector.profileLabel, 'profile off')
   assert.equal(inspector.warningCount, 3)
+  assert.equal(inspector.droppedOutreachDraft?.decisionKind, 'ineligible')
+})
+
+test('session payload inspector reports weak and ineligible outreach draft decisions', () => {
+  const includedInspector = buildSessionPayloadInspector({
+    context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
+    availablePacks: [makePack()],
+    availableOutreachDrafts: [makeDraft()],
+    includeProfileContext: true,
+    profileChars: 10
+  })
+
+  assert.equal(includedInspector.includedOutreachDraft?.decisionKind, 'weak')
+  assert.match(
+    includedInspector.includedOutreachDraft?.decisionReason ?? '',
+    /needs explicit readiness confirmation/
+  )
+
+  const ineligibleInspector = buildSessionPayloadInspector({
+    context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
+    availablePacks: [makePack()],
+    availableOutreachDrafts: [makeDraft({ status: 'closed' })],
+    includeProfileContext: true,
+    profileChars: 10
+  })
+
+  assert.equal(ineligibleInspector.includedOutreachDraft, null)
+  assert.equal(ineligibleInspector.droppedOutreachDraft?.decisionKind, 'ineligible')
+  assert.match(
+    ineligibleInspector.droppedOutreachDraft?.decisionReason ?? '',
+    /ineligible/
+  )
 })
 
 test('session payload inspector reflects included to dropped transition when available items change', () => {

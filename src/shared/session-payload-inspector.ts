@@ -3,7 +3,13 @@ import type {
   FinderOutreachDraft,
   SessionContext
 } from './app-types'
-import { buildFinderRelationshipMemory } from './finder-relationship-memory'
+import {
+  buildFinderRelationshipMemory,
+  finderOutreachDraftSessionIneligibilityReasonLabels,
+  finderOutreachDraftSessionDecisionKindLabels,
+  finderOutreachDraftSessionDecisionReasonLabels,
+  getFinderOutreachDraftSessionDecision,
+} from './finder-relationship-memory'
 import {
   counterpartyPackSessionIneligibilityReasonLabels,
   getCounterpartyPackSessionEligibility
@@ -25,6 +31,8 @@ export type SessionPayloadDraftItem = {
   relationshipStatusLabel?: string
   lastContactLabel?: string
   followUpContextLabel?: string
+  decisionKind?: 'ready' | 'usable' | 'weak' | 'ineligible'
+  decisionReason?: string
 }
 
 export type SessionPayloadInspector = {
@@ -116,6 +124,24 @@ const formatPackLabel = (pack: CounterpartyContextPack) =>
 const formatDraftLabel = (draft: FinderOutreachDraft) =>
   `${draft.targetName} · ${draft.opportunity}`
 
+const formatDraftDecisionReason = (
+  decision: ReturnType<typeof getFinderOutreachDraftSessionDecision> | null
+) => {
+  if (!decision) {
+    return 'stale selection'
+  }
+
+  return decision.kind === 'ineligible'
+    ? `ineligible: ${
+        finderOutreachDraftSessionIneligibilityReasonLabels[
+          decision.ineligibilityReason ?? 'closed'
+        ]
+      }`
+    : decision.reason
+      ? finderOutreachDraftSessionDecisionReasonLabels[decision.reason]
+      : finderOutreachDraftSessionDecisionKindLabels[decision.kind]
+}
+
 const formatDropReason = (
   reasons: ReturnType<typeof getCounterpartyPackSessionEligibility>['reasons']
 ) =>
@@ -188,8 +214,12 @@ export const buildSessionPayloadInspector = ({
   const selectedDraft = selectedDraftId
     ? availableOutreachDrafts.find((draft) => draft.id === selectedDraftId)
     : null
+  const selectedDraftDecision = selectedDraft
+    ? getFinderOutreachDraftSessionDecision(selectedDraft)
+    : null
   const includedOutreachDraft: SessionPayloadDraftItem | null = selectedDraft
-    ? (() => {
+    ? selectedDraftDecision?.kind !== 'ineligible'
+      ? (() => {
         const relationshipMemory = buildFinderRelationshipMemory(selectedDraft)
 
         return {
@@ -199,17 +229,36 @@ export const buildSessionPayloadInspector = ({
           reason: 'selected local outreach draft',
           relationshipStatusLabel: relationshipMemory.statusLabel,
           lastContactLabel: relationshipMemory.lastContactLabel,
-          followUpContextLabel: relationshipMemory.followUpContextLabel
+          followUpContextLabel: relationshipMemory.followUpContextLabel,
+          decisionKind: selectedDraftDecision?.kind ?? 'weak',
+          decisionReason: formatDraftDecisionReason(selectedDraftDecision)
         }
       })()
+      : null
     : null
   const droppedOutreachDraft: SessionPayloadDraftItem | null =
-    selectedDraftId && !selectedDraft
+    selectedDraftId &&
+    (!selectedDraft || selectedDraftDecision?.kind === 'ineligible')
       ? {
           id: selectedDraftId,
-          label: selectedDraftId,
+          label: selectedDraft ? formatDraftLabel(selectedDraft) : selectedDraftId,
           status: 'dropped',
-          reason: 'draft missing from local Finder source truth'
+          reason: selectedDraft
+            ? formatDraftDecisionReason(selectedDraftDecision)
+            : 'draft missing from local Finder source truth',
+          relationshipStatusLabel: selectedDraft
+            ? buildFinderRelationshipMemory(selectedDraft).statusLabel
+            : undefined,
+          lastContactLabel: selectedDraft
+            ? buildFinderRelationshipMemory(selectedDraft).lastContactLabel
+            : 'Draft missing from local Finder source truth.',
+          followUpContextLabel: selectedDraft
+            ? buildFinderRelationshipMemory(selectedDraft).followUpContextLabel
+            : 'No follow-up context available.',
+          decisionKind: selectedDraftDecision?.kind ?? 'ineligible',
+          decisionReason: selectedDraft
+            ? formatDraftDecisionReason(selectedDraftDecision)
+            : undefined
         }
       : null
   const mergedDroppedPacks = mergeDroppedPacks(
