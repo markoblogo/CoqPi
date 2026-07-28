@@ -6,6 +6,7 @@ const os = require('node:os')
 const fs = require('node:fs/promises')
 
 const {
+  buildAssistantOutputQualitySummary,
   validateAssistantOutputQuality
 } = require('../dist-electron/shared/assistant-output-quality.js')
 
@@ -392,4 +393,76 @@ test('assistant output quality flags verbose or wrong-boundary answers', () => {
     true
   )
   assert.equal(issues.some((issue) => issue.field === 'context'), true)
+})
+
+test('assistant output quality summary reports ready state for fresh concise answer', () => {
+  const summary = buildAssistantOutputQualitySummary({
+    result: {
+      meaningRu: 'Собеседник просит кратко объяснить релевантный опыт.',
+      detectedQuestion: 'Could you summarize your relevant product experience?',
+      intent: 'Check fit.',
+      risk: 'Do not invent metrics.',
+      suggestedAnswers: [
+        {
+          label: 'short',
+          text: 'I have led product discovery and delivery across complex domains.',
+          answerMeaningRu: 'Я вёл discovery и delivery в сложных доменах.'
+        },
+        {
+          label: 'strong',
+          text: 'My strength is turning ambiguity into clear priorities and execution.',
+          answerMeaningRu: 'Моя сила — превращать неопределённость в ясные приоритеты.'
+        }
+      ],
+      keywordsToRemember: ['discovery', 'delivery', 'priorities'],
+      openingPhrase: 'Sure.'
+    },
+    expectation: {
+      answerLanguage: 'en'
+    },
+    freshness: 'fresh',
+    selectedPackCount: 1,
+    payloadWarningCount: 0,
+    ignoredFinalOtherCount: 0
+  })
+
+  assert.equal(summary.level, 'ready')
+  assert.equal(summary.issueCount, 0)
+})
+
+test('assistant output quality summary reports review state for stale and dropped context', () => {
+  const summary = buildAssistantOutputQualitySummary({
+    result: {
+      meaningRu: 'Собеседник спрашивает про опыт.',
+      detectedQuestion: 'Tell me about your experience.',
+      intent: 'Check fit.',
+      risk: 'Keep it specific.',
+      suggestedAnswers: [
+        {
+          label: 'short',
+          text: 'I can help.',
+          answerMeaningRu: 'Я могу помочь.'
+        },
+        {
+          label: 'strong',
+          text: 'I have relevant product and operations experience.',
+          answerMeaningRu: 'У меня есть релевантный опыт.'
+        }
+      ],
+      keywordsToRemember: ['product', 'operations', 'delivery'],
+      openingPhrase: 'Yes.'
+    },
+    expectation: {
+      answerLanguage: 'en'
+    },
+    freshness: 'stale',
+    selectedPackCount: 1,
+    payloadWarningCount: 2,
+    ignoredFinalOtherCount: 1
+  })
+
+  assert.equal(summary.level, 'needs_attention')
+  assert.equal(summary.issues.some((issue) => issue.field === 'freshness'), true)
+  assert.equal(summary.issues.some((issue) => issue.field === 'payload'), true)
+  assert.equal(summary.issues.some((issue) => issue.field === 'scope'), true)
 })

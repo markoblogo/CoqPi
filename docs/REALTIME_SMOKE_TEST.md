@@ -1,170 +1,111 @@
 # Realtime Smoke Test
 
-## Prepare
+This is the current short path for the first real mic check. It matches the UI as of July 28, 2026.
 
-1. Copy `.env.example` to `.env`.
-2. Set `OPENAI_API_KEY`.
-3. Optionally review:
-   - `OPENAI_REALTIME_TRANSCRIPTION_MODEL`
-   - `OPENAI_REALTIME_TRANSCRIPTION_DELAY`
-   - `OPENAI_SAFETY_IDENTIFIER`
+## Before start
 
-Expected result:
+Confirm in the app:
 
-- `.env` exists.
-- API key status in the app should later show `Present`.
+1. API key is available.
+2. A microphone input is selected.
+3. One relevant pack is selected for the session.
+4. The Test tab readiness card is at least `ready for mock`.
 
-## Start app
+## Step 1: mock probe first
 
-1. Run `pnpm dev`.
-2. Wait for the Electron window to open.
+In `Test`:
 
-Expected result:
-
-- App launches.
-- No startup crash.
-
-Common failures:
-
-- `OPENAI_API_KEY` missing.
-- Electron microphone permission not granted.
-
-## Check basic UI state
-
-1. Confirm `API key status: Present`.
-2. Confirm an `Audio input` device is selectable.
-3. Confirm `Realtime Health: Not started`.
+1. Enable `Mock Transcript Mode`.
+2. Add one short EN or FR line.
+3. Run `Analyze 2m` or wait for auto-analysis.
 
 Expected result:
 
-- Key presence is visible without exposing the key itself.
-- A microphone device is listed.
+- transcript gets a final `other` line;
+- Assist/Answers shows a fresh answer;
+- communication quality is not blocked.
 
-Common failures:
+If it fails:
 
-- No audio devices available.
-- Permission denied from a prior run.
+- use the cockpit to see whether the issue is transcript scope, stale answer, payload drop, or provider failure.
 
-## Check audio meter
+## Step 2: check execution diagnostics
 
-1. Click `Grant Access` if needed.
-2. Speak into the selected microphone.
+Before the real mic probe, read the `Real smoke execution` card.
 
-Expected result:
+It now shows:
 
-- The audio level meter reacts locally.
+- current stage health;
+- first failure, if any;
+- compact trace:
+  - realtime status;
+  - event counters;
+  - transcript counts;
+  - latest lifecycle/event entry.
 
-Common failures:
+Use `Capture current state` if you want to prefill the smoke note draft from the current failure path.
 
-- macOS microphone permission denied.
-- Wrong input selected.
+## Step 3: short real mic probe
 
-## Start realtime listening
+1. Start realtime listening.
+2. Say one short clear sentence in English or French.
 
-1. Click `Start Listening`.
-2. Watch the debug panel and health indicator.
+Good test phrases:
 
-Expected result:
-
-- `Realtime Health` moves through `Connecting`.
-- `Realtime Debug` shows lifecycle entries such as:
-  - `Start Listening clicked`
-  - `microphone stream acquired`
-  - `RTCPeerConnection created`
-  - `audio track added`
-  - `SDP offer created`
-  - `backend SDP answer requested`
-  - `SDP answer received`
-  - `remote description set`
-  - `data channel open`
-- Realtime connection/data-channel states become non-default.
-
-Common failures:
-
-- Missing API key.
-- Backend SDP failure.
-- Invalid SDP answer.
-- Data channel failed to open.
-
-## Speak English test phrase
-
-Say:
-
-`Can you tell me about yourself?`
+- `Can you tell me about your product background?`
+- `Pouvez-vous résumer votre expérience produit ?`
 
 Expected result:
 
-- `conversation.item.input_audio_transcription.delta` events appear.
-- Partial transcript text appears in the `Live Transcript` panel.
-- A completed transcript event finalizes the utterance.
+- local audio meter reacts;
+- realtime enters `connecting` then `connected/listening`;
+- transcript appears;
+- if the line is eligible, assistant result becomes fresh.
 
-## Speak French test phrase
+## Step 4: if something goes wrong, identify the first failed stage
 
-Say:
+Use the execution card first, not the long debug area.
 
-`Pouvez-vous me parler de votre parcours ?`
+Typical first failures:
 
-Expected result:
+- `setup`
+  - no permission or no input device;
+- `realtime`
+  - connection / SDP / transport error before stable transcript;
+- `transcript`
+  - audio seen but no transcript;
+  - transcript seen but ignored as non EN/FR, too short, or low signal;
+- `assistant`
+  - transcript reached analysis but provider failed or answer stayed stale;
+- `quality`
+  - answer exists but selected context/payload/answer quality is not ready.
 
-- More delta/completed events appear.
-- Final transcript text is visible in the transcript panel.
+## Step 5: save one short smoke note
 
-## Check debug counters
+After the probe:
 
-Open `Realtime Debug`.
+1. Review or edit `Worked / Broken / Next fix`.
+2. Save the smoke note locally.
+3. Optionally use `Copy report` for a short Codex summary.
 
-Expected result:
+Rules:
 
-- `Total events` increases.
-- `Delta events` increases.
-- `Completed events` increases.
-- `Failed events` stays at `0` in a healthy run.
-- `Generic error events` stays at `0` in a healthy run.
+- do not paste transcript text into the note;
+- capture the first concrete failure, not a long narrative;
+- keep `Next fix` actionable.
 
-## Run assistant analysis
+## Recommended follow-up commands
 
-1. Click `Analyze last 30 sec`.
+If the issue looks like live-loop/payload logic:
 
-Expected result:
+- `pnpm test:live-loop-ui`
+- `pnpm test:analyze-recent-transcript`
 
-- Assistant analysis still works using transcript text.
-- Russian summary and suggested answers appear.
+If the issue looks like pre-smoke/readiness/notes:
 
-## Stop listening
+- `pnpm test:pre-smoke`
 
-1. Click `Stop Listening`.
+If the issue looks like Finder/context routing:
 
-Expected result:
-
-- Health changes to `Stopped` or `Idle` afterward.
-- Transcript stays visible.
-- Lifecycle log includes:
-  - `Stop Listening clicked`
-  - `media tracks stopped`
-  - `peer connection closed`
-
-## Confirm cleanup
-
-Expected result:
-
-- No crash after stopping.
-- No new transcript events arrive after stopping.
-- Audio is no longer being sent.
-
-## Common failures
-
-- `Microphone permission was denied. Grant access and try again.`
-  Fix:
-  Enable microphone access in `System Settings -> Privacy & Security -> Microphone`.
-
-- `No selected audio input. Choose an input device before starting listening.`
-  Fix:
-  Select a valid input device first.
-
-- `No transcription events were received after 20 seconds of listening.`
-  Fix:
-  Check microphone selection, actual speech input, network access, and debug connection states.
-
-- Backend/OpenAI request failure
-  Fix:
-  Re-check `OPENAI_API_KEY`, network connectivity, and whether the OpenAI Realtime API is reachable.
+- `pnpm test:finder-prepare-live-ui`
+- `pnpm test:governance`

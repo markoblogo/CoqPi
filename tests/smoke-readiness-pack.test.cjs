@@ -15,6 +15,8 @@ const makeInput = (overrides = {}) => ({
   transcriptCount: 0,
   autoWindowChars: 0,
   assistantFreshness: 'waiting',
+  assistantQualityLevel: 'not_ready',
+  assistantQualityDetail: 'Run one assistant probe first.',
   realtimeReady: false,
   ...overrides
 })
@@ -27,6 +29,7 @@ test('smoke readiness pack blocks when setup or context is missing', () => {
   assert.equal(pack.headline, 'Prep needs attention before smoke')
   assert.equal(byId.setup.status, 'waiting')
   assert.equal(byId.context.status, 'blocked')
+  assert.equal(byId.communication.status, 'waiting')
   assert.equal(pack.scenario[0].status, 'waiting')
 })
 
@@ -59,6 +62,8 @@ test('smoke readiness pack records the minimal path before real mic smoke', () =
       transcriptCount: 2,
       autoWindowChars: 140,
       assistantFreshness: 'fresh',
+      assistantQualityLevel: 'ready',
+      assistantQualityDetail: 'Fresh, short and pack-scoped answer.',
       realtimeReady: true
     })
   )
@@ -67,11 +72,37 @@ test('smoke readiness pack records the minimal path before real mic smoke', () =
   assert.equal(pack.status, 'ready_for_real_mic')
   assert.equal(pack.headline, 'Ready for a short real mic smoke')
   assert.equal(byId.assistant.status, 'ready')
+  assert.equal(byId.communication.status, 'ready')
   assert.equal(byId.real_mic.status, 'ready')
   assert.deepEqual(
     pack.scenario.map((step) => step.id),
     ['select_pack', 'mock_transcript', 'assistant_answer', 'real_mic']
   )
+})
+
+test('smoke readiness pack blocks real mic when communication quality needs review', () => {
+  const pack = buildSmokeReadinessPack(
+    makeInput({
+      apiKeyAvailable: true,
+      selectedPackCount: 1,
+      selectedPackLabel: 'Northfield Labs',
+      selectedPackQualityLevel: 'strong',
+      weakFieldCount: 0,
+      mockModeEnabled: true,
+      transcriptCount: 2,
+      autoWindowChars: 140,
+      assistantFreshness: 'fresh',
+      assistantQualityLevel: 'needs_attention',
+      assistantQualityDetail: 'Visible assistant answer is stale against the latest relevant line.',
+      realtimeReady: true
+    })
+  )
+  const byId = Object.fromEntries(pack.gates.map((gate) => [gate.id, gate]))
+
+  assert.equal(pack.status, 'ready_for_mock')
+  assert.equal(byId.communication.status, 'blocked')
+  assert.equal(byId.communication.detail, 'Visible assistant answer is stale against the latest relevant line.')
+  assert.equal(pack.scenario[2].status, 'blocked')
 })
 
 test('smoke readiness pack exposes a five-step real test script', () => {

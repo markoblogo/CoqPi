@@ -27,6 +27,7 @@ export type LiveTestCockpitItem = {
     | 'payload'
   label: string
   value: string
+  detail?: string
   tone: LiveTestCockpitTone
   title: string
 }
@@ -337,6 +338,7 @@ export type LiveLoopDecisionReason =
   | 'no-final'
   | 'unsupported-language'
   | 'too-short-transcript'
+  | 'low-signal-transcript'
   | 'already-analyzed'
   | 'already-scheduled'
   | 'assistant-busy'
@@ -371,7 +373,7 @@ export type AutoAnalysisUtteranceEligibility = {
   eligible: boolean
   reason: Extract<
     LiveLoopDecisionReason,
-    'unsupported-language' | 'too-short-transcript'
+    'unsupported-language' | 'too-short-transcript' | 'low-signal-transcript'
   > | null
 }
 
@@ -379,6 +381,35 @@ const unsupportedTranscriptScriptPattern =
   /[\u0400-\u04ff\u0600-\u06ff\u0590-\u05ff\u3040-\u30ff\u3400-\u9fff]/
 const latinLetterPattern = /[A-Za-zÀ-ÖØ-öø-ÿ]/
 const meaningfulWordPattern = /[A-Za-zÀ-ÖØ-öø-ÿ]{2,}/g
+const punctuationTrimPattern = /[^\p{L}\p{N}\s]+/gu
+
+const lowSignalTranscriptPatterns = new Set([
+  'ok',
+  'okay',
+  'okay thanks',
+  'ok thanks',
+  'thanks',
+  'thank you',
+  'thanks a lot',
+  'sounds good',
+  'all right',
+  'alright',
+  'great thanks',
+  'perfect thanks',
+  'yes thanks',
+  'sure thanks',
+  'd accord',
+  'd accord merci',
+  'merci',
+  'merci beaucoup',
+  'tres bien',
+  'très bien',
+  'parfait',
+  'oui merci',
+  'ca marche',
+  'ça marche',
+  'super merci'
+])
 
 const hasEnoughAutoAnalysisText = (text: string) => {
   const trimmed = text.trim()
@@ -388,6 +419,40 @@ const hasEnoughAutoAnalysisText = (text: string) => {
   }
 
   return (trimmed.match(meaningfulWordPattern) ?? []).length >= 2
+}
+
+const normalizeTranscriptBoundaryText = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(punctuationTrimPattern, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const isLowSignalTranscript = (text: string) => {
+  if (text.includes('?')) {
+    return false
+  }
+
+  const normalized = normalizeTranscriptBoundaryText(text)
+
+  if (!normalized) {
+    return true
+  }
+
+  if (lowSignalTranscriptPatterns.has(normalized)) {
+    return true
+  }
+
+  const words = normalized.split(' ').filter(Boolean)
+
+  if (words.length <= 3) {
+    const joined = words.join(' ')
+    if (lowSignalTranscriptPatterns.has(joined)) {
+      return true
+    }
+  }
+
+  return false
 }
 
 export const getAutoAnalysisUtteranceEligibility = (
@@ -409,6 +474,13 @@ export const getAutoAnalysisUtteranceEligibility = (
     return {
       eligible: false,
       reason: 'too-short-transcript'
+    }
+  }
+
+  if (isLowSignalTranscript(utterance.text)) {
+    return {
+      eligible: false,
+      reason: 'low-signal-transcript'
     }
   }
 
@@ -493,6 +565,10 @@ export const getAutoAnalysisIgnoreReasonLabel = (
     return 'too short'
   }
 
+  if (reason === 'low-signal-transcript') {
+    return 'low signal'
+  }
+
   return 'not ignored'
 }
 
@@ -504,12 +580,13 @@ export const buildLiveTestCockpitItems = ({
   selectedPackLabel,
   selectedPackState = 'none',
   currentPayloadSummary = '',
+  currentPayloadDetail = '',
   currentPayloadHasWarnings = false,
-  selectedPackCount,
   transcriptUtterances,
   latestRelevantUtteranceId,
   lastAnalyzedUtteranceId,
   lastAnalyzePayloadSummary = '',
+  lastAnalyzePayloadDetail = '',
   lastAnalyzePayloadHasWarnings = false,
   lastAnalyzeTranscriptText = '',
   cooldownRemainingSeconds = 0
@@ -521,12 +598,13 @@ export const buildLiveTestCockpitItems = ({
   selectedPackLabel: string
   selectedPackState?: 'included' | 'dropped' | 'none'
   currentPayloadSummary?: string
+  currentPayloadDetail?: string
   currentPayloadHasWarnings?: boolean
-  selectedPackCount: number
   transcriptUtterances: TranscriptUtterance[]
   latestRelevantUtteranceId: string | undefined
   lastAnalyzedUtteranceId: string | null
   lastAnalyzePayloadSummary?: string
+  lastAnalyzePayloadDetail?: string
   lastAnalyzePayloadHasWarnings?: boolean
   lastAnalyzeTranscriptText?: string
   cooldownRemainingSeconds?: number
@@ -570,6 +648,9 @@ export const buildLiveTestCockpitItems = ({
       id: 'listening',
       label: 'Listening',
       value: `${callLanguage.toUpperCase()} / ${realtimeLabel}`,
+      detail: `${eligibleCount} eligible final other-speaker line${
+        eligibleCount === 1 ? '' : 's'
+      } in current scope`,
       tone: realtimeLabel.toLowerCase().includes('error') ? 'error' : 'info',
       title: 'Current call-language filter and realtime listening state.'
     },
@@ -588,6 +669,14 @@ export const buildLiveTestCockpitItems = ({
         ignoredUtterances.length === 0
           ? '0'
           : `${ignoredUtterances.length} / ${lastIgnoredReason}`,
+      detail:
+        ignoredUtterances.length === 0
+          ? 'No final other-speaker lines ignored yet.'
+          : lastIgnored
+            ? `${lastIgnored.text.trim().slice(0, 64)}${
+                lastIgnored.text.trim().length > 64 ? '…' : ''
+              }`
+            : undefined,
       tone: ignoredUtterances.length === 0 ? 'ok' : 'warning',
       title: 'Final other-speaker lines ignored before automatic assistant analysis.'
     },
@@ -600,6 +689,16 @@ export const buildLiveTestCockpitItems = ({
           : autoTranscriptText.trim().length === 0
             ? `${eligibleCount} lines`
             : `${eligibleCount} lines / ${autoTranscriptText.trim().length} chars`,
+      detail:
+        lastAnalyzeTranscriptText.trim().length > 0
+          ? `${lastAnalyzeTranscriptText.trim().slice(0, 96)}${
+              lastAnalyzeTranscriptText.trim().length > 96 ? '…' : ''
+            }`
+          : autoTranscriptText.trim().length > 0
+            ? `${autoTranscriptText.trim().slice(0, 96)}${
+                autoTranscriptText.trim().length > 96 ? '…' : ''
+              }`
+            : 'No eligible transcript window yet.',
       tone:
         lastAnalyzeTranscriptText.trim().length > 0
           ? 'ok'
@@ -620,6 +719,7 @@ export const buildLiveTestCockpitItems = ({
           : selectedPackState === 'none'
             ? 'No pack'
             : selectedPackLabel,
+      detail: currentPayloadDetail,
       tone:
         currentPayloadHasWarnings
           ? 'warning'
@@ -638,6 +738,7 @@ export const buildLiveTestCockpitItems = ({
         lastAnalyzePayloadSummary.trim().length > 0
           ? lastAnalyzePayloadSummary
           : 'No analyze sent yet',
+      detail: lastAnalyzePayloadDetail,
       tone:
         lastAnalyzePayloadSummary.trim().length === 0
           ? 'warning'
@@ -651,6 +752,12 @@ export const buildLiveTestCockpitItems = ({
       id: 'assistant',
       label: 'Assistant',
       value: `${assistantValue} / ${freshness}`,
+      detail:
+        freshness === 'fresh'
+          ? 'Visible suggestion matches the latest relevant line.'
+          : freshness === 'stale'
+            ? 'Visible suggestion is older than the latest relevant line.'
+            : 'No matched assistant suggestion yet.',
       tone:
         freshness === 'stale'
           ? 'warning'

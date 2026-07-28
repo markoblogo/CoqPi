@@ -758,6 +758,43 @@ test('auto analyze skips too-short transcript noise', () => {
   assert.equal(decision.fingerprint, null)
 })
 
+test('auto analyze skips low-signal English acknowledgement noise', () => {
+  const lowSignal = makeUtterance({
+    id: 'u-low-signal-en',
+    language: 'en',
+    text: 'Okay, thanks.'
+  })
+
+  const eligibility = getAutoAnalysisUtteranceEligibility(lowSignal, 'auto')
+  assert.equal(eligibility.eligible, false)
+  assert.equal(eligibility.reason, 'low-signal-transcript')
+
+  const decision = decideAutoAnalysis({
+    latestFinalUtterance: lowSignal,
+    transcriptText: lowSignal.text,
+    callLanguage: 'auto',
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle'
+  })
+
+  assert.equal(decision.shouldRun, false)
+  assert.equal(decision.reason, 'low-signal-transcript')
+  assert.equal(decision.fingerprint, null)
+})
+
+test('auto analyze skips low-signal French acknowledgement noise', () => {
+  const lowSignal = makeUtterance({
+    id: 'u-low-signal-fr',
+    language: 'fr',
+    text: 'D’accord, merci.'
+  })
+
+  const eligibility = getAutoAnalysisUtteranceEligibility(lowSignal, 'auto')
+  assert.equal(eligibility.eligible, false)
+  assert.equal(eligibility.reason, 'low-signal-transcript')
+})
+
 test('auto analyze keeps latest eligible utterance when ignored background arrives', () => {
   const englishQuestion = makeUtterance({
     id: 'u-eligible',
@@ -791,6 +828,41 @@ test('auto analyze keeps latest eligible utterance when ignored background arriv
   assert.equal(plan.shouldRun, true)
   assert.equal(plan.reason, 'schedule')
   assert.match(plan.fingerprint ?? '', /u-eligible::other::/)
+})
+
+test('auto analyze keeps latest eligible utterance when low-signal reply arrives after it', () => {
+  const englishQuestion = makeUtterance({
+    id: 'u-eligible-low-signal',
+    language: 'en',
+    text: 'Can you describe how you work with cross-functional teams?'
+  })
+  const lowSignalReply = makeUtterance({
+    id: 'u-ignored-low-signal',
+    language: 'en',
+    text: 'Okay, thanks.'
+  })
+  const utterances = [englishQuestion, lowSignalReply]
+  const latestEligible = [...utterances]
+    .reverse()
+    .find((utterance) =>
+      getAutoAnalysisUtteranceEligibility(utterance, 'auto').eligible
+    )
+
+  assert.equal(latestEligible?.id, 'u-eligible-low-signal')
+
+  const plan = buildAutoAnalysisSchedule({
+    latestFinalUtterance: latestEligible,
+    transcriptText: utterances.map((utterance) => utterance.text).join('\n'),
+    callLanguage: 'auto',
+    lastAutoAnalyzedFingerprint: null,
+    scheduledAutoAnalysisFingerprint: null,
+    assistantState: 'idle',
+    analysisCooldownUntil: Date.now()
+  })
+
+  assert.equal(plan.shouldRun, true)
+  assert.equal(plan.reason, 'schedule')
+  assert.match(plan.fingerprint ?? '', /u-eligible-low-signal::other::/)
 })
 
 test('auto analysis transcript window excludes ignored background speech', () => {
@@ -827,6 +899,11 @@ test('live test cockpit summarizes listening, ignored, sent, context, and freshn
     language: 'ru',
     text: 'Сделай мне пожалуйста чай.'
   })
+  const lowSignalAck = makeUtterance({
+    id: 'u-cockpit-low-signal',
+    language: 'en',
+    text: 'Okay, thanks.'
+  })
 
   const items = buildLiveTestCockpitItems({
     callLanguage: 'auto',
@@ -838,34 +915,44 @@ test('live test cockpit summarizes listening, ignored, sent, context, and freshn
     autoTranscriptText: englishQuestion.text,
     selectedPackLabel: 'Acme',
     currentPayloadSummary: 'included packs 1 · dropped 1 · draft included · profile 120 chars',
+    currentPayloadDetail:
+      'in Acme · draft none · drop Blocked Co: not selected',
     currentPayloadHasWarnings: true,
     selectedPackCount: 1,
-    transcriptUtterances: [englishQuestion, ignoredBackground],
+    transcriptUtterances: [englishQuestion, ignoredBackground, lowSignalAck],
     latestRelevantUtteranceId: englishQuestion.id,
     lastAnalyzedUtteranceId: englishQuestion.id,
     lastAnalyzePayloadSummary:
       'included packs 1 · dropped 0 · draft included · profile 120 chars',
+    lastAnalyzePayloadDetail: 'in Acme · draft none',
     lastAnalyzeTranscriptText: englishQuestion.text
   })
   const byId = Object.fromEntries(items.map((item) => [item.id, item]))
 
   assert.equal(byId.listening.value, 'AUTO / listening')
+  assert.equal(byId.listening.detail, '1 eligible final other-speaker line in current scope')
   assert.equal(byId.scope.value, 'EN/FR final other lines')
-  assert.equal(byId.ignored.value, '1 / non EN/FR')
+  assert.equal(byId.ignored.value, '2 / low signal')
   assert.equal(byId.ignored.tone, 'warning')
+  assert.match(byId.ignored.detail ?? '', /Okay, thanks/)
   assert.equal(byId.sent.value, `1 lines / ${englishQuestion.text.length} chars`)
+  assert.match(byId.sent.detail ?? '', /product management background/)
   assert.equal(
     byId.context.value,
     'included packs 1 · dropped 1 · draft included · profile 120 chars'
   )
   assert.equal(byId.context.tone, 'warning')
+  assert.match(byId.context.detail ?? '', /in Acme/)
+  assert.match(byId.context.detail ?? '', /draft none/)
   assert.equal(
     byId.payload.value,
     'included packs 1 · dropped 0 · draft included · profile 120 chars'
   )
   assert.equal(byId.payload.tone, 'ok')
+  assert.match(byId.payload.detail ?? '', /No analyze payload captured yet|draft none|in no pack|in Acme/)
   assert.equal(byId.assistant.value, 'Ready / fresh')
   assert.equal(byId.assistant.tone, 'ok')
+  assert.match(byId.assistant.detail ?? '', /matches the latest relevant line/)
 })
 
 test('live test cockpit exposes no-pack and stale assistant state', () => {
@@ -885,26 +972,33 @@ test('live test cockpit exposes no-pack and stale assistant state', () => {
     autoTranscriptText: '',
     selectedPackLabel: 'No pack selected',
     currentPayloadSummary: 'included packs 0 · dropped 1 · draft dropped · profile off',
+    currentPayloadDetail:
+      'in no pack · draft none · drop Acme: pack missing from local manifest',
     currentPayloadHasWarnings: true,
     selectedPackCount: 0,
     transcriptUtterances: [latestQuestion],
     latestRelevantUtteranceId: latestQuestion.id,
-    lastAnalyzedUtteranceId: 'older'
+    lastAnalyzedUtteranceId: 'older',
+    lastAnalyzePayloadDetail: 'No analyze payload captured yet.'
   })
   const byId = Object.fromEntries(items.map((item) => [item.id, item]))
 
   assert.equal(byId.listening.value, 'FR / idle')
   assert.equal(byId.scope.value, 'FR final other lines')
   assert.equal(byId.sent.tone, 'warning')
+  assert.match(byId.sent.detail ?? '', /No eligible transcript window yet/)
   assert.equal(
     byId.context.value,
     'included packs 0 · dropped 1 · draft dropped · profile off'
   )
   assert.equal(byId.context.tone, 'warning')
+  assert.match(byId.context.detail ?? '', /draft none/)
   assert.equal(byId.payload.value, 'No analyze sent yet')
   assert.equal(byId.payload.tone, 'warning')
+  assert.match(byId.payload.detail ?? '', /No analyze payload captured yet/)
   assert.equal(byId.assistant.value, 'Ready / stale')
   assert.equal(byId.assistant.tone, 'warning')
+  assert.match(byId.assistant.detail ?? '', /older than the latest relevant line/)
 })
 
 test('auto analyze maps timeout and budget statuses for UI chain', () => {

@@ -2,9 +2,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type {
+  CounterpartyContextPack,
   FinderCandidateDecisionState,
   FinderCandidateResultDraft,
-  FinderOutreachDraftStatus,
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
@@ -28,9 +28,11 @@ import {
 } from '../../shared/finder-search-module'
 import {
   buildFinderOutreachDraftSessionHandoff,
-  getFinderOutreachDraftSessionEligibility
+  getFinderOutreachDraftSessionEligibility,
+  resolveFinderSessionOutreachDraft
 } from '../../shared/finder-relationship-memory'
 import { getAppInfo } from './app-state'
+import { getContextSourceManifest } from './context-source-service'
 
 type FinderSearchEvent =
   | { version: 1; type: 'job_recorded'; job: StoredFinderSearchJob }
@@ -347,6 +349,26 @@ export const getFinderCandidateResultById = async (id: string) => {
   const store = await getFinderSearchStoreRaw()
 
   return store.results.find((result) => result.id === trimmed) ?? null
+}
+
+export const resolveSessionFinderOutreachDraft = async ({
+  selectedDraftId = '',
+  selectedPackIds = []
+}: {
+  selectedDraftId?: string
+  selectedPackIds?: string[]
+}) => {
+  const store = await getFinderSearchStoreRaw()
+  const manifest = await getContextSourceManifest()
+
+  return resolveFinderSessionOutreachDraft({
+    selectedDraftId,
+    selectedPackIds,
+    availablePacks: (manifest.manifest.counterpartyPacks ??
+      []) as CounterpartyContextPack[],
+    availableFinderResults: store.results,
+    availableOutreachDrafts: store.outreachDrafts
+  })
 }
 
 export const addFinderSearchJob = async (

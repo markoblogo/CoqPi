@@ -7,6 +7,8 @@ const {
   getSessionContextWithImportedCounterpartyPacks,
   getSessionContextWithCounterpartyPacks,
   getSessionSelectedCounterpartyPackIds,
+  reconcileSessionContextWithFinderOutreachDraftSelection,
+  reconcileSessionContextWithFinderOutreachDraftStatus,
   reconcileSessionContextWithFinderQueueDecision
 } = require('../dist-electron/shared/session-pack-selection.js')
 
@@ -302,6 +304,43 @@ test('finder queue import_now re-attaches matching eligible pack to session', ()
   assert.equal(reconciled.effect.changed, true)
 })
 
+test('finder queue hold_later removes matching selected pack but keeps selected draft', () => {
+  const pack = makePack({ id: 'pack-A', sourceId: 'finder:job:a' })
+  const context = makeSession(['pack-A'], {
+    selectedFinderOutreachDraftId: 'draft-A'
+  })
+
+  const reconciled = reconcileSessionContextWithFinderQueueDecision({
+    context,
+    availablePacks: [pack],
+    availableOutreachDrafts: [
+      makeDraft({
+        id: 'draft-A',
+        candidateResultId: 'result-A',
+        sourceId: 'finder:job:a'
+      })
+    ],
+    affectedResults: [
+      makeResult({
+        id: 'result-A',
+        sourceId: 'finder:job:a',
+        kind: 'job',
+        decision: {
+          state: 'hold_later',
+          updatedAt: '2026-07-28T10:45:00.000Z'
+        }
+      })
+    ],
+    nextDecisionState: 'hold_later'
+  })
+
+  assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, [])
+  assert.equal(reconciled.context.selectedFinderOutreachDraftId, 'draft-A')
+  assert.deepEqual(reconciled.effect.selectedPackIdsRemoved, ['pack-A'])
+  assert.equal(reconciled.effect.clearedSelectedDraftId, null)
+  assert.equal(reconciled.effect.changed, true)
+})
+
 test('finder queue rejected clears matching selected pack and selected draft from session', () => {
   const pack = makePack({ id: 'pack-A', sourceId: 'finder:job:a' })
   const context = makeSession(['pack-A'], {
@@ -336,6 +375,80 @@ test('finder queue rejected clears matching selected pack and selected draft fro
   assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, [])
   assert.equal(reconciled.context.selectedFinderOutreachDraftId, '')
   assert.deepEqual(reconciled.effect.selectedPackIdsRemoved, ['pack-A'])
+  assert.equal(reconciled.effect.clearedSelectedDraftId, 'draft-A')
+  assert.equal(reconciled.effect.changed, true)
+})
+
+test('selected outreach draft selection auto-attaches matching eligible pack', () => {
+  const pack = makePack({ id: 'pack-A', sourceId: 'finder:job:a' })
+  const context = makeSession([])
+
+  const reconciled = reconcileSessionContextWithFinderOutreachDraftSelection({
+    context,
+    availablePacks: [pack],
+    draft: makeDraft({
+      id: 'draft-A',
+      sourceId: 'finder:job:a',
+      kind: 'job',
+      status: 'follow_up'
+    })
+  })
+
+  assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, ['pack-A'])
+  assert.equal(reconciled.context.selectedFinderOutreachDraftId, 'draft-A')
+  assert.deepEqual(reconciled.effect.selectedPackIdsAdded, ['pack-A'])
+  assert.equal(reconciled.effect.changed, true)
+})
+
+test('selected outreach draft status follow_up re-attaches matching pack', () => {
+  const pack = makePack({ id: 'pack-A', sourceId: 'finder:job:a' })
+  const context = makeSession([], {
+    selectedFinderOutreachDraftId: 'draft-A'
+  })
+
+  const reconciled = reconcileSessionContextWithFinderOutreachDraftStatus({
+    context,
+    availablePacks: [pack],
+    affectedDrafts: [
+      makeDraft({
+        id: 'draft-A',
+        sourceId: 'finder:job:a',
+        kind: 'job',
+        status: 'follow_up'
+      })
+    ],
+    nextStatus: 'follow_up'
+  })
+
+  assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, ['pack-A'])
+  assert.equal(reconciled.context.selectedFinderOutreachDraftId, 'draft-A')
+  assert.deepEqual(reconciled.effect.selectedPackIdsAdded, ['pack-A'])
+  assert.equal(reconciled.effect.clearedSelectedDraftId, null)
+  assert.equal(reconciled.effect.changed, true)
+})
+
+test('selected outreach draft status closed clears stale draft link from session', () => {
+  const pack = makePack({ id: 'pack-A', sourceId: 'finder:job:a' })
+  const context = makeSession(['pack-A'], {
+    selectedFinderOutreachDraftId: 'draft-A'
+  })
+
+  const reconciled = reconcileSessionContextWithFinderOutreachDraftStatus({
+    context,
+    availablePacks: [pack],
+    affectedDrafts: [
+      makeDraft({
+        id: 'draft-A',
+        sourceId: 'finder:job:a',
+        kind: 'job',
+        status: 'closed'
+      })
+    ],
+    nextStatus: 'closed'
+  })
+
+  assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, ['pack-A'])
+  assert.equal(reconciled.context.selectedFinderOutreachDraftId, '')
   assert.equal(reconciled.effect.clearedSelectedDraftId, 'draft-A')
   assert.equal(reconciled.effect.changed, true)
 })

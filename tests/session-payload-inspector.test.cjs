@@ -175,6 +175,37 @@ test('session payload inspector includes relationship memory for contacted outre
   assert.match(inspector.includedOutreachDraft.handoffLabel ?? '', /contact|follow-up|waiting/i)
 })
 
+test('session payload inspector auto-links best outreach draft from selected pack when no explicit draft is selected', () => {
+  const inspector = buildSessionPayloadInspector({
+    context: makeContext({
+      selectedCounterpartyPackIds: ['pack-ready'],
+      selectedFinderOutreachDraftId: ''
+    }),
+    availablePacks: [makePack()],
+    availableFinderResults: [
+      makeCandidateResult({
+        decision: {
+          state: 'import_now',
+          updatedAt: '2026-07-26T10:59:00.000Z'
+        }
+      })
+    ],
+    availableOutreachDrafts: [
+      makeDraft({
+        status: 'follow_up',
+        nextAction: 'Prepare a short follow-up on AI product priorities.'
+      })
+    ],
+    includeProfileContext: true,
+    profileChars: 100
+  })
+
+  assert.equal(inspector.includedOutreachDraft?.status, 'included')
+  assert.match(inspector.includedOutreachDraft?.reason ?? '', /linked local outreach draft/i)
+  assert.equal(inspector.includedOutreachDraft?.handoffState, 'follow_up')
+  assert.equal(inspector.droppedOutreachDraft, null)
+})
+
 test('session payload inspector reports stale outreach draft and profile off', () => {
   const inspector = buildSessionPayloadInspector({
     context: makeContext({ selectedFinderOutreachDraftId: 'draft-missing' }),

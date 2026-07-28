@@ -14,15 +14,13 @@ import {
 } from './context-source-service'
 import {
   buildFinderOutreachDraftSessionHandoff,
-  buildFinderRelationshipMemory,
-  getFinderOutreachDraftSessionEligibility
+  buildFinderRelationshipMemory
 } from '../../shared/finder-relationship-memory'
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
 import { getSessionContext } from './session-context-service'
 import {
-  getFinderCandidateResultById,
-  getFinderOutreachDraftById
+  resolveSessionFinderOutreachDraft
 } from './finder-search-service'
 import {
   DEFAULT_OPENAI_ASSISTANT_MODEL,
@@ -362,36 +360,32 @@ const compactSelectedOutreachDraft = async (
   sessionContext: SessionContext | undefined,
   costMode: AssistantCostMode
 ) => {
-  const draftId = sessionContext?.selectedFinderOutreachDraftId?.trim()
-
-  if (!draftId) {
-    return ''
-  }
-
-  const draft = await getFinderOutreachDraftById(draftId)
+  const resolvedDraft = await resolveSessionFinderOutreachDraft({
+    selectedDraftId: sessionContext?.selectedFinderOutreachDraftId ?? '',
+    selectedPackIds: sessionContext?.selectedCounterpartyPackIds ?? []
+  })
+  const draft = resolvedDraft.draft
 
   if (!draft) {
     return ''
   }
-
-  const draftEligibility = getFinderOutreachDraftSessionEligibility(draft)
-
-  if (!draftEligibility.eligible) {
-    return ''
-  }
-
-  const candidateResult = await getFinderCandidateResultById(
-    draft.candidateResultId
-  )
-  const handoff = buildFinderOutreachDraftSessionHandoff(draft, candidateResult)
+  const handoff =
+    resolvedDraft.handoff ??
+    buildFinderOutreachDraftSessionHandoff(draft, resolvedDraft.candidateResult)
 
   if (!handoff.included) {
     return ''
   }
 
-  const relationshipMemory = buildFinderRelationshipMemory(draft)
+  const relationshipMemory =
+    resolvedDraft.relationshipMemory ?? buildFinderRelationshipMemory(draft)
+  const draftSourceLabel =
+    resolvedDraft.selectionMode === 'linked_selected_pack'
+      ? 'Linked outreach draft for selected pack'
+      : 'Selected outreach draft'
 
   const lines = [
+    `${draftSourceLabel}: ${draft.targetName}`,
     `Target: ${draft.targetName}`,
     `Opportunity: ${draft.opportunity}`,
     `Fit: ${draft.fitLabel}`,

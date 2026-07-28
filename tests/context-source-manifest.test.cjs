@@ -384,6 +384,58 @@ test('retrieves only explicitly selected pack ids when provided', async () => {
   }
 })
 
+test('strict selected retrieval falls back to the selected pack when query is generic', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-retrieval-fallback-'))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+
+  try {
+    const seeded = await service.addCounterpartyContextPacks([
+      {
+        sourceId: 'finder:job:fallback-001',
+        kind: 'job',
+        partnerName: 'Northfield Labs',
+        title: 'AI Product Lead',
+        summary: 'Selected interview pack for AI product leadership.',
+        context: 'Owner prepared this pack for a specific job conversation.',
+        links: ['https://example.com/northfield']
+      },
+      {
+        sourceId: 'finder:investor:fallback-002',
+        kind: 'investor',
+        partnerName: 'Cobalt Seed',
+        title: 'Investor context',
+        summary: 'Unrelated investor pack that should not appear.',
+        selected: false
+      }
+    ])
+
+    const selectedPack = seeded.manifest.counterpartyPacks.find(
+      (pack) => pack.sourceId === 'finder:job:fallback-001'
+    )
+
+    const retrieval = await service.getPersonalInterviewRetrieval(
+      'Can you introduce yourself briefly?',
+      'en',
+      ['job'],
+      [selectedPack?.id ?? '']
+    )
+
+    assert.match(retrieval, /Northfield Labs/)
+    assert.match(retrieval, /selected fallback/i)
+    assert.doesNotMatch(retrieval, /Cobalt Seed/)
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})
+
 test('future_vector retrieval uses only the strict selected candidate set', async () => {
   const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-vector-candidates-'))
   const filePath = path.join(directory, 'owner-profile.md')

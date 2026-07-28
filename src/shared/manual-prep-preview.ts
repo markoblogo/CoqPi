@@ -5,10 +5,9 @@ import type {
   SessionContext
 } from './app-types'
 import {
-  buildFinderOutreachDraftSessionHandoff,
-  buildFinderRelationshipMemory,
   getFinderOutreachDraftSessionDecision,
-  finderOutreachDraftSessionDecisionReasonLabels
+  finderOutreachDraftSessionDecisionReasonLabels,
+  resolveFinderSessionOutreachDraft,
 } from './finder-relationship-memory'
 import {
   evaluateCounterpartyPackQuality,
@@ -144,28 +143,17 @@ export const buildManualPrepPreview = ({
     pack,
     quality: evaluateCounterpartyPackQuality(pack)
   }))
-  const selectedOutreachDraft = context.selectedFinderOutreachDraftId
-    ? availableOutreachDrafts.find(
-        (draft) => draft.id === context.selectedFinderOutreachDraftId
-      )
-    : null
-  const selectedOutreachDraftCandidate = selectedOutreachDraft
-    ? availableFinderResults.find(
-        (candidate) => candidate.id === selectedOutreachDraft.candidateResultId
-      ) ?? null
-    : null
-  const selectedOutreachDraftDecision = selectedOutreachDraft
-    ? getFinderOutreachDraftSessionDecision(selectedOutreachDraft)
-    : null
-  const selectedOutreachDraftHandoff = selectedOutreachDraft
-    ? buildFinderOutreachDraftSessionHandoff(
-        selectedOutreachDraft,
-        selectedOutreachDraftCandidate
-      )
-    : null
-  const selectedOutreachRelationshipMemory = selectedOutreachDraft
-    ? buildFinderRelationshipMemory(selectedOutreachDraft)
-    : null
+  const resolvedOutreachDraft = resolveFinderSessionOutreachDraft({
+    selectedDraftId: context.selectedFinderOutreachDraftId,
+    selectedPackIds: selectedPacks.map((pack) => pack.id),
+    availablePacks,
+    availableFinderResults,
+    availableOutreachDrafts
+  })
+  const selectedOutreachDraft = resolvedOutreachDraft.draft
+  const selectedOutreachDraftDecision = resolvedOutreachDraft.decision
+  const selectedOutreachDraftHandoff = resolvedOutreachDraft.handoff
+  const selectedOutreachRelationshipMemory = resolvedOutreachDraft.relationshipMemory
   const worstQuality = selectedPackQualities
     .map(({ quality }) => quality)
     .sort((left, right) => levelRank[left.level] - levelRank[right.level])[0]
@@ -297,7 +285,11 @@ export const buildManualPrepPreview = ({
     selectedPackCount: packSummary.includedCount,
     selectedPackLabel,
     selectedOutreachDraftLabel: selectedOutreachDraft
-      ? `${selectedOutreachDraft.targetName} · ${selectedOutreachDraft.opportunity}`
+      ? `${
+          resolvedOutreachDraft.selectionMode === 'linked_selected_pack'
+            ? 'Linked: '
+            : ''
+        }${selectedOutreachDraft.targetName} · ${selectedOutreachDraft.opportunity}`
       : context.selectedFinderOutreachDraftId
         ? 'Missing selected draft'
         : 'No selected outreach draft',

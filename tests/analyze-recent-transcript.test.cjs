@@ -754,6 +754,101 @@ test('analyzeRecentTranscript assistant prompt matches session payload inspector
   )
 })
 
+test('analyzeRecentTranscript keeps selected pack context in prompt for generic self-intro question', async () => {
+  const observed = {
+    capturedPrompt: ''
+  }
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const imported =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:generic-retrieval-001',
+              partnerName: 'Northfield Labs',
+              title: 'AI Product Lead',
+              summary: 'Selected interview pack for AI product leadership.',
+              context:
+                'Owner prepared a concise version focused on product discovery, AI transformation and delivery leadership.'
+            }
+          ])
+
+        const selectedPack = imported.manifest.counterpartyPacks[0]
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'job',
+          label: 'Generic intro follow-up',
+          query: 'ai product lead france'
+        })
+        const job = afterJob.store.jobs[0]
+        const afterCandidate =
+          await services.finderSearchService.addFinderCandidateResult(job.id, {
+            sourceId: 'finder:job:generic-retrieval-001',
+            partnerName: 'Northfield Labs',
+            title: 'AI Product Lead',
+            summary: 'Linked draft should be used for broad intro questions.',
+            fitScore: 90,
+            whyRelevant: 'This target is already active in Finder.',
+            missingInfo: 'Need exact call timing.',
+            nextAction: 'Use short follow-up framing.'
+          })
+        const candidate = afterCandidate.store.results[0]
+        const afterDraft =
+          await services.finderSearchService.saveFinderOutreachDraft(candidate.id)
+        const draft = afterDraft.store.outreachDrafts[0]
+        await services.finderSearchService.setFinderOutreachDraftStatus(
+          draft.id,
+          'follow_up'
+        )
+        const persisted =
+          await services.sessionContextService.saveSessionContext({
+            company: 'Northfield Labs',
+            role: 'AI Product Lead',
+            context: 'Generic intro test',
+            goal: 'Keep selected pack visible even for broad questions.',
+            notes: 'No irrelevant fallback.',
+            selectedCounterpartyPackIds: [selectedPack.id],
+            selectedFinderOutreachDraftId: ''
+          })
+
+        return {
+          request: {
+            ...makeRequest(),
+            transcriptText: 'Can you briefly introduce yourself?',
+            sessionContext: persisted.context,
+            selectedCounterpartyPackIds: persisted.context.selectedCounterpartyPackIds
+          }
+        }
+      },
+      fetchHandler: async (_url, init) => {
+        const body = init.body ? JSON.parse(init.body) : {}
+        observed.capturedPrompt = body?.messages?.[1]?.content || ''
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Нужно кратко представить себя.',
+              detectedQuestion: 'Can you briefly introduce yourself?',
+              intent: 'generic self intro',
+              risk: 'low',
+              suggestedAnswers: [],
+              keywordsToRemember: ['intro', 'product', 'AI'],
+              openingPhrase: 'Sure.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.match(observed.capturedPrompt, /Northfield Labs/)
+  assert.match(observed.capturedPrompt, /selected fallback|matched/i)
+  assert.match(observed.capturedPrompt, /AI Product Lead/)
+  assert.match(observed.capturedPrompt, /Linked outreach draft for selected pack|Selected outreach draft/)
+})
+
 test('analyzeRecentTranscript prunes stale selected outreach draft from persisted session while keeping selected pack audit', async () => {
   const observed = {
     capturedPrompt: '',
@@ -1683,15 +1778,14 @@ test('analyzeRecentTranscript drops disabled selected finder pack and stays alig
         const importedPack = importResult.manifest.counterpartyPacks[0]
         disabledPack = importedPack
 
-        const selectedContext =
-          await services.sessionContextService.saveSessionContext({
-            company: 'Northfield Labs',
-            role: 'Senior Product Lead',
-            context: 'Finder import handoff',
-            goal: 'Check disabled pack does not reach assistant payload.',
-            notes: 'UI should still show why the pack was dropped.',
-            selectedCounterpartyPackIds: importedPack ? [importedPack.id] : []
-          })
+        await services.sessionContextService.saveSessionContext({
+          company: 'Northfield Labs',
+          role: 'Senior Product Lead',
+          context: 'Finder import handoff',
+          goal: 'Check disabled pack does not reach assistant payload.',
+          notes: 'UI should still show why the pack was dropped.',
+          selectedCounterpartyPackIds: importedPack ? [importedPack.id] : []
+        })
 
         const disabledManifest =
           await services.contextSourceService.setCounterpartyContextPackSelected(
@@ -1820,15 +1914,14 @@ test('analyzeRecentTranscript drops removed selected finder pack and stays align
         const importedPack = importResult.manifest.counterpartyPacks[0]
         removedPack = importedPack
 
-        const selectedContext =
-          await services.sessionContextService.saveSessionContext({
-            company: 'Northfield Labs',
-            role: 'Senior Product Lead',
-            context: 'Finder import handoff',
-            goal: 'Check removed pack does not reach assistant payload.',
-            notes: 'UI should still show the removed pack as dropped.',
-            selectedCounterpartyPackIds: importedPack ? [importedPack.id] : []
-          })
+        await services.sessionContextService.saveSessionContext({
+          company: 'Northfield Labs',
+          role: 'Senior Product Lead',
+          context: 'Finder import handoff',
+          goal: 'Check removed pack does not reach assistant payload.',
+          notes: 'UI should still show the removed pack as dropped.',
+          selectedCounterpartyPackIds: importedPack ? [importedPack.id] : []
+        })
 
         await services.contextSourceService.removeCounterpartyContextPack(
           importedPack.id

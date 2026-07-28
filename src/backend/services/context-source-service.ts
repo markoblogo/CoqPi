@@ -34,6 +34,11 @@ import {
   evaluateContextSourceReadiness
 } from '../../shared/knowledge-ingestion-quality'
 import { extractKnowledgeFieldsFromReadableText } from '../../shared/knowledge-extraction'
+import {
+  formatRetrievalQualityMatches,
+  rankRetrievalCandidates,
+  type RetrievalQualityCandidate
+} from '../../shared/retrieval-quality'
 import { buildVectorReadyRetrievalCandidateSet } from '../../shared/vector-ready-retrieval'
 import { getAppInfo } from './app-state'
 
@@ -1235,7 +1240,6 @@ export const getPersonalInterviewRetrieval = async (
       .filter((candidate) => candidate.type === 'context_source')
       .map((candidate) => candidate.id) ?? []
   )
-  const terms = query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []
   const capturedTextById = new Map<string, string>()
   for (const event of events) {
     if (event.type === 'content_captured' && event.retrievalReady && event.capturedText) {
@@ -1243,7 +1247,7 @@ export const getPersonalInterviewRetrieval = async (
     }
   }
 
-  const counterpartyMatches = manifest.counterpartyPacks
+  const counterpartyCandidates = manifest.counterpartyPacks
     .filter(
       (pack) =>
         retrievalProvider === 'future_vector'
@@ -1257,21 +1261,24 @@ export const getPersonalInterviewRetrieval = async (
               ? true
               : normalizedKinds.includes(pack.kind))
     )
-    .map((pack) => {
-      const packText = `${pack.partnerName}: ${pack.title}. ${pack.summary}. ${pack.context}`
-      const score = terms.reduce(
-        (total, term) => total + (packText.toLowerCase().includes(term) ? 1 : 0),
-        0
-      )
+    .map(
+      (pack): RetrievalQualityCandidate => ({
+        id: pack.id,
+        sourceId: pack.provenance.sourceId,
+        label: `${pack.partnerName} · ${pack.title}`,
+        kind: pack.kind,
+        fallbackPriority: 12,
+        sections: [
+          { label: 'partner', text: pack.partnerName, weight: 5 },
+          { label: 'title', text: pack.title, weight: 8 },
+          { label: 'summary', text: pack.summary, weight: 7 },
+          { label: 'context', text: pack.context, weight: 5 },
+          { label: 'links', text: pack.links.join(' '), weight: 1 }
+        ]
+      })
+    )
 
-      return {
-        source: pack,
-        text: packText,
-        score
-      }
-    })
-
-  const sourceMatches = manifest.sources
+  const sourceCandidates = manifest.sources
     .filter(
       (source) =>
         (retrievalProvider === 'future_vector'
@@ -1282,30 +1289,59 @@ export const getPersonalInterviewRetrieval = async (
         capturedTextById.has(source.id)
     )
     .map((source) => {
-      const text = capturedTextById.get(source.id) ?? ''
-      const score = terms.reduce(
-        (total, term) => total + (text.toLowerCase().includes(term) ? 1 : 0),
-        0
-      )
+      const extraction = source.extraction
+      const capturedText = capturedTextById.get(source.id) ?? ''
+      const capturedLines = capturedText
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .slice(0, 4)
 
-      return { source, text, score }
+      return {
+        id: source.id,
+        sourceId: source.provenance.sourceId,
+        label: source.label,
+        kind: source.kind,
+        fallbackPriority: 4,
+        sections: [
+          {
+            label: 'owner facts',
+            text: extraction?.ownerFacts.join(' | ') ?? '',
+            weight: 6
+          },
+          {
+            label: 'role facts',
+            text: extraction?.roleFacts.join(' | ') ?? '',
+            weight: 6
+          },
+          {
+            label: 'links',
+            text: extraction?.links.join(' ') ?? '',
+            weight: 1
+          },
+          {
+            label: 'dates',
+            text: extraction?.dates.join(' ') ?? '',
+            weight: 1
+          },
+          {
+            label: 'captured',
+            text: capturedLines.join(' | '),
+            weight: 3
+          }
+        ]
+      } satisfies RetrievalQualityCandidate
     })
-    .filter((match) => match.score > 0)
 
-  const matches = [...sourceMatches, ...counterpartyMatches]
-    .filter((match) => match.score > 0)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 3)
+  const retrieval = rankRetrievalCandidates({
+    query,
+    candidates: [...sourceCandidates, ...counterpartyCandidates],
+    limit: 3
+  })
 
-  if (matches.length === 0) {
+  if (retrieval.matches.length === 0) {
     return ''
   }
 
-  return matches
-    .map(
-      ({ source, text }) =>
-        `[${source.provenance.sourceId}] ${text.slice(0, 900)}`
-    )
-    .join('\n\n')
-    .slice(0, 2200)
+  return formatRetrievalQualityMatches(retrieval, 2200)
 }

@@ -2,6 +2,7 @@ import type {
   FinderCandidateDecisionState,
   FinderCandidateResult,
   FinderOutreachDraft,
+  FinderOutreachDraftStatus,
   CounterpartyContextPack,
   CounterpartyContextPackDraft,
   SessionContext
@@ -175,7 +176,158 @@ export type FinderQueueSessionEffect = {
   selectedPackIdsAdded: string[]
   selectedPackIdsRemoved: string[]
   clearedSelectedDraftId: string | null
+  selectedDraftIdChanged: boolean
   changed: boolean
+}
+
+const getEligiblePackIdBySourceKey = (
+  availablePacks: CounterpartyContextPack[]
+) =>
+  new Map(
+    availablePacks.filter(isSessionEligibleCounterpartyPack).map((pack) => [
+      buildCounterpartySourceKey(pack.sourceId, pack.kind),
+      pack.id
+    ])
+  )
+
+const getSessionSelectedPackIdSet = (
+  context: SessionContext,
+  availablePacks: CounterpartyContextPack[]
+) => new Set(getSessionSelectedCounterpartyPackIds(context, availablePacks))
+
+const buildFinderQueueSessionEffect = ({
+  selectedPackIds,
+  selectedPackIdsBefore,
+  selectedDraftId,
+  nextSelectedDraftId
+}: {
+  selectedPackIds: Set<string>
+  selectedPackIdsBefore: Set<string>
+  selectedDraftId: string
+  nextSelectedDraftId: string
+}): FinderQueueSessionEffect => {
+  const selectedPackIdsAdded = [...selectedPackIds].filter(
+    (id) => !selectedPackIdsBefore.has(id)
+  )
+  const selectedPackIdsRemoved = [...selectedPackIdsBefore].filter(
+    (id) => !selectedPackIds.has(id)
+  )
+  const clearedSelectedDraftId =
+    selectedDraftId && nextSelectedDraftId !== selectedDraftId
+      ? selectedDraftId
+      : null
+  const selectedDraftIdChanged = nextSelectedDraftId !== selectedDraftId
+
+  return {
+    selectedPackIdsAdded,
+    selectedPackIdsRemoved,
+    clearedSelectedDraftId,
+    selectedDraftIdChanged,
+    changed:
+      selectedPackIdsAdded.length > 0 ||
+      selectedPackIdsRemoved.length > 0 ||
+      selectedDraftIdChanged
+  }
+}
+
+const draftStatusAttachesPack = (status: FinderOutreachDraftStatus) =>
+  status === 'ready_for_contact' ||
+  status === 'contacted' ||
+  status === 'waiting' ||
+  status === 'follow_up'
+
+export const reconcileSessionContextWithFinderOutreachDraftSelection = ({
+  context,
+  availablePacks,
+  draft
+}: {
+  context: SessionContext
+  availablePacks: CounterpartyContextPack[]
+  draft: FinderOutreachDraft
+}): {
+  context: SessionContext
+  effect: FinderQueueSessionEffect
+} => {
+  const selectedPackIds = getSessionSelectedPackIdSet(context, availablePacks)
+  const selectedPackIdsBefore = new Set(selectedPackIds)
+  const selectedDraftId = context.selectedFinderOutreachDraftId.trim()
+  const nextSelectedDraftId = draft.status === 'closed' ? '' : draft.id
+  const eligiblePackBySourceKey = getEligiblePackIdBySourceKey(availablePacks)
+
+  if (draftStatusAttachesPack(draft.status) || draft.status === 'draft') {
+    const packId = eligiblePackBySourceKey.get(
+      buildCounterpartySourceKey(draft.sourceId, draft.kind)
+    )
+    if (packId) {
+      selectedPackIds.add(packId)
+    }
+  }
+
+  const effect = buildFinderQueueSessionEffect({
+    selectedPackIds,
+    selectedPackIdsBefore,
+    selectedDraftId,
+    nextSelectedDraftId
+  })
+
+  return {
+    context: {
+      ...context,
+      selectedCounterpartyPackIds: [...selectedPackIds],
+      selectedFinderOutreachDraftId: nextSelectedDraftId
+    },
+    effect
+  }
+}
+
+export const reconcileSessionContextWithFinderOutreachDraftStatus = ({
+  context,
+  availablePacks,
+  affectedDrafts,
+  nextStatus
+}: {
+  context: SessionContext
+  availablePacks: CounterpartyContextPack[]
+  affectedDrafts: readonly FinderOutreachDraft[]
+  nextStatus: FinderOutreachDraftStatus
+}): {
+  context: SessionContext
+  effect: FinderQueueSessionEffect
+} => {
+  const selectedPackIds = getSessionSelectedPackIdSet(context, availablePacks)
+  const selectedPackIdsBefore = new Set(selectedPackIds)
+  const selectedDraftId = context.selectedFinderOutreachDraftId.trim()
+  const eligiblePackBySourceKey = getEligiblePackIdBySourceKey(availablePacks)
+  const selectedDraft = selectedDraftId
+    ? affectedDrafts.find((draft) => draft.id === selectedDraftId) ?? null
+    : null
+  const nextSelectedDraftId =
+    nextStatus === 'closed' && selectedDraft ? '' : selectedDraftId
+
+  if (selectedDraft && draftStatusAttachesPack(nextStatus)) {
+    const packId = eligiblePackBySourceKey.get(
+      buildCounterpartySourceKey(selectedDraft.sourceId, selectedDraft.kind)
+    )
+    if (packId) {
+      selectedPackIds.add(packId)
+    }
+  }
+
+  const effect = buildFinderQueueSessionEffect({
+    selectedPackIds,
+    selectedPackIdsBefore,
+    selectedDraftId,
+    nextSelectedDraftId
+  })
+
+  return {
+    context: {
+      ...context,
+      selectedCounterpartyPackIds: [...selectedPackIds],
+      selectedFinderOutreachDraftId: nextSelectedDraftId
+    },
+    effect
+  }
 }
 
 export const reconcileSessionContextWithFinderQueueDecision = ({
@@ -194,9 +346,7 @@ export const reconcileSessionContextWithFinderQueueDecision = ({
   context: SessionContext
   effect: FinderQueueSessionEffect
 } => {
-  const selectedPackIds = new Set(
-    getSessionSelectedCounterpartyPackIds(context, availablePacks)
-  )
+  const selectedPackIds = getSessionSelectedPackIdSet(context, availablePacks)
   const selectedPackIdsBefore = new Set(selectedPackIds)
   const selectedDraftId = context.selectedFinderOutreachDraftId.trim()
   const affectedCandidateIds = new Set(affectedResults.map((result) => result.id))
@@ -205,12 +355,7 @@ export const reconcileSessionContextWithFinderQueueDecision = ({
       buildCounterpartySourceKey(result.sourceId, result.kind)
     )
   )
-  const eligiblePackBySourceKey = new Map(
-    availablePacks.filter(isSessionEligibleCounterpartyPack).map((pack) => [
-      buildCounterpartySourceKey(pack.sourceId, pack.kind),
-      pack.id
-    ])
-  )
+  const eligiblePackBySourceKey = getEligiblePackIdBySourceKey(availablePacks)
   const selectedDraft = selectedDraftId
     ? availableOutreachDrafts.find((draft) => draft.id === selectedDraftId) ?? null
     : null
@@ -224,7 +369,7 @@ export const reconcileSessionContextWithFinderQueueDecision = ({
     }
   }
 
-  if (nextDecisionState === 'rejected') {
+  if (nextDecisionState === 'hold_later' || nextDecisionState === 'rejected') {
     for (const key of affectedSourceKeys) {
       const packId = eligiblePackBySourceKey.get(key)
       if (packId) {
@@ -240,16 +385,12 @@ export const reconcileSessionContextWithFinderQueueDecision = ({
       ? ''
       : selectedDraftId
 
-  const selectedPackIdsAdded = [...selectedPackIds].filter(
-    (id) => !selectedPackIdsBefore.has(id)
-  )
-  const selectedPackIdsRemoved = [...selectedPackIdsBefore].filter(
-    (id) => !selectedPackIds.has(id)
-  )
-  const clearedSelectedDraftId =
-    selectedDraftId && nextSelectedDraftId !== selectedDraftId
-      ? selectedDraftId
-      : null
+  const effect = buildFinderQueueSessionEffect({
+    selectedPackIds,
+    selectedPackIdsBefore,
+    selectedDraftId,
+    nextSelectedDraftId
+  })
 
   return {
     context: {
@@ -257,14 +398,6 @@ export const reconcileSessionContextWithFinderQueueDecision = ({
       selectedCounterpartyPackIds: [...selectedPackIds],
       selectedFinderOutreachDraftId: nextSelectedDraftId
     },
-    effect: {
-      selectedPackIdsAdded,
-      selectedPackIdsRemoved,
-      clearedSelectedDraftId,
-      changed:
-        selectedPackIdsAdded.length > 0 ||
-        selectedPackIdsRemoved.length > 0 ||
-        clearedSelectedDraftId !== null
-    }
+    effect
   }
 }

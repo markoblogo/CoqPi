@@ -636,13 +636,6 @@ const normalizeSourceLine = (value: string) =>
     240
   )
 
-const formatLocationLabel = (...parts: Array<string | undefined>) =>
-  parts
-    .map((value) => sanitizeText(value, 160))
-    .filter(Boolean)
-    .filter((value, index, list) => list.indexOf(value) === index)
-    .join(', ')
-
 const getDeadlineFromText = (text: string) =>
   sanitizeText(
     text.match(
@@ -1111,22 +1104,18 @@ const detectOwnerSourceFormat = ({
 const buildOwnerSourceParsedView = ({
   job,
   index,
-  normalizedEntry,
   lines,
   headline,
   fields,
   firstUrl,
-  links,
   contact
 }: {
   job: FinderSearchJob
   index: number
-  normalizedEntry: string
   lines: string[]
   headline: string
   fields: OwnerSourceFields
   firstUrl: URL | null
-  links: string[]
   contact: string
 }) => {
   const detectedFormat = detectOwnerSourceFormat({
@@ -1518,12 +1507,10 @@ export const createFinderCandidatesFromOwnerPastedSource = (
     const parsed = buildOwnerSourceParsedView({
       job,
       index,
-      normalizedEntry,
       lines,
       headline,
       fields,
       firstUrl,
-      links,
       contact
     })
     const summary = [

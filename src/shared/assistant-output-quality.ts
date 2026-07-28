@@ -14,6 +14,28 @@ export type AssistantOutputQualityExpectation = {
   forbiddenTerms?: string[]
 }
 
+export type AssistantOutputQualityLevel =
+  | 'not_ready'
+  | 'needs_attention'
+  | 'ready'
+
+export type AssistantOutputQualitySummary = {
+  level: AssistantOutputQualityLevel
+  headline: string
+  detail: string
+  issueCount: number
+  issues: AssistantOutputQualityIssue[]
+}
+
+export type AssistantOutputQualitySummaryInput = {
+  result: AssistantAnalysisResult
+  expectation: AssistantOutputQualityExpectation
+  freshness: 'fresh' | 'stale' | 'waiting'
+  selectedPackCount: number
+  payloadWarningCount?: number
+  ignoredFinalOtherCount?: number
+}
+
 const hasCyrillic = (value: string) => /[А-Яа-яЁё]/.test(value)
 const hasLatin = (value: string) => /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(value)
 
@@ -136,4 +158,82 @@ export const validateAssistantOutputQuality = (
   }
 
   return issues
+}
+
+export const buildAssistantOutputQualitySummary = ({
+  result,
+  expectation,
+  freshness,
+  selectedPackCount,
+  payloadWarningCount = 0,
+  ignoredFinalOtherCount = 0
+}: AssistantOutputQualitySummaryInput): AssistantOutputQualitySummary => {
+  const hasAnyVisibleOutput =
+    result.meaningRu.trim().length > 0 ||
+    result.detectedQuestion.trim().length > 0 ||
+    result.suggestedAnswers.length > 0
+
+  if (!hasAnyVisibleOutput || freshness === 'waiting') {
+    return {
+      level: 'not_ready',
+      headline: 'No communication probe yet',
+      detail:
+        'Run one mock or realtime utterance and wait for a fresh assistant answer.',
+      issueCount: 0,
+      issues: []
+    }
+  }
+
+  const issues = validateAssistantOutputQuality(result, expectation)
+
+  if (freshness !== 'fresh') {
+    issues.unshift({
+      field: 'freshness',
+      reason: 'Visible assistant answer is stale against the latest relevant line.'
+    })
+  }
+
+  if (selectedPackCount === 0) {
+    issues.unshift({
+      field: 'payload',
+      reason: 'No selected context pack is currently included for this session.'
+    })
+  }
+
+  if (payloadWarningCount > 0) {
+    issues.push({
+      field: 'payload',
+      reason: `Current payload drops ${payloadWarningCount} selected context item${
+        payloadWarningCount === 1 ? '' : 's'
+      }.`
+    })
+  }
+
+  if (ignoredFinalOtherCount > 0) {
+    issues.push({
+      field: 'scope',
+      reason: `Ignored ${ignoredFinalOtherCount} final other-speaker line${
+        ignoredFinalOtherCount === 1 ? '' : 's'
+      } outside EN/FR or below threshold.`
+    })
+  }
+
+  if (issues.length === 0) {
+    return {
+      level: 'ready',
+      headline: 'Communication quality looks ready',
+      detail:
+        'Assistant answer is fresh, short, and structurally ready for a real-call probe.',
+      issueCount: 0,
+      issues: []
+    }
+  }
+
+  return {
+    level: 'needs_attention',
+    headline: 'Communication quality needs review',
+    detail: issues[0]?.reason ?? 'Review the latest assistant answer before a real call.',
+    issueCount: issues.length,
+    issues
+  }
 }

@@ -149,6 +149,36 @@ test('manual prep preview marks ineligible draft when status is closed', () => {
   )
 })
 
+test('manual prep preview auto-links follow-up draft from selected pack when no explicit draft is selected', () => {
+  const preview = buildManualPrepPreview({
+    context: makeContext({
+      selectedCounterpartyPackIds: ['pack-A'],
+      selectedFinderOutreachDraftId: ''
+    }),
+    availablePacks: [makePack()],
+    availableFinderResults: [
+      makeCandidateResult({
+        decision: {
+          state: 'import_now',
+          updatedAt: '2026-07-28T10:00:00.000Z'
+        }
+      })
+    ],
+    availableOutreachDrafts: [
+      makeDraft({
+        status: 'follow_up',
+        nextAction: 'Prepare the next follow-up question about AI delivery.'
+      })
+    ],
+    includeProfileContext: true,
+    profileChars: 120
+  })
+
+  assert.match(preview.selectedOutreachDraftLabel, /^Linked: /)
+  assert.equal(preview.selectedOutreachDraftHandoffState, 'follow_up')
+  assert.match(preview.selectedOutreachDraftHandoffLabel, /follow-up|waiting|contact/i)
+})
+
 test('manual prep preview shows relationship memory for selected outreach draft', () => {
   const preview = buildManualPrepPreview({
     context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),

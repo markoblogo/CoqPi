@@ -5,12 +5,12 @@ import type {
   SessionContext
 } from './app-types'
 import {
-  buildFinderOutreachDraftSessionHandoff,
   buildFinderRelationshipMemory,
   finderOutreachDraftSessionIneligibilityReasonLabels,
   finderOutreachDraftSessionDecisionKindLabels,
   finderOutreachDraftSessionDecisionReasonLabels,
   getFinderOutreachDraftSessionDecision,
+  resolveFinderSessionOutreachDraft,
 } from './finder-relationship-memory'
 import {
   counterpartyPackSessionIneligibilityReasonLabels,
@@ -218,34 +218,32 @@ export const buildSessionPayloadInspector = ({
   }
 
   const selectedDraftId = context.selectedFinderOutreachDraftId.trim()
-  const selectedDraft = selectedDraftId
-    ? availableOutreachDrafts.find((draft) => draft.id === selectedDraftId)
-    : null
-  const selectedDraftCandidate = selectedDraft
-    ? availableFinderResults.find(
-        (candidate) => candidate.id === selectedDraft.candidateResultId
-      ) ?? null
-    : null
-  const selectedDraftDecision = selectedDraft
-    ? getFinderOutreachDraftSessionDecision(selectedDraft)
-    : null
-  const selectedDraftHandoff = selectedDraft
-    ? buildFinderOutreachDraftSessionHandoff(
-        selectedDraft,
-        selectedDraftCandidate
-      )
-    : null
+  const resolvedDraft = resolveFinderSessionOutreachDraft({
+    selectedDraftId,
+    selectedPackIds: includedPacks.map((pack) => pack.id),
+    availablePacks,
+    availableFinderResults,
+    availableOutreachDrafts
+  })
+  const selectedDraft = resolvedDraft.draft
+  const selectedDraftDecision = resolvedDraft.decision
+  const selectedDraftHandoff = resolvedDraft.handoff
   const includedOutreachDraft: SessionPayloadDraftItem | null = selectedDraft
     ? selectedDraftDecision?.kind !== 'ineligible' &&
       selectedDraftHandoff?.included !== false
       ? (() => {
-        const relationshipMemory = buildFinderRelationshipMemory(selectedDraft)
+        const relationshipMemory =
+          resolvedDraft.relationshipMemory ??
+          buildFinderRelationshipMemory(selectedDraft)
 
         return {
           id: selectedDraft.id,
           label: formatDraftLabel(selectedDraft),
           status: 'included',
-          reason: 'selected local outreach draft',
+          reason:
+            resolvedDraft.selectionMode === 'linked_selected_pack'
+              ? 'linked local outreach draft from selected pack'
+              : 'selected local outreach draft',
           relationshipStatusLabel: relationshipMemory.statusLabel,
           lastContactLabel: relationshipMemory.lastContactLabel,
           followUpContextLabel: relationshipMemory.followUpContextLabel,

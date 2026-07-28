@@ -50,6 +50,8 @@ import {
   buildLiveTestCockpitItems,
   buildAutoAnalysisSchedule,
   getAutoAnalysisTranscriptUtterances,
+  getIgnoredAutoAnalysisUtterances,
+  getAutoAnalysisIgnoreReasonLabel,
   getAutoAnalysisUtteranceEligibility,
   getLatestAutoAnalysisUtterance,
   isRetryButtonDisabled,
@@ -106,6 +108,8 @@ import {
   buildCounterpartySourceKey,
   getSessionContextWithImportedCounterpartyPacks,
   getSessionContextWithCounterpartyPacks,
+  reconcileSessionContextWithFinderOutreachDraftSelection,
+  reconcileSessionContextWithFinderOutreachDraftStatus,
   reconcileSessionContextWithFinderQueueDecision,
 } from '@shared/session-pack-selection'
 import {
@@ -116,6 +120,12 @@ import {
 import {
   buildSmokeReadinessPack
 } from '@shared/smoke-readiness-pack'
+import {
+  buildAssistantOutputQualitySummary
+} from '@shared/assistant-output-quality'
+import {
+  buildSmokeExecutionDiagnostics
+} from '@shared/smoke-execution-diagnostics'
 import {
   buildSmokeFixQueue
 } from '@shared/smoke-fix-queue'
@@ -1802,6 +1812,16 @@ export const App = () => {
     }
   }
 
+  const captureSmokeExecutionToDraft = () => {
+    setSmokeNoteError(null)
+    setSmokeNoteNotice('Smoke note draft filled from current execution state.')
+    setSmokeNoteDraft({
+      worked: smokeExecutionDiagnostics.notePrefill.worked,
+      broken: smokeExecutionDiagnostics.notePrefill.broken,
+      nextFix: smokeExecutionDiagnostics.notePrefill.nextFix
+    })
+  }
+
   const copySmokeReport = async (note: SmokeTestNote) => {
     setSmokeNoteError(null)
     setSmokeNoteNotice(null)
@@ -2329,28 +2349,6 @@ export const App = () => {
     }
   }
 
-  const setFinderCandidateStatus = async (
-    resultId: string,
-    status: FinderCandidateResult['status']
-  ) => {
-    setFinderSearchError(null)
-    setFinderSearchNotice(null)
-
-    try {
-      const payload = await window.coqpi.finderSearch.setCandidateStatus(
-        resultId,
-        status
-      )
-      applyFinderSearchStore(payload.store)
-    } catch (error) {
-      setFinderSearchError(
-        error instanceof Error
-          ? error.message
-          : 'Unable to update finder candidate status.'
-      )
-    }
-  }
-
   const setFinderCandidateDecision = async (
     resultId: string,
     state: FinderCandidateDecisionState,
@@ -2402,7 +2400,11 @@ export const App = () => {
 
       setFinderSearchNotice(
         state === 'hold_later'
-          ? 'Candidate marked to review later.'
+          ? effect.selectedPackIdsRemoved.length > 0
+            ? `Candidate marked to review later. ${effect.selectedPackIdsRemoved.length} session pack${
+                effect.selectedPackIdsRemoved.length === 1 ? ' was' : 's were'
+              } removed from live handoff.`
+            : 'Candidate marked to review later.'
           : state === 'rejected'
           ? effect.changed
             ? 'Candidate rejected with reason. Session selection was updated.'
@@ -2604,8 +2606,48 @@ export const App = () => {
         status
       )
       applyFinderSearchStore(payload.store)
+      const affectedDrafts = payload.store.outreachDrafts.filter(
+        (draft) => draft.id === draftId
+      )
+      const {
+        context: nextContext,
+        effect
+      } = reconcileSessionContextWithFinderOutreachDraftStatus({
+        context: sessionContext,
+        availablePacks: counterpartyPacks,
+        affectedDrafts,
+        nextStatus: status
+      })
+
+      if (effect.changed) {
+        setSessionContext(nextContext)
+        setSessionContextDraft(nextContext)
+        setActiveSessionDroppedPackAudit([])
+        setDraftSessionDroppedPackAudit([])
+
+        try {
+          const saved = await window.coqpi.session.saveContext(nextContext)
+          setSessionContext(saved.context)
+          setSessionContextDraft(saved.context)
+        } catch (error) {
+          setSessionContextError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to save session updates after outreach draft status change.'
+          )
+        }
+      }
+
       setFinderSearchNotice(
-        `Draft moved to ${finderOutreachDraftStatusLabels[status]}.`
+        `Draft moved to ${finderOutreachDraftStatusLabels[status]}.${
+          effect.clearedSelectedDraftId
+            ? ' Selected session draft was cleared.'
+            : effect.selectedPackIdsAdded.length > 0
+              ? ` ${effect.selectedPackIdsAdded.length} matching session pack${
+                  effect.selectedPackIdsAdded.length === 1 ? ' was' : 's were'
+                } attached.`
+              : ''
+        }`
       )
     } catch (error) {
       setFinderSearchError(
@@ -2647,10 +2689,52 @@ export const App = () => {
         applyFinderSearchStore(latestStore)
       }
 
+      const affectedDraftIds = new Set(targetDrafts.map((draft) => draft.id))
+      const affectedDrafts =
+        latestStore?.outreachDrafts.filter((draft) =>
+          affectedDraftIds.has(draft.id)
+        ) ?? []
+      const {
+        context: nextContext,
+        effect
+      } = reconcileSessionContextWithFinderOutreachDraftStatus({
+        context: sessionContext,
+        availablePacks: counterpartyPacks,
+        affectedDrafts,
+        nextStatus: status
+      })
+
+      if (effect.changed) {
+        setSessionContext(nextContext)
+        setSessionContextDraft(nextContext)
+        setActiveSessionDroppedPackAudit([])
+        setDraftSessionDroppedPackAudit([])
+
+        try {
+          const saved = await window.coqpi.session.saveContext(nextContext)
+          setSessionContext(saved.context)
+          setSessionContextDraft(saved.context)
+        } catch (error) {
+          setSessionContextError(
+            error instanceof Error
+              ? error.message
+              : 'Unable to save session updates after outreach draft status changes.'
+          )
+        }
+      }
+
       setFinderSearchNotice(
         `${targetDrafts.length} draft${
           targetDrafts.length === 1 ? '' : 's'
-        } moved to ${finderOutreachDraftStatusLabels[status]}.`
+        } moved to ${finderOutreachDraftStatusLabels[status]}.${
+          effect.clearedSelectedDraftId
+            ? ' Selected session draft was cleared.'
+            : effect.selectedPackIdsAdded.length > 0
+              ? ` ${effect.selectedPackIdsAdded.length} matching session pack${
+                  effect.selectedPackIdsAdded.length === 1 ? ' was' : 's were'
+                } attached.`
+              : ''
+        }`
       )
     } catch (error) {
       setFinderSearchError(
@@ -3207,16 +3291,25 @@ export const App = () => {
     setFinderSearchNotice(null)
 
     try {
-      const nextContext = {
-        ...sessionContext,
-        selectedFinderOutreachDraftId: draft.id
-      }
+      const { context: nextContext, effect } =
+        reconcileSessionContextWithFinderOutreachDraftSelection({
+          context: sessionContext,
+          availablePacks: counterpartyPacks,
+          draft
+        })
       const payload = await window.coqpi.session.saveContext(nextContext)
 
       setSessionContext(payload.context)
       setSessionContextDraft(payload.context)
-      setSessionContextNotice('Outreach draft attached to session prep.')
-      setFinderSearchNotice('Outreach draft attached to session prep.')
+      const notice = `Outreach draft attached to session prep.${
+        effect.selectedPackIdsAdded.length > 0
+          ? ` ${effect.selectedPackIdsAdded.length} matching pack${
+              effect.selectedPackIdsAdded.length === 1 ? ' was' : 's were'
+            } attached for the same target.`
+          : ''
+      }`
+      setSessionContextNotice(notice)
+      setFinderSearchNotice(notice)
     } catch (error) {
       const message =
         error instanceof Error
@@ -4332,6 +4425,11 @@ export const App = () => {
     ),
     30
   )
+  const ignoredAutoAnalysisUtterances = getIgnoredAutoAnalysisUtterances(
+    transcriptUtterances,
+    assistantCallLanguage
+  )
+  const lastIgnoredAutoAnalysisUtterance = ignoredAutoAnalysisUtterances.at(-1)
   const setSmokeChecklistMark = (
     stepId: SmokeChecklistStepId,
     mark: SmokeChecklistMark
@@ -4371,6 +4469,39 @@ export const App = () => {
     preparePackReviewFilter
   )
   const selectedCounterpartyPacksLabel = activeSessionPackSummary.label
+  const buildCockpitPayloadDetail = (inspector: SessionPayloadInspector) => {
+    const parts: string[] = []
+    const includedPackLabels = inspector.includedPacks
+      .slice(0, 2)
+      .map((pack) => pack.label)
+    const droppedPackDetails = inspector.droppedPacks
+      .slice(0, 2)
+      .map((pack) => `${pack.label}: ${pack.reason}`)
+
+    parts.push(
+      includedPackLabels.length > 0
+        ? `in ${includedPackLabels.join(' + ')}`
+        : 'in no pack'
+    )
+
+    if (inspector.includedOutreachDraft) {
+      parts.push(
+        `draft ${inspector.includedOutreachDraft.label} (${inspector.includedOutreachDraft.handoffLabel ?? inspector.includedOutreachDraft.reason})`
+      )
+    } else if (inspector.droppedOutreachDraft) {
+      parts.push(
+        `draft dropped: ${inspector.droppedOutreachDraft.label} (${inspector.droppedOutreachDraft.reason})`
+      )
+    } else {
+      parts.push('draft none')
+    }
+
+    if (droppedPackDetails.length > 0) {
+      parts.push(`drop ${droppedPackDetails.join(' | ')}`)
+    }
+
+    return parts.join(' · ')
+  }
   const liveTestCockpitItems = buildLiveTestCockpitItems({
     callLanguage: assistantCallLanguage,
     realtimeLabel:
@@ -4380,16 +4511,38 @@ export const App = () => {
     selectedPackLabel: activeSessionPackSummary.label,
     selectedPackState: activeSessionPackSummary.state,
     currentPayloadSummary: activeSessionPayloadInspector.summaryLabel,
+    currentPayloadDetail: buildCockpitPayloadDetail(
+      activeSessionPayloadInspector
+    ),
     currentPayloadHasWarnings: activeSessionPayloadInspector.warningCount > 0,
-    selectedPackCount: activeSessionPackSummary.includedCount,
     transcriptUtterances,
     latestRelevantUtteranceId: assistantRelevantLastUtterance?.id,
     lastAnalyzedUtteranceId,
     lastAnalyzePayloadSummary: lastAnalyzePayloadInspector?.summaryLabel ?? '',
+    lastAnalyzePayloadDetail: lastAnalyzePayloadInspector
+      ? buildCockpitPayloadDetail(lastAnalyzePayloadInspector)
+      : 'No analyze payload captured yet.',
     lastAnalyzePayloadHasWarnings:
       (lastAnalyzePayloadInspector?.warningCount ?? 0) > 0,
     lastAnalyzeTranscriptText,
     cooldownRemainingSeconds
+  })
+  const assistantOutputFreshness = assistantRelevantLastUtterance?.id
+    ? lastAnalyzedUtteranceId === assistantRelevantLastUtterance.id
+      ? 'fresh'
+      : 'stale'
+    : 'waiting'
+  const assistantOutputQualitySummary = buildAssistantOutputQualitySummary({
+    result: assistantResult,
+    expectation: {
+      answerLanguage: toAssistantAnswerLanguage(controls.answerLanguage)
+    },
+    freshness: assistantOutputFreshness,
+    selectedPackCount: activeSessionPackSummary.includedCount,
+    payloadWarningCount:
+      activeSessionPayloadInspector.warningCount +
+      (lastAnalyzePayloadInspector?.warningCount ?? 0),
+    ignoredFinalOtherCount: ignoredAutoAnalysisUtterances.length
   })
   const smokeChecklistSummary = buildSmokeChecklistSummary(
     {
@@ -4398,11 +4551,7 @@ export const App = () => {
       transcriptCount: transcriptUtterances.length,
       autoWindowChars: autoAnalysisTranscriptText.trim().length,
       assistantLabel: assistantStatus.label,
-      assistantFreshness: assistantRelevantLastUtterance?.id
-        ? lastAnalyzedUtteranceId === assistantRelevantLastUtterance.id
-          ? 'fresh'
-          : 'stale'
-        : 'waiting',
+      assistantFreshness: assistantOutputFreshness,
       selectedPackCount: activeSessionPackSummary.includedCount,
       realtimeReady: isRealtimeReady
     },
@@ -4422,12 +4571,47 @@ export const App = () => {
     mockModeEnabled: isMockModeEnabled,
     transcriptCount: transcriptUtterances.length,
     autoWindowChars: autoAnalysisTranscriptText.trim().length,
-    assistantFreshness: assistantRelevantLastUtterance?.id
-      ? lastAnalyzedUtteranceId === assistantRelevantLastUtterance.id
-        ? 'fresh'
-        : 'stale'
-      : 'waiting',
+    assistantFreshness: assistantOutputFreshness,
+    assistantQualityLevel: assistantOutputQualitySummary.level,
+    assistantQualityDetail: assistantOutputQualitySummary.detail,
     realtimeReady: isRealtimeReady
+  })
+  const smokeExecutionDiagnostics = buildSmokeExecutionDiagnostics({
+    audioPermissionStatus,
+    hasSelectedAudioDevice: Boolean(selectedAudioDeviceId),
+    audioLevelStatus: audioLevel.status,
+    realtimeStatus,
+    realtimeHealthLabel,
+    realtimeElapsedSeconds: Math.round(realtimeMinutes * 60),
+    realtimeError,
+    lastSanitizedRealtimeError,
+    transcriptCount: transcriptUtterances.length,
+    eligibleTranscriptCount: getAutoAnalysisTranscriptUtterances(
+      transcriptUtterances,
+      assistantCallLanguage
+    ).length,
+    ignoredTranscriptCount: ignoredAutoAnalysisUtterances.length,
+    lastIgnoredReasonLabel: lastIgnoredAutoAnalysisUtterance
+      ? getAutoAnalysisIgnoreReasonLabel(
+          getAutoAnalysisUtteranceEligibility(
+            lastIgnoredAutoAnalysisUtterance,
+            assistantCallLanguage
+          ).reason
+        )
+      : null,
+    lastIgnoredText: lastIgnoredAutoAnalysisUtterance?.text ?? null,
+    assistantFreshness: assistantOutputFreshness,
+    assistantError,
+    assistantErrorCode,
+    assistantStatusLabel: assistantStatus.label,
+    assistantQualityLevel: assistantOutputQualitySummary.level,
+    assistantQualityDetail: assistantOutputQualitySummary.detail,
+    selectedPackCount: activeSessionPackSummary.includedCount,
+    currentPayloadWarningCount: activeSessionPayloadInspector.warningCount,
+    lastAnalyzePayloadWarningCount: lastAnalyzePayloadInspector?.warningCount ?? 0,
+    realtimeEventCounters,
+    realtimeLifecycleLog,
+    realtimeEventTypes
   })
   const smokeFixQueue = buildSmokeFixQueue(smokeNotes)
   const canResetForTest =
@@ -4552,7 +4736,13 @@ export const App = () => {
                   <span>{utterance.isFinal ? 'Final' : 'Partial'}</span>
                   {eligibility && !eligibility.eligible ? (
                     <span className="transcript-ignore-badge">
-                      ignored for auto
+                      ignored: {eligibility.reason === 'unsupported-language'
+                        ? 'non EN/FR'
+                        : eligibility.reason === 'too-short-transcript'
+                          ? 'too short'
+                          : eligibility.reason === 'low-signal-transcript'
+                            ? 'low signal'
+                            : 'auto'}
                     </span>
                   ) : null}
                 </div>
@@ -4710,6 +4900,7 @@ export const App = () => {
         >
           <span>{item.label}</span>
           <strong>{item.value}</strong>
+          {item.detail ? <p>{item.detail}</p> : null}
         </div>
       ))}
     </section>
@@ -5057,6 +5248,32 @@ export const App = () => {
                 </div>
               ))}
             </div>
+            <div
+              className={`communication-quality communication-quality-${assistantOutputQualitySummary.level}`}
+            >
+              <div className="communication-quality-header">
+                <div>
+                  <strong>{assistantOutputQualitySummary.headline}</strong>
+                  <span>{assistantOutputQualitySummary.detail}</span>
+                </div>
+                <span>
+                  {assistantOutputQualitySummary.level.replaceAll('_', ' ')}
+                </span>
+              </div>
+              {assistantOutputQualitySummary.issues.length > 0 ? (
+                <ul className="communication-quality-list">
+                  {assistantOutputQualitySummary.issues
+                    .slice(0, 4)
+                    .map((issue, index) => (
+                      <li key={`${issue.field}-${index}`}>{issue.reason}</li>
+                    ))}
+                </ul>
+              ) : (
+                <div className="communication-quality-ok">
+                  Fresh answer, selected session context, and short speakable output are in place.
+                </div>
+              )}
+            </div>
             <div className="smoke-readiness-scenario">
               {smokeReadinessPack.scenario.map((step) => (
                 <div
@@ -5083,6 +5300,47 @@ export const App = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+          <div
+            className={`smoke-execution smoke-execution-${smokeExecutionDiagnostics.status}`}
+          >
+            <div className="smoke-execution-header">
+              <div>
+                <strong>{smokeExecutionDiagnostics.headline}</strong>
+                <span>{smokeExecutionDiagnostics.summary}</span>
+              </div>
+              <button
+                className="secondary-button"
+                onClick={captureSmokeExecutionToDraft}
+                type="button"
+              >
+                Capture current state
+              </button>
+            </div>
+            {smokeExecutionDiagnostics.firstFailure ? (
+              <div className="smoke-execution-failure">
+                <strong>
+                  First failure · {smokeExecutionDiagnostics.firstFailure.stage}
+                </strong>
+                <p>{smokeExecutionDiagnostics.firstFailure.detail}</p>
+                <code>{smokeExecutionDiagnostics.firstFailure.recovery}</code>
+              </div>
+            ) : (
+              <div className="smoke-execution-ok">
+                No blocking failure detected in the current live path.
+              </div>
+            )}
+            <div className="smoke-execution-trace">
+              {smokeExecutionDiagnostics.trace.map((item) => (
+                <div
+                  className={`smoke-execution-trace-item smoke-execution-trace-item-${item.tone}`}
+                  key={item.id}
+                >
+                  <span>{item.label}</span>
+                  <strong>{item.detail}</strong>
+                </div>
+              ))}
             </div>
           </div>
           <div className="smoke-checklist">
@@ -5226,20 +5484,29 @@ export const App = () => {
                 <strong>Smoke result note</strong>
                 <span>Saved locally after a mock or real mic test.</span>
               </div>
-              <button
-                disabled={
-                  isSavingSmokeNote ||
-                  !(
-                    smokeNoteDraft.worked.trim() ||
-                    smokeNoteDraft.broken.trim() ||
-                    smokeNoteDraft.nextFix.trim()
-                  )
-                }
-                onClick={() => void saveSmokeNote()}
-                type="button"
-              >
-                Save smoke note
-              </button>
+              <div className="button-row button-row-inline">
+                <button
+                  className="secondary-button"
+                  onClick={captureSmokeExecutionToDraft}
+                  type="button"
+                >
+                  Capture failure
+                </button>
+                <button
+                  disabled={
+                    isSavingSmokeNote ||
+                    !(
+                      smokeNoteDraft.worked.trim() ||
+                      smokeNoteDraft.broken.trim() ||
+                      smokeNoteDraft.nextFix.trim()
+                    )
+                  }
+                  onClick={() => void saveSmokeNote()}
+                  type="button"
+                >
+                  Save smoke note
+                </button>
+              </div>
             </div>
             <div className="smoke-note-grid">
               <label>

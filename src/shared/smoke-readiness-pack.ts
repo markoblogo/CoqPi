@@ -3,7 +3,13 @@ import type { CounterpartyPackQualityLevel } from './context-pack-quality'
 export type SmokeReadinessGateStatus = 'ready' | 'waiting' | 'blocked'
 
 export type SmokeReadinessGate = {
-  id: 'setup' | 'context' | 'mock_path' | 'assistant' | 'real_mic'
+  id:
+    | 'setup'
+    | 'context'
+    | 'mock_path'
+    | 'assistant'
+    | 'communication'
+    | 'real_mic'
   label: string
   status: SmokeReadinessGateStatus
   detail: string
@@ -48,6 +54,8 @@ export type SmokeReadinessPackInput = {
   transcriptCount: number
   autoWindowChars: number
   assistantFreshness: 'fresh' | 'stale' | 'waiting'
+  assistantQualityLevel: 'not_ready' | 'needs_attention' | 'ready'
+  assistantQualityDetail: string
   realtimeReady: boolean
 }
 
@@ -68,6 +76,7 @@ export const buildSmokeReadinessPack = (
     input.transcriptCount > 0 &&
     input.autoWindowChars > 0
   const assistantReady = input.assistantFreshness === 'fresh'
+  const communicationReady = input.assistantQualityLevel === 'ready'
   const realMicReady = input.realtimeReady
 
   const gates: SmokeReadinessGate[] = [
@@ -109,6 +118,17 @@ export const buildSmokeReadinessPack = (
         : 'Run Analyze after mock transcript'
     },
     {
+      id: 'communication',
+      label: 'Comms quality',
+      status:
+        input.assistantQualityLevel === 'not_ready'
+          ? 'waiting'
+          : communicationReady
+            ? 'ready'
+            : 'blocked',
+      detail: input.assistantQualityDetail
+    },
+    {
       id: 'real_mic',
       label: 'Real mic',
       status: realMicReady ? 'ready' : 'waiting',
@@ -117,7 +137,8 @@ export const buildSmokeReadinessPack = (
   ]
 
   const readyForMock = setupReady && contextReady
-  const readyForRealMic = readyForMock && mockPathReady && assistantReady
+  const readyForRealMic =
+    readyForMock && mockPathReady && assistantReady && communicationReady
 
   const status = readyForRealMic
     ? 'ready_for_real_mic'
@@ -128,6 +149,8 @@ export const buildSmokeReadinessPack = (
   const nextAction =
     status === 'ready_for_real_mic'
       ? 'When ready, start realtime and say one short EN/FR sentence.'
+      : readyForMock && mockPathReady && assistantReady
+        ? 'Review the communication-quality block, then run the real mic probe.'
       : status === 'ready_for_mock'
         ? 'Run mock transcript, then Analyze 2m.'
         : gates.find((gate) => gate.status !== 'ready')?.detail ??
@@ -160,7 +183,12 @@ export const buildSmokeReadinessPack = (
         id: 'assistant_answer',
         title: 'Assistant answer',
         action: 'Run Analyze 2m and check the fresh answer.',
-        status: assistantReady ? 'ready' : 'waiting'
+        status:
+          assistantReady && communicationReady
+            ? 'ready'
+            : assistantReady
+              ? 'blocked'
+              : 'waiting'
       },
       {
         id: 'real_mic',

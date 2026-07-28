@@ -1,4 +1,5 @@
 import type {
+  CounterpartyContextPack,
   FinderCandidateDecisionState,
   FinderCandidateResult,
   FinderOutreachDraft,
@@ -84,6 +85,16 @@ export type FinderOutreachDraftSessionHandoff = {
   hint: string
   queueState: FinderCandidateDecisionState | 'rejected_status' | 'missing_candidate'
   draftStatus: FinderOutreachDraftStatus
+}
+
+export type FinderResolvedSessionOutreachDraft = {
+  draft: FinderOutreachDraft | null
+  candidateResult: FinderCandidateResult | null
+  decision: FinderOutreachDraftSessionDecision | null
+  handoff: FinderOutreachDraftSessionHandoff | null
+  relationshipMemory: FinderRelationshipMemory | null
+  selectionMode: 'explicit' | 'linked_selected_pack' | 'none'
+  linkedPackIds: string[]
 }
 
 export const getFinderOutreachDraftSessionEligibility = (
@@ -252,6 +263,11 @@ export const buildFinderOutreachDraftSessionHandoff = (
 
 type PickerOutreachDraftLike = Pick<FinderOutreachDraft, 'status'>
 
+const buildSourceKey = (
+  sourceId: string,
+  kind: CounterpartyContextPack['kind'] | FinderOutreachDraft['kind']
+) => `${sourceId}::${kind}`
+
 const contactLikeStatuses = new Set<FinderOutreachDraftStatus>([
   'contacted',
   'waiting',
@@ -277,6 +293,20 @@ const getLatestHistoryEntry = (
   return null
 }
 
+const handoffRank: Record<FinderOutreachDraftSessionHandoffState, number> = {
+  ready: 4,
+  follow_up: 3,
+  review: 2,
+  blocked: 1
+}
+
+const decisionRank: Record<FinderOutreachDraftSessionDecisionKind, number> = {
+  ready: 4,
+  usable: 3,
+  weak: 2,
+  ineligible: 1
+}
+
 export type FinderRelationshipMemory = {
   statusLabel: string
   lastContactAt: string
@@ -290,10 +320,19 @@ export const buildFinderRelationshipMemory = (
 ): FinderRelationshipMemory => {
   const latestContactEntry = getLatestHistoryEntry(draft, contactLikeStatuses)
   const latestStatusEntry = getLatestHistoryEntry(draft)
+  const nextAction =
+    typeof draft.nextAction === 'string' ? draft.nextAction.trim() : ''
+  const whyRelevant =
+    typeof draft.whyRelevant === 'string' ? draft.whyRelevant.trim() : ''
+  const firstQuestion =
+    Array.isArray(draft.questionsToAsk) &&
+    typeof draft.questionsToAsk[0] === 'string'
+      ? draft.questionsToAsk[0].trim()
+      : ''
   const followUpContextCandidates = [
-    draft.nextAction.trim(),
-    draft.questionsToAsk[0]?.trim() ?? '',
-    draft.whyRelevant.trim()
+    nextAction,
+    firstQuestion,
+    whyRelevant
   ].filter(Boolean)
   const followUpContextLabel =
     followUpContextCandidates.length > 0
@@ -322,5 +361,134 @@ export const buildFinderRelationshipMemory = (
         : '',
       `Follow-up context: ${followUpContextLabel}`
     ].filter(Boolean)
+  }
+}
+
+export const resolveFinderSessionOutreachDraft = ({
+  selectedDraftId = '',
+  selectedPackIds = [],
+  availablePacks = [],
+  availableFinderResults = [],
+  availableOutreachDrafts = []
+}: {
+  selectedDraftId?: string
+  selectedPackIds?: string[]
+  availablePacks?: CounterpartyContextPack[]
+  availableFinderResults?: FinderCandidateResult[]
+  availableOutreachDrafts?: FinderOutreachDraft[]
+}): FinderResolvedSessionOutreachDraft => {
+  const trimmedDraftId = selectedDraftId.trim()
+
+  if (trimmedDraftId) {
+    const draft =
+      availableOutreachDrafts.find((item) => item.id === trimmedDraftId) ?? null
+    const candidateResult = draft
+      ? availableFinderResults.find(
+          (candidate) => candidate.id === draft.candidateResultId
+        ) ?? null
+      : null
+    const decision = draft ? getFinderOutreachDraftSessionDecision(draft) : null
+    const handoff = draft
+      ? buildFinderOutreachDraftSessionHandoff(draft, candidateResult)
+      : null
+
+    return {
+      draft,
+      candidateResult,
+      decision,
+      handoff,
+      relationshipMemory: draft ? buildFinderRelationshipMemory(draft) : null,
+      selectionMode: 'explicit',
+      linkedPackIds: []
+    }
+  }
+
+  const eligiblePackBySourceKey = new Map(
+    availablePacks
+      .filter((pack) => selectedPackIds.includes(pack.id))
+      .map((pack) => [buildSourceKey(pack.sourceId, pack.kind), pack.id])
+  )
+
+  const matched = availableOutreachDrafts
+    .map((draft) => {
+      const linkedPackId =
+        eligiblePackBySourceKey.get(buildSourceKey(draft.sourceId, draft.kind)) ?? ''
+      if (!linkedPackId) {
+        return null
+      }
+
+      const candidateResult =
+        availableFinderResults.find(
+          (candidate) => candidate.id === draft.candidateResultId
+        ) ?? null
+      const decision = getFinderOutreachDraftSessionDecision(draft)
+      const handoff = buildFinderOutreachDraftSessionHandoff(draft, candidateResult)
+      if (!handoff.included) {
+        return null
+      }
+
+      const latestAt =
+        (Array.isArray(draft.statusHistory) ? draft.statusHistory[0]?.at : '') ||
+        draft.createdAt
+
+      return {
+        draft,
+        candidateResult,
+        decision,
+        handoff,
+        relationshipMemory: buildFinderRelationshipMemory(draft),
+        linkedPackId,
+        latestAt
+      }
+    })
+    .filter(
+      (
+        candidate
+      ): candidate is {
+        draft: FinderOutreachDraft
+        candidateResult: FinderCandidateResult | null
+        decision: FinderOutreachDraftSessionDecision
+        handoff: FinderOutreachDraftSessionHandoff
+        relationshipMemory: FinderRelationshipMemory
+        linkedPackId: string
+        latestAt: string
+      } => Boolean(candidate)
+    )
+    .sort((left, right) => {
+      const byHandoff = handoffRank[right.handoff.state] - handoffRank[left.handoff.state]
+      if (byHandoff !== 0) {
+        return byHandoff
+      }
+
+      const byDecision =
+        decisionRank[right.decision.kind] - decisionRank[left.decision.kind]
+      if (byDecision !== 0) {
+        return byDecision
+      }
+
+      return right.latestAt.localeCompare(left.latestAt)
+    })
+
+  const selected = matched[0]
+  if (!selected) {
+    return {
+      draft: null,
+      candidateResult: null,
+      decision: null,
+      handoff: null,
+      relationshipMemory: null,
+      selectionMode: 'none',
+      linkedPackIds: []
+    }
+  }
+
+  return {
+    draft: selected.draft,
+    candidateResult: selected.candidateResult,
+    decision: selected.decision,
+    handoff: selected.handoff,
+    relationshipMemory: selected.relationshipMemory,
+    selectionMode: 'linked_selected_pack',
+    linkedPackIds: [selected.linkedPackId]
   }
 }
