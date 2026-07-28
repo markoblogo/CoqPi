@@ -425,6 +425,39 @@ test('owner pasted source adapter parses LinkedIn-style job snippets', () => {
   assert.match(candidate.missingInfo, /contact/)
 })
 
+test('owner pasted source adapter parses generic job-board snippets without structured fields', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech'
+    },
+    { id: 'generic-job-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Senior Product Manager',
+      'Northfield Labs',
+      'Paris, France (Hybrid)',
+      'Full-time',
+      'About the job',
+      'Lead product planning for agricultural workflow tooling.',
+      'https://northfield.example/jobs/senior-product-manager'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'linkedin_job')
+  assert.equal(candidate.partnerName, 'Northfield Labs')
+  assert.equal(candidate.title, 'Senior Product Manager')
+  assert.match(candidate.summary, /Paris, France \(Hybrid\)/)
+  assert.match(candidate.whyRelevant, /Lead product planning/)
+  assert.deepEqual(candidate.links, [
+    'https://northfield.example/jobs/senior-product-manager'
+  ])
+})
+
 test('owner pasted source adapter parses accelerator-style snippets', () => {
   const job = createFinderSearchJob(
     {
@@ -485,6 +518,40 @@ test('owner pasted source adapter enriches accelerator entries with cohort terms
     /Selection criteria: Seed-stage climate and agricultural workflow teams/
   )
   assert.match(candidate.summary, /September 30, 2026/)
+})
+
+test('owner pasted source adapter parses messy accelerator snippets with who-should-apply and equity terms', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'accelerator',
+      label: 'Agri accelerators Europe',
+      query: 'agtech accelerator europe seed program'
+    },
+    { id: 'accelerator-messy-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Agri Launchpad',
+      'Batch: Spring 2027',
+      'HQ: Paris, France',
+      'Who should apply: Seed-stage agri, climate, and commodity workflow startups.',
+      'Equity terms: 1.5% equity, 10 weeks',
+      'Deadline to apply: January 15, 2027',
+      'https://agrilaunchpad.example/apply'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'accelerator_snippet')
+  assert.equal(candidate.partnerName, 'Agri Launchpad')
+  assert.equal(candidate.title, 'Spring 2027')
+  assert.match(candidate.summary, /January 15, 2027/)
+  assert.match(candidate.context, /Program terms: 1.5% equity, 10 weeks/)
+  assert.match(
+    candidate.context,
+    /Selection criteria: Seed-stage agri, climate, and commodity workflow startups/
+  )
 })
 
 test('owner pasted source adapter parses CSV-like investor lists as multiple candidates', () => {
@@ -579,6 +646,40 @@ test('owner pasted source adapter recognizes investor alias fields and geography
   assert.match(candidate.summary, /France and Benelux/)
   assert.match(candidate.context, /Ticket size: €500k/)
   assert.match(candidate.context, /Thesis: Backs trade, logistics, and market plumbing/)
+})
+
+test('owner pasted source adapter recognizes investor aliases like HQ, sector focus, and initial check', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'investor',
+      label: 'Agri seed funds',
+      query: 'agri commodity seed funds europe'
+    },
+    { id: 'investor-rich-alias-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Investor: Delta Field Ventures',
+      'Sector focus: Agri supply chain and commodity software',
+      'HQ: Brussels, Belgium',
+      'Stage preference: Seed / Series A',
+      'Initial check: €500k',
+      'Notes: Looks for workflow and infrastructure leverage.',
+      'Contact email: team@deltafield.example',
+      'Website URL: https://deltafield.example'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'investor_list')
+  assert.equal(candidate.partnerName, 'Delta Field Ventures')
+  assert.equal(candidate.title, 'Agri supply chain and commodity software')
+  assert.match(candidate.summary, /Brussels, Belgium/)
+  assert.match(candidate.context, /Stage: Seed \/ Series A/)
+  assert.match(candidate.context, /Ticket size: €500k/)
+  assert.match(candidate.context, /Thesis: Looks for workflow and infrastructure leverage/)
+  assert.match(candidate.context, /Extracted contact: team@deltafield\.example/)
 })
 
 test('owner pasted source adapter scores job candidates by interview readiness', () => {

@@ -628,6 +628,14 @@ const humanizeSlugText = (value: string) =>
     180
   )
 
+const normalizeSourceLine = (value: string) =>
+  sanitizeText(
+    value
+      .replace(/^\s*(?:[>*•·▪◦‣\-–—]+\s*|\d+[.)]\s+)/, '')
+      .replace(/\s+/g, ' '),
+    240
+  )
+
 const formatLocationLabel = (...parts: Array<string | undefined>) =>
   parts
     .map((value) => sanitizeText(value, 160))
@@ -707,7 +715,7 @@ const inferTitleFromUrl = (url: URL | null, kind: CounterpartyContextPackKind) =
 const parseLinkedInCompanyLocationLine = (line: string) => {
   const parts = line
     .split('·')
-    .map((part) => sanitizeText(part, 180))
+    .map((part) => normalizeSourceLine(part))
     .filter(Boolean)
   const company = parts[0] ?? ''
   const location = parts.find((part, index) => {
@@ -723,6 +731,30 @@ const parseLinkedInCompanyLocationLine = (line: string) => {
   return { company, location, parts }
 }
 
+const isLikelyJobRoleLine = (line: string) => {
+  const normalized = normalizeSourceLine(line)
+
+  if (!normalized || normalized.length > 120 || parseMaybeUrl(normalized)) {
+    return false
+  }
+
+  return /manager|lead|director|head|owner|engineer|designer|product|marketing|operations|sales|analyst|researcher|developer|specialist|consultant/i.test(
+    normalized
+  )
+}
+
+const isLikelyCompanyLine = (line: string) => {
+  const normalized = normalizeSourceLine(line)
+
+  if (!normalized || normalized.length > 120 || parseMaybeUrl(normalized)) {
+    return false
+  }
+
+  return !/apply|applications?|deadline|close|closing|full[- ]time|part[- ]time|contract|hybrid|remote|on[- ]site|salary|compensation|about the job|who should apply|selection criteria|program terms/i.test(
+    normalized
+  )
+}
+
 const extractOwnerSourceFields = (lines: string[]) => {
   const fields = new Map<string, string>()
 
@@ -734,7 +766,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
     }
 
     const key = normalizeFieldLabel(match[1])
-    const value = sanitizeText(match[2], 600)
+    const value = normalizeSourceLine(match[2])
 
     if (value && !fields.has(key)) {
       fields.set(key, value)
@@ -814,7 +846,11 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'partner',
     'fund',
     'accelerator',
-    'investor'
+    'investor',
+    'fund manager',
+    'organization name',
+    'programme',
+    'program name'
   ]) || inferredEntityName
   const role = firstOf([
     'role',
@@ -823,23 +859,39 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'job title',
     'opportunity',
     'focus',
-    'program'
+    'program',
+    'program title',
+    'opportunity title',
+    'position title',
+    'sector focus',
+    'industry focus'
   ]) || (bulletParts.length > 1 ? nonUrlLines[0] : '')
   const country = firstOf(['country'])
   const city = firstOf(['city'])
   const location =
     firstOf(['location', 'place', 'region', 'geo', 'geography']) ||
+    firstOf(['hq', 'headquarters', 'based in']) ||
     firstOf(['geography mandate', 'market', 'coverage']) ||
     (bulletParts.length > 1 ? bulletParts[1] : '') ||
     [city, country].filter(Boolean).join(', ')
-  const contact = firstOf(['contact', 'email', 'recruiter', 'contact person'])
+  const contact = firstOf([
+    'contact',
+    'email',
+    'recruiter',
+    'contact person',
+    'contact email',
+    'program lead',
+    'partner lead',
+    'founder'
+  ])
   const deadline = firstOf([
     'deadline',
     'apply by',
     'closing date',
     'date',
     'applications close',
-    'application deadline'
+    'application deadline',
+    'deadline to apply'
   ]) || inferredDeadline
   const whyRelevant = firstOf([
     'why relevant',
@@ -857,31 +909,55 @@ const extractOwnerSourceFields = (lines: string[]) => {
   ])
   const nextAction = firstOf(['next action', 'action', 'todo', 'follow up'])
   const explicitLink = firstOf(['url', 'link', 'website', 'source'])
-  const stage = firstOf(['stage', 'investment stage', 'round', 'program stage'])
+  const stage = firstOf([
+    'stage',
+    'investment stage',
+    'stage preference',
+    'round',
+    'program stage'
+  ])
   const ticketSize = firstOf([
     'ticket size',
     'check size',
     'ticket',
     'investment size',
-    'cheque size'
+    'cheque size',
+    'initial check',
+    'first check'
   ])
-  const programTerms = firstOf(['program terms', 'terms', 'equity', 'fees'])
+  const programTerms = firstOf([
+    'program terms',
+    'terms',
+    'equity',
+    'fees',
+    'cohort terms',
+    'equity terms'
+  ])
   const selectionCriteria = firstOf([
     'selection criteria',
     'criteria',
-    'admission criteria'
+    'admission criteria',
+    'who should apply',
+    'eligibility',
+    'ideal startup'
   ])
   const focusArea = firstOf([
     'sector',
     'focus',
     'investment focus',
-    'focus area'
+    'focus area',
+    'sector focus',
+    'industry',
+    'vertical',
+    'mandate'
   ])
   const thesis = firstOf([
     'thesis',
     'focus thesis',
     'investment thesis',
-    'thesis fit'
+    'thesis fit',
+    'notes',
+    'investment notes'
   ])
   const compensation = firstOf([
     'compensation',
@@ -903,7 +979,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'job type',
     'contract'
   ]) || inferredContractType
-  const cohort = firstOf(['cohort', 'batch', 'program'])
+  const cohort = firstOf(['cohort', 'batch', 'program', 'program name'])
   const inferredProgramTitle =
     cohort ||
     role ||
@@ -964,6 +1040,15 @@ const detectOwnerSourceFormat = ({
       /full[- ]time|part[- ]time|reposted|applicants?|mid-senior|entry level/i.test(
         lines.slice(0, 3).join(' ')
       ))
+  ) {
+    return 'linkedin_job'
+  }
+
+  if (
+    job.kind === 'job' &&
+    lines.length >= 2 &&
+    isLikelyJobRoleLine(lines[0] ?? '') &&
+    isLikelyCompanyLine(lines[1] ?? '')
   ) {
     return 'linkedin_job'
   }
@@ -1080,16 +1165,29 @@ const buildOwnerSourceParsedView = ({
       sanitizeText(nonUrlLines[0] ?? headline, 180) ||
       inferredTitleFromUrl ||
       defaultTitle
+    const plainLocation =
+      fields.location ||
+      nonUrlLines.find(
+        (line, index) =>
+          index > 0 &&
+          /remote|france|paris|lyon|berlin|brussels|amsterdam|europe|uk|london|new york|san francisco|hybrid/i.test(
+            line
+          )
+      ) ||
+      ''
 
     return {
       detectedFormat,
-      partnerName: parsed.company || defaultPartnerName,
+      partnerName:
+        parsed.company ||
+        sanitizeText(nonUrlLines[1] ?? '', 180) ||
+        defaultPartnerName,
       title: role,
-      location: fields.location || parsed.location || defaultLocation,
+      location: fields.location || parsed.location || plainLocation || defaultLocation,
       deadline: defaultDeadline,
       whyRelevant:
-        fields.whyRelevant ||
         body ||
+        fields.whyRelevant ||
         `LinkedIn-style job snippet for "${role}" under the "${job.label}" search.`,
       body,
       parserEvidence: [
@@ -1100,7 +1198,10 @@ const buildOwnerSourceParsedView = ({
 
   if (detectedFormat === 'accelerator_snippet') {
     const entityLine =
-      fields.company ||
+      ((fields.company === inferredEntityName || !fields.company) &&
+      sanitizeText(nonUrlLines[0] ?? '', 220)
+        ? sanitizeText(nonUrlLines[0] ?? '', 220)
+        : fields.company) ||
       nonUrlLines.find((line) => /accelerator|incubator/i.test(line)) ||
       defaultPartnerName
     const deadlineLine =
