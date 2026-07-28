@@ -1,9 +1,11 @@
 import type {
   CounterpartyContextPack,
+  FinderCandidateResult,
   FinderOutreachDraft,
   SessionContext
 } from './app-types'
 import {
+  buildFinderOutreachDraftSessionHandoff,
   buildFinderRelationshipMemory,
   finderOutreachDraftSessionIneligibilityReasonLabels,
   finderOutreachDraftSessionDecisionKindLabels,
@@ -33,6 +35,9 @@ export type SessionPayloadDraftItem = {
   followUpContextLabel?: string
   decisionKind?: 'ready' | 'usable' | 'weak' | 'ineligible'
   decisionReason?: string
+  handoffState?: 'ready' | 'follow_up' | 'review' | 'blocked'
+  handoffLabel?: string
+  handoffHint?: string
 }
 
 export type SessionPayloadInspector = {
@@ -154,6 +159,7 @@ const formatDropReason = (
 export const buildSessionPayloadInspector = ({
   context,
   availablePacks,
+  availableFinderResults = [],
   availableOutreachDrafts = [],
   auditedDroppedPacks = [],
   includeProfileContext,
@@ -161,6 +167,7 @@ export const buildSessionPayloadInspector = ({
 }: {
   context: SessionContext
   availablePacks: CounterpartyContextPack[]
+  availableFinderResults?: FinderCandidateResult[]
   availableOutreachDrafts?: FinderOutreachDraft[]
   auditedDroppedPacks?: SessionPayloadPackItem[]
   includeProfileContext: boolean
@@ -214,11 +221,23 @@ export const buildSessionPayloadInspector = ({
   const selectedDraft = selectedDraftId
     ? availableOutreachDrafts.find((draft) => draft.id === selectedDraftId)
     : null
+  const selectedDraftCandidate = selectedDraft
+    ? availableFinderResults.find(
+        (candidate) => candidate.id === selectedDraft.candidateResultId
+      ) ?? null
+    : null
   const selectedDraftDecision = selectedDraft
     ? getFinderOutreachDraftSessionDecision(selectedDraft)
     : null
+  const selectedDraftHandoff = selectedDraft
+    ? buildFinderOutreachDraftSessionHandoff(
+        selectedDraft,
+        selectedDraftCandidate
+      )
+    : null
   const includedOutreachDraft: SessionPayloadDraftItem | null = selectedDraft
-    ? selectedDraftDecision?.kind !== 'ineligible'
+    ? selectedDraftDecision?.kind !== 'ineligible' &&
+      selectedDraftHandoff?.included !== false
       ? (() => {
         const relationshipMemory = buildFinderRelationshipMemory(selectedDraft)
 
@@ -231,20 +250,27 @@ export const buildSessionPayloadInspector = ({
           lastContactLabel: relationshipMemory.lastContactLabel,
           followUpContextLabel: relationshipMemory.followUpContextLabel,
           decisionKind: selectedDraftDecision?.kind ?? 'weak',
-          decisionReason: formatDraftDecisionReason(selectedDraftDecision)
+          decisionReason: formatDraftDecisionReason(selectedDraftDecision),
+          handoffState: selectedDraftHandoff?.state,
+          handoffLabel: selectedDraftHandoff?.label,
+          handoffHint: selectedDraftHandoff?.hint
         }
       })()
       : null
     : null
   const droppedOutreachDraft: SessionPayloadDraftItem | null =
     selectedDraftId &&
-    (!selectedDraft || selectedDraftDecision?.kind === 'ineligible')
+    (!selectedDraft ||
+      selectedDraftDecision?.kind === 'ineligible' ||
+      selectedDraftHandoff?.included === false)
       ? {
           id: selectedDraftId,
           label: selectedDraft ? formatDraftLabel(selectedDraft) : selectedDraftId,
           status: 'dropped',
           reason: selectedDraft
-            ? formatDraftDecisionReason(selectedDraftDecision)
+            ? selectedDraftHandoff?.included === false
+              ? selectedDraftHandoff.label
+              : formatDraftDecisionReason(selectedDraftDecision)
             : 'draft missing from local Finder source truth',
           relationshipStatusLabel: selectedDraft
             ? buildFinderRelationshipMemory(selectedDraft).statusLabel
@@ -258,7 +284,10 @@ export const buildSessionPayloadInspector = ({
           decisionKind: selectedDraftDecision?.kind ?? 'ineligible',
           decisionReason: selectedDraft
             ? formatDraftDecisionReason(selectedDraftDecision)
-            : undefined
+            : undefined,
+          handoffState: selectedDraftHandoff?.state ?? 'blocked',
+          handoffLabel: selectedDraftHandoff?.label,
+          handoffHint: selectedDraftHandoff?.hint
         }
       : null
   const mergedDroppedPacks = mergeDroppedPacks(

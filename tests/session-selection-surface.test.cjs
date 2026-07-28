@@ -381,3 +381,84 @@ test('owner source ingress flows into prepare/live selection surface without man
     })
   })
 })
+
+test('session selection surface exposes follow-up handoff status for selected outreach draft', async () => {
+  await withLocalKnowledgeWorkspace(async () => {
+    await withElectronMock(async (services) => {
+      const imported = await buildImportedSelectionSurface(services)
+      const afterJob = await services.finderSearchService.addFinderSearchJob({
+        kind: 'job',
+        label: 'Follow-up lane',
+        query: 'senior product manager france'
+      })
+      const job = afterJob.store.jobs[0]
+      const afterCandidate = await services.finderSearchService.addFinderCandidateResult(
+        job.id,
+        {
+          sourceId: 'finder:job:follow-up-001',
+          partnerName: 'Northfield Labs',
+          title: 'Senior Product Lead',
+          summary: 'Follow-up candidate for handoff status.',
+          fitScore: 86,
+          whyRelevant: 'Already in conversation.',
+          missingInfo: 'Need timing.',
+          nextAction: 'Prepare short follow-up.'
+        }
+      )
+      const candidate = afterCandidate.store.results[0]
+      await services.finderSearchService.setFinderCandidateResultDecision(
+        candidate.id,
+        'hold_later',
+        'wait for better timing'
+      )
+      const afterDraft = await services.finderSearchService.saveFinderOutreachDraft(
+        candidate.id
+      )
+      const draft = afterDraft.store.outreachDrafts[0]
+      const afterFollowUp = await services.finderSearchService.setFinderOutreachDraftStatus(
+        draft.id,
+        'follow_up'
+      )
+      const session = await services.sessionContextService.saveSessionContext({
+        ...imported.context,
+        selectedFinderOutreachDraftId: draft.id
+      })
+
+      const surface = buildSessionSelectionSurface({
+        activeContext: session.context,
+        draftContext: session.context,
+        availablePacks: imported.packs,
+        availableFinderResults: [
+          {
+            ...candidate,
+            decision: {
+              state: 'hold_later',
+              reason: 'wait for better timing',
+              updatedAt: '2026-07-28T10:00:00.000Z'
+            }
+          }
+        ],
+        availableOutreachDrafts: afterFollowUp.store.outreachDrafts,
+        includeProfileContext: true,
+        profileChars: 321
+      })
+
+      assert.equal(
+        surface.activePrepPreview.selectedOutreachDraftHandoffState,
+        'follow_up'
+      )
+      assert.match(
+        surface.activePrepPreview.selectedOutreachDraftHandoffLabel,
+        /follow-up|waiting|contact/i
+      )
+      assert.equal(
+        surface.activePayloadInspector.includedOutreachDraft?.handoffState,
+        'follow_up'
+      )
+      assert.match(
+        surface.activePayloadInspector.includedOutreachDraft?.handoffHint ?? '',
+        /follow-up context/i
+      )
+    })
+  })
+})

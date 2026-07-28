@@ -13,13 +13,17 @@ import {
   resolveSessionSelectedCounterpartyPackIds
 } from './context-source-service'
 import {
+  buildFinderOutreachDraftSessionHandoff,
   buildFinderRelationshipMemory,
   getFinderOutreachDraftSessionEligibility
 } from '../../shared/finder-relationship-memory'
 import { resolveOpenAIApiKey } from './secret-storage-service'
 import { runGovernedProviderAction } from './governance-service'
 import { getSessionContext } from './session-context-service'
-import { getFinderOutreachDraftById } from './finder-search-service'
+import {
+  getFinderCandidateResultById,
+  getFinderOutreachDraftById
+} from './finder-search-service'
 import {
   DEFAULT_OPENAI_ASSISTANT_MODEL,
   interviewAssistantSystemPrompt
@@ -373,6 +377,15 @@ const compactSelectedOutreachDraft = async (
   const draftEligibility = getFinderOutreachDraftSessionEligibility(draft)
 
   if (!draftEligibility.eligible) {
+    return ''
+  }
+
+  const candidateResult = await getFinderCandidateResultById(
+    draft.candidateResultId
+  )
+  const handoff = buildFinderOutreachDraftSessionHandoff(draft, candidateResult)
+
+  if (!handoff.included) {
     return ''
   }
 

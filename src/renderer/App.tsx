@@ -4218,6 +4218,7 @@ export const App = () => {
     activeContext: sessionContext,
     draftContext: sessionContextDraft,
     availablePacks: counterpartyPacks,
+    availableFinderResults: finderCandidateResults,
     availableOutreachDrafts: finderOutreachDrafts,
     activeAuditedDroppedPacks: activeSessionDroppedPackAudit,
     draftAuditedDroppedPacks: draftSessionDroppedPackAudit,
@@ -4648,6 +4649,11 @@ export const App = () => {
             <div className="session-payload-entry session-payload-entry-included">
               <strong>{inspector.includedOutreachDraft.label}</strong>
               <span>{inspector.includedOutreachDraft.reason}</span>
+              {inspector.includedOutreachDraft.handoffLabel ? (
+                <span title={inspector.includedOutreachDraft.handoffHint}>
+                  Handoff: {inspector.includedOutreachDraft.handoffLabel}
+                </span>
+              ) : null}
               {inspector.includedOutreachDraft.relationshipStatusLabel ? (
                 <span>
                   Status: {inspector.includedOutreachDraft.relationshipStatusLabel}
@@ -4674,6 +4680,11 @@ export const App = () => {
             <div className="session-payload-entry session-payload-entry-dropped">
               <strong>{inspector.droppedOutreachDraft.label}</strong>
               <span>{inspector.droppedOutreachDraft.reason}</span>
+              {inspector.droppedOutreachDraft.handoffLabel ? (
+                <span title={inspector.droppedOutreachDraft.handoffHint}>
+                  Handoff: {inspector.droppedOutreachDraft.handoffLabel}
+                </span>
+              ) : null}
             </div>
           ) : (
             <strong>none</strong>
@@ -5980,6 +5991,12 @@ export const App = () => {
                     <div>
                       <span>Follow-up context</span>
                       <strong>{manualPrepPreview.selectedOutreachDraftFollowUpLabel}</strong>
+                    </div>
+                    <div>
+                      <span>Next call handoff</span>
+                      <strong title={manualPrepPreview.selectedOutreachDraftHandoffHint}>
+                        {manualPrepPreview.selectedOutreachDraftHandoffLabel}
+                      </strong>
                     </div>
                     <div>
                       <span>Assistant payload</span>

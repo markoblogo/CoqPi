@@ -895,6 +895,141 @@ test('analyzeRecentTranscript prunes stale selected outreach draft from persiste
   )
 })
 
+test('analyzeRecentTranscript drops rejected selected outreach draft and keeps prompt aligned with payload audit', async () => {
+  const observed = {
+    capturedPrompt: '',
+    capturedSelectedPackIds: undefined,
+    requestContext: null
+  }
+
+  let preparedPacks = []
+  let preparedDraft = null
+  let preparedResult = null
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:payload-audit-keep-3',
+              partnerName: 'Rejected Draft Co',
+              title: 'Interview lead v3',
+              summary: 'Included pack for rejected draft check.'
+            }
+          ])
+
+        preparedPacks = importResult.manifest.counterpartyPacks
+        const selectedPackIds = preparedPacks.map((pack) => pack.id)
+
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'job',
+          label: 'Rejected draft audit job',
+          query: 'senior product lead france'
+        })
+        const job = afterJob.store.jobs[0]
+        const afterCandidate =
+          await services.finderSearchService.addFinderCandidateResult(job.id, {
+            sourceId: 'finder:job:payload-audit-rejected-draft',
+            partnerName: 'Rejected Draft Co',
+            title: 'Interview lead v3',
+            summary: 'Source for rejected outreach draft',
+            fitScore: 82,
+            whyRelevant: 'Context-ready draft before rejection',
+            missingInfo: 'Nothing critical',
+            nextAction: 'This should be dropped after rejection.'
+          })
+
+        preparedResult = afterCandidate.store.results[0]
+        const afterDraft = await services.finderSearchService.saveFinderOutreachDraft(
+          preparedResult.id
+        )
+
+        preparedDraft = afterDraft.store.outreachDrafts[0]
+        await services.finderSearchService.setFinderCandidateResultDecision(
+          preparedResult.id,
+          'rejected',
+          'owner rejected candidate'
+        )
+
+        observed.requestContext = {
+          company: 'Rejected Draft Co',
+          role: 'Interview lead v3',
+          context: 'Rejected draft payload audit check',
+          goal: 'Rejected selected draft must not reach assistant prompt.',
+          notes: 'Keep selected pack, drop rejected draft.',
+          selectedCounterpartyPackIds: selectedPackIds,
+          selectedFinderOutreachDraftId: preparedDraft.id
+        }
+      },
+      requestOverrides: () => ({
+        ...makeRequest({
+          transcriptText:
+            'I would like to continue the conversation about the Interview lead v3 role.'
+        }),
+        sessionContext: observed.requestContext,
+        selectedCounterpartyPackIds:
+          observed.requestContext?.selectedCounterpartyPackIds ?? []
+      }),
+      onSelectedPackIds: (selectedCounterpartyPackIds) => {
+        observed.capturedSelectedPackIds = [...selectedCounterpartyPackIds]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = init.body ? JSON.parse(init.body) : {}
+        observed.capturedPrompt = body?.messages?.[1]?.content || ''
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Сценарий с rejected draft прошёл.',
+              detectedQuestion: 'Should rejected draft stay active?',
+              intent: 'draft rejection check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I will continue without the rejected draft.',
+                  answerMeaningRu: 'Я продолжу без отклоненного черновика.'
+                }
+              ],
+              keywordsToRemember: ['rejected', 'draft'],
+              openingPhrase: 'Understood.'
+            })
+          }
+        })
+      },
+      onAnalyzeRequest: () => undefined
+    })
+  })
+
+  const inspector = buildSessionPayloadInspector({
+    context: observed.requestContext,
+    availablePacks: preparedPacks,
+    availableFinderResults: preparedResult ? [{ ...preparedResult, status: 'rejected', decision: { state: 'rejected', reason: 'owner rejected candidate', updatedAt: '2026-07-28T12:00:00.000Z' } }] : [],
+    availableOutreachDrafts: preparedDraft ? [preparedDraft] : [],
+    includeProfileContext: false,
+    profileChars: 0
+  })
+
+  assert.equal(inspector.includedOutreachDraft, null)
+  assert.equal(inspector.droppedOutreachDraft?.handoffState, 'blocked')
+  assert.match(inspector.droppedOutreachDraft?.reason ?? '', /rejected target/i)
+  assert.equal(
+    observed.capturedPrompt.includes('Selected outreach draft for this counterpart'),
+    false
+  )
+  assert.equal(
+    observed.capturedPrompt.includes('Opening message already drafted:'),
+    false
+  )
+  assert.deepEqual(
+    observed.capturedSelectedPackIds,
+    inspector.includedPacks.map((pack) => pack.id)
+  )
+})
+
 test('finder batch import payload survives session persistence and flows into selected pack ids for analysis', async () => {
   const observed = {
     requestSelectedCounterpartyPackIds: undefined,

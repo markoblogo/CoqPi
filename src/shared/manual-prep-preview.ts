@@ -1,9 +1,11 @@
 import type {
   CounterpartyContextPack,
+  FinderCandidateResult,
   FinderOutreachDraft,
   SessionContext
 } from './app-types'
 import {
+  buildFinderOutreachDraftSessionHandoff,
   buildFinderRelationshipMemory,
   getFinderOutreachDraftSessionDecision,
   finderOutreachDraftSessionDecisionReasonLabels
@@ -65,6 +67,9 @@ export type ManualPrepPreview = {
   selectedOutreachDraftFollowUpLabel: string
   selectedOutreachDraftDecisionKind: 'ready' | 'usable' | 'weak' | 'ineligible'
   selectedOutreachDraftDecisionReasonLabel: string
+  selectedOutreachDraftHandoffState: 'ready' | 'follow_up' | 'review' | 'blocked'
+  selectedOutreachDraftHandoffLabel: string
+  selectedOutreachDraftHandoffHint: string
   selectedPackQualityLabel: string
   selectedPackQualityLevel: CounterpartyPackQualityLevel | 'none'
   assistantPayloadLabel: string
@@ -107,6 +112,7 @@ const levelRank: Record<CounterpartyPackQualityLevel, number> = {
 export const buildManualPrepPreview = ({
   context,
   availablePacks,
+  availableFinderResults = [],
   availableOutreachDrafts = [],
   auditedDroppedPacks = [],
   includeProfileContext,
@@ -114,6 +120,7 @@ export const buildManualPrepPreview = ({
 }: {
   context: SessionContext
   availablePacks: CounterpartyContextPack[]
+  availableFinderResults?: FinderCandidateResult[]
   availableOutreachDrafts?: FinderOutreachDraft[]
   auditedDroppedPacks?: SessionPayloadPackItem[]
   includeProfileContext: boolean
@@ -122,6 +129,7 @@ export const buildManualPrepPreview = ({
   const payloadInspector = buildSessionPayloadInspector({
     context,
     availablePacks,
+    availableFinderResults,
     availableOutreachDrafts,
     auditedDroppedPacks,
     includeProfileContext,
@@ -141,8 +149,19 @@ export const buildManualPrepPreview = ({
         (draft) => draft.id === context.selectedFinderOutreachDraftId
       )
     : null
+  const selectedOutreachDraftCandidate = selectedOutreachDraft
+    ? availableFinderResults.find(
+        (candidate) => candidate.id === selectedOutreachDraft.candidateResultId
+      ) ?? null
+    : null
   const selectedOutreachDraftDecision = selectedOutreachDraft
     ? getFinderOutreachDraftSessionDecision(selectedOutreachDraft)
+    : null
+  const selectedOutreachDraftHandoff = selectedOutreachDraft
+    ? buildFinderOutreachDraftSessionHandoff(
+        selectedOutreachDraft,
+        selectedOutreachDraftCandidate
+      )
     : null
   const selectedOutreachRelationshipMemory = selectedOutreachDraft
     ? buildFinderRelationshipMemory(selectedOutreachDraft)
@@ -234,6 +253,14 @@ export const buildManualPrepPreview = ({
     })
   }
 
+  if (selectedOutreachDraftHandoff?.state === 'blocked') {
+    weakFields.push({
+      id: 'ineligible_outreach_draft',
+      label: `${selectedOutreachDraft?.targetName ?? 'selected draft'}: blocked handoff`,
+      fix: selectedOutreachDraftHandoff.hint
+    })
+  }
+
   for (const { pack, quality } of selectedPackQualities) {
     if (quality.level === 'blocked') {
       weakFields.push({
@@ -294,6 +321,18 @@ export const buildManualPrepPreview = ({
       selectedOutreachDraftDecision,
       Boolean(context.selectedFinderOutreachDraftId)
     ),
+    selectedOutreachDraftHandoffState:
+      selectedOutreachDraftHandoff?.state ?? 'blocked',
+    selectedOutreachDraftHandoffLabel:
+      selectedOutreachDraftHandoff?.label ??
+      (context.selectedFinderOutreachDraftId
+        ? 'draft dropped from handoff'
+        : 'no draft selected'),
+    selectedOutreachDraftHandoffHint:
+      selectedOutreachDraftHandoff?.hint ??
+      (context.selectedFinderOutreachDraftId
+        ? 'Open Finder or Prepare to review the selected draft state.'
+        : 'No outreach draft is attached to this session.'),
     selectedPackQualityLabel,
     selectedPackQualityLevel,
     assistantPayloadLabel: `session ${sessionChars} chars · packs ${packSummary.includedCount} · profile ${

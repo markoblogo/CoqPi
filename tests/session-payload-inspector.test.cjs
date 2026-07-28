@@ -68,6 +68,28 @@ const makeDraft = (overrides = {}) => ({
   ...overrides
 })
 
+const makeCandidateResult = (overrides = {}) => ({
+  version: 1,
+  id: 'result-A',
+  jobId: 'job-A',
+  sourceId: 'finder:job:ready',
+  kind: 'job',
+  partnerName: 'Acme',
+  title: 'Senior Product Manager',
+  summary: 'Relevant role.',
+  status: 'ready',
+  decision: {
+    state: 'auto',
+    updatedAt: '2026-07-23T10:00:00.000Z'
+  },
+  fitScore: 91,
+  whyRelevant: 'Strong match.',
+  missingInfo: 'None',
+  nextAction: 'Use before call.',
+  createdAt: '2026-07-23T10:00:00.000Z',
+  ...overrides
+})
+
 test('session payload inspector separates included and dropped context', () => {
   const inspector = buildSessionPayloadInspector({
     context: makeContext(),
@@ -110,6 +132,14 @@ test('session payload inspector includes relationship memory for contacted outre
       selectedFinderOutreachDraftId: 'draft-A'
     }),
     availablePacks: [makePack()],
+    availableFinderResults: [
+      makeCandidateResult({
+        decision: {
+          state: 'import_now',
+          updatedAt: '2026-07-26T10:59:00.000Z'
+        }
+      })
+    ],
     availableOutreachDrafts: [
       makeDraft({
         status: 'waiting',
@@ -141,6 +171,8 @@ test('session payload inspector includes relationship memory for contacted outre
   )
   assert.equal(inspector.includedOutreachDraft.decisionKind, 'usable')
   assert.match(inspector.includedOutreachDraft.decisionReason ?? '', /active/)
+  assert.equal(inspector.includedOutreachDraft.handoffState, 'follow_up')
+  assert.match(inspector.includedOutreachDraft.handoffLabel ?? '', /contact|follow-up|waiting/i)
 })
 
 test('session payload inspector reports stale outreach draft and profile off', () => {
@@ -164,6 +196,14 @@ test('session payload inspector reports weak and ineligible outreach draft decis
   const includedInspector = buildSessionPayloadInspector({
     context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
     availablePacks: [makePack()],
+    availableFinderResults: [
+      makeCandidateResult({
+        decision: {
+          state: 'hold_later',
+          updatedAt: '2026-07-23T11:00:00.000Z'
+        }
+      })
+    ],
     availableOutreachDrafts: [makeDraft()],
     includeProfileContext: true,
     profileChars: 10
@@ -174,10 +214,25 @@ test('session payload inspector reports weak and ineligible outreach draft decis
     includedInspector.includedOutreachDraft?.decisionReason ?? '',
     /needs explicit readiness confirmation/
   )
+  assert.equal(includedInspector.includedOutreachDraft?.handoffState, 'review')
+  assert.match(
+    includedInspector.includedOutreachDraft?.handoffLabel ?? '',
+    /hold for later|review before call/i
+  )
 
   const ineligibleInspector = buildSessionPayloadInspector({
     context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
     availablePacks: [makePack()],
+    availableFinderResults: [
+      makeCandidateResult({
+        status: 'rejected',
+        decision: {
+          state: 'rejected',
+          reason: 'not relevant anymore',
+          updatedAt: '2026-07-23T11:30:00.000Z'
+        }
+      })
+    ],
     availableOutreachDrafts: [makeDraft({ status: 'closed' })],
     includeProfileContext: true,
     profileChars: 10
@@ -188,6 +243,38 @@ test('session payload inspector reports weak and ineligible outreach draft decis
   assert.match(
     ineligibleInspector.droppedOutreachDraft?.decisionReason ?? '',
     /ineligible/
+  )
+  assert.equal(ineligibleInspector.droppedOutreachDraft?.handoffState, 'blocked')
+})
+
+test('session payload inspector drops selected draft when linked candidate is rejected in queue', () => {
+  const inspector = buildSessionPayloadInspector({
+    context: makeContext({
+      selectedCounterpartyPackIds: ['pack-ready'],
+      selectedFinderOutreachDraftId: 'draft-A'
+    }),
+    availablePacks: [makePack()],
+    availableFinderResults: [
+      makeCandidateResult({
+        status: 'rejected',
+        decision: {
+          state: 'rejected',
+          reason: 'owner rejected candidate',
+          updatedAt: '2026-07-23T12:00:00.000Z'
+        }
+      })
+    ],
+    availableOutreachDrafts: [makeDraft({ status: 'follow_up' })],
+    includeProfileContext: true,
+    profileChars: 25
+  })
+
+  assert.equal(inspector.includedOutreachDraft, null)
+  assert.equal(inspector.droppedOutreachDraft?.handoffState, 'blocked')
+  assert.match(inspector.droppedOutreachDraft?.reason ?? '', /rejected target/i)
+  assert.match(
+    inspector.droppedOutreachDraft?.handoffHint ?? '',
+    /dropped from assistant payload/i
   )
 })
 

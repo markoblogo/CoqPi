@@ -1,5 +1,6 @@
 import type {
   CounterpartyContextPack,
+  FinderCandidateResult,
   FinderOutreachDraft,
   SessionContext
 } from './app-types'
@@ -28,6 +29,7 @@ export const buildSessionSelectionSurface = ({
   activeContext,
   draftContext,
   availablePacks,
+  availableFinderResults = [],
   availableOutreachDrafts = [],
   activeAuditedDroppedPacks = [],
   draftAuditedDroppedPacks = [],
@@ -37,6 +39,7 @@ export const buildSessionSelectionSurface = ({
   activeContext: SessionContext
   draftContext: SessionContext
   availablePacks: CounterpartyContextPack[]
+  availableFinderResults?: FinderCandidateResult[]
   availableOutreachDrafts?: FinderOutreachDraft[]
   activeAuditedDroppedPacks?: SessionPayloadPackItem[]
   draftAuditedDroppedPacks?: SessionPayloadPackItem[]
@@ -46,6 +49,7 @@ export const buildSessionSelectionSurface = ({
   const activePayloadInspector = buildSessionPayloadInspector({
     context: activeContext,
     availablePacks,
+    availableFinderResults,
     availableOutreachDrafts,
     auditedDroppedPacks: activeAuditedDroppedPacks,
     includeProfileContext,
@@ -54,6 +58,7 @@ export const buildSessionSelectionSurface = ({
   const draftPayloadInspector = buildSessionPayloadInspector({
     context: draftContext,
     availablePacks,
+    availableFinderResults,
     availableOutreachDrafts,
     auditedDroppedPacks: draftAuditedDroppedPacks,
     includeProfileContext,
@@ -68,6 +73,7 @@ export const buildSessionSelectionSurface = ({
     activePrepPreview: buildManualPrepPreview({
       context: activeContext,
       availablePacks,
+      availableFinderResults,
       availableOutreachDrafts,
       auditedDroppedPacks: activeAuditedDroppedPacks,
       includeProfileContext,
@@ -76,6 +82,7 @@ export const buildSessionSelectionSurface = ({
     draftPrepPreview: buildManualPrepPreview({
       context: draftContext,
       availablePacks,
+      availableFinderResults,
       availableOutreachDrafts,
       auditedDroppedPacks: draftAuditedDroppedPacks,
       includeProfileContext,

@@ -1,4 +1,6 @@
 import type {
+  FinderCandidateDecisionState,
+  FinderCandidateResult,
   FinderOutreachDraft,
   FinderOutreachDraftStatus,
   FinderOutreachStatusHistoryEntry
@@ -58,6 +60,32 @@ export type FinderOutreachDraftSessionDecision = {
   ineligibilityReason: FinderOutreachDraftSessionIneligibilityReason | null
 }
 
+export const finderCandidateDecisionStateLabels: Record<
+  FinderCandidateDecisionState | 'rejected_status',
+  string
+> = {
+  auto: 'auto review',
+  import_now: 'import now',
+  hold_later: 'hold for later',
+  rejected: 'rejected',
+  rejected_status: 'rejected status'
+}
+
+export type FinderOutreachDraftSessionHandoffState =
+  | 'ready'
+  | 'follow_up'
+  | 'review'
+  | 'blocked'
+
+export type FinderOutreachDraftSessionHandoff = {
+  state: FinderOutreachDraftSessionHandoffState
+  included: boolean
+  label: string
+  hint: string
+  queueState: FinderCandidateDecisionState | 'rejected_status' | 'missing_candidate'
+  draftStatus: FinderOutreachDraftStatus
+}
+
 export const getFinderOutreachDraftSessionEligibility = (
   draft: PickerOutreachDraftLike
 ): { eligible: boolean; reasons: FinderOutreachDraftSessionIneligibilityReason[] } => {
@@ -110,6 +138,115 @@ export const getFinderOutreachDraftSessionDecision = (
     kind: 'weak',
     reason: 'draft',
     ineligibilityReason: null
+  }
+}
+
+type FinderOutreachCandidateLike = Pick<
+  FinderCandidateResult,
+  'status' | 'decision'
+>
+
+export const buildFinderOutreachDraftSessionHandoff = (
+  draft: FinderOutreachDraft,
+  candidateResult?: FinderOutreachCandidateLike | null
+): FinderOutreachDraftSessionHandoff => {
+  const queueState =
+    candidateResult?.status === 'rejected'
+      ? 'rejected_status'
+      : candidateResult?.decision?.state ?? 'missing_candidate'
+
+  if (queueState === 'rejected' || queueState === 'rejected_status') {
+    return {
+      state: 'blocked',
+      included: false,
+      label: 'rejected target',
+      hint:
+        'Finder queue rejected this target. Draft stays in local history but is dropped from assistant payload.',
+      queueState,
+      draftStatus: draft.status
+    }
+  }
+
+  if (draft.status === 'closed') {
+    return {
+      state: 'blocked',
+      included: false,
+      label: 'closed draft',
+      hint:
+        'Closed outreach drafts are not included in the next live session payload.',
+      queueState,
+      draftStatus: draft.status
+    }
+  }
+
+  if (draft.status === 'ready_for_contact') {
+    return {
+      state: 'ready',
+      included: true,
+      label:
+        queueState === 'import_now'
+          ? 'import now · ready for contact'
+          : 'ready for contact',
+      hint:
+        'This draft is ready to be used as the active opening context for the next call.',
+      queueState,
+      draftStatus: draft.status
+    }
+  }
+
+  if (
+    draft.status === 'contacted' ||
+    draft.status === 'waiting' ||
+    draft.status === 'follow_up'
+  ) {
+    return {
+      state: 'follow_up',
+      included: true,
+      label:
+        draft.status === 'contacted'
+          ? 'contact started'
+          : draft.status === 'waiting'
+            ? 'waiting for reply'
+            : 'follow-up due',
+      hint:
+        'This draft is used as follow-up context for the same target in the next call.',
+      queueState,
+      draftStatus: draft.status
+    }
+  }
+
+  if (queueState === 'hold_later') {
+    return {
+      state: 'review',
+      included: true,
+      label: 'hold for later · review before call',
+      hint:
+        'The candidate is held in Finder and the draft is still early. Confirm intent before using it in a live call.',
+      queueState,
+      draftStatus: draft.status
+    }
+  }
+
+  if (queueState === 'import_now') {
+    return {
+      state: 'review',
+      included: true,
+      label: 'import now · draft still needs confirmation',
+      hint:
+        'Finder marked the candidate for import, but the outreach draft is not yet contact-ready.',
+      queueState,
+      draftStatus: draft.status
+    }
+  }
+
+  return {
+    state: 'review',
+    included: true,
+    label: 'draft only · review before call',
+    hint:
+      'This draft can stay in context, but it should be confirmed before relying on it in a live session.',
+    queueState,
+    draftStatus: draft.status
   }
 }
 

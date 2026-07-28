@@ -27,6 +27,7 @@ import {
   updateFinderSearchJobStatus
 } from '../../shared/finder-search-module'
 import {
+  buildFinderOutreachDraftSessionHandoff,
   getFinderOutreachDraftSessionEligibility
 } from '../../shared/finder-relationship-memory'
 import { getAppInfo } from './app-state'
@@ -309,9 +310,19 @@ export const resolveSessionSelectedFinderOutreachDraftId = async (
     return ''
   }
 
-  return getFinderOutreachDraftSessionEligibility(selectedDraft).eligible
-    ? trimmed
-    : ''
+  if (!getFinderOutreachDraftSessionEligibility(selectedDraft).eligible) {
+    return ''
+  }
+
+  const selectedCandidate = store.results.find(
+    (result) => result.id === selectedDraft.candidateResultId
+  )
+  const handoff = buildFinderOutreachDraftSessionHandoff(
+    selectedDraft,
+    selectedCandidate
+  )
+
+  return handoff.included ? trimmed : ''
 }
 
 export const getFinderOutreachDraftById = async (id: string) => {
@@ -324,6 +335,18 @@ export const getFinderOutreachDraftById = async (id: string) => {
   const store = await getFinderSearchStoreRaw()
 
   return store.outreachDrafts.find((draft) => draft.id === trimmed) ?? null
+}
+
+export const getFinderCandidateResultById = async (id: string) => {
+  const trimmed = typeof id === 'string' ? id.trim() : ''
+
+  if (!trimmed) {
+    return null
+  }
+
+  const store = await getFinderSearchStoreRaw()
+
+  return store.results.find((result) => result.id === trimmed) ?? null
 }
 
 export const addFinderSearchJob = async (

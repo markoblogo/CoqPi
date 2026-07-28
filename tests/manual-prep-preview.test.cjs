@@ -69,6 +69,28 @@ const makeDraft = (overrides = {}) => ({
   ...overrides
 })
 
+const makeCandidateResult = (overrides = {}) => ({
+  version: 1,
+  id: 'result-A',
+  jobId: 'job-A',
+  sourceId: 'finder:job:a',
+  kind: 'job',
+  partnerName: 'Acme',
+  title: 'Senior Product Manager',
+  summary: 'Relevant role.',
+  status: 'ready',
+  decision: {
+    state: 'auto',
+    updatedAt: '2026-07-22T00:00:00.000Z'
+  },
+  fitScore: 91,
+  whyRelevant: 'Strong match.',
+  missingInfo: 'None',
+  nextAction: 'Use this context before the call.',
+  createdAt: '2026-07-22T00:00:00.000Z',
+  ...overrides
+})
+
 test('manual prep preview summarizes focused session and assistant payload', () => {
   const preview = buildManualPrepPreview({
     context: makeContext(),
@@ -102,6 +124,8 @@ test('manual prep preview shows selected outreach draft label', () => {
   assert.match(preview.selectedOutreachDraftFollowUpLabel, /Use this context before the call/)
   assert.equal(preview.selectedOutreachDraftDecisionKind, 'weak')
   assert.match(preview.selectedOutreachDraftDecisionReasonLabel, /weak/)
+  assert.equal(preview.selectedOutreachDraftHandoffState, 'review')
+  assert.match(preview.selectedOutreachDraftHandoffLabel, /review before call|draft only/i)
   assert.deepEqual(
     preview.weakFields.some((field) => field.id === 'weak_outreach_draft'),
     true
@@ -129,6 +153,14 @@ test('manual prep preview shows relationship memory for selected outreach draft'
   const preview = buildManualPrepPreview({
     context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
     availablePacks: [makePack()],
+    availableFinderResults: [
+      makeCandidateResult({
+        decision: {
+          state: 'hold_later',
+          updatedAt: '2026-07-26T18:00:00.000Z'
+        }
+      })
+    ],
     availableOutreachDrafts: [
       makeDraft({
         status: 'follow_up',
@@ -155,6 +187,34 @@ test('manual prep preview shows relationship memory for selected outreach draft'
   assert.equal(preview.selectedOutreachDraftStatusLabel, 'follow-up')
   assert.match(preview.selectedOutreachDraftLastContactLabel, /follow-up · 2026-07-26 18:15:00Z/)
   assert.match(preview.selectedOutreachDraftFollowUpLabel, /Send a brief follow-up/)
+  assert.equal(preview.selectedOutreachDraftHandoffState, 'follow_up')
+  assert.match(preview.selectedOutreachDraftHandoffLabel, /follow-up|waiting|contact/i)
+})
+
+test('manual prep preview blocks selected draft when linked candidate was rejected', () => {
+  const preview = buildManualPrepPreview({
+    context: makeContext({ selectedFinderOutreachDraftId: 'draft-A' }),
+    availablePacks: [makePack()],
+    availableFinderResults: [
+      makeCandidateResult({
+        status: 'rejected',
+        decision: {
+          state: 'rejected',
+          updatedAt: '2026-07-26T18:00:00.000Z'
+        }
+      })
+    ],
+    availableOutreachDrafts: [makeDraft({ status: 'follow_up' })],
+    includeProfileContext: true,
+    profileChars: 1234
+  })
+
+  assert.equal(preview.selectedOutreachDraftHandoffState, 'blocked')
+  assert.match(preview.selectedOutreachDraftHandoffLabel, /rejected target/i)
+  assert.equal(
+    preview.weakFields.some((field) => field.id === 'ineligible_outreach_draft'),
+    true
+  )
 })
 
 test('manual prep preview flags stale selected outreach draft', () => {
