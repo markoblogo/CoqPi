@@ -168,6 +168,10 @@ The current recommended order:
 
 Detailed version: [docs/REALTIME_SMOKE_TEST.md](docs/REALTIME_SMOKE_TEST.md)
 
+For operator-facing execution docs and smoke/runbook steps, prefer an
+ADHD-shaped layout: next action first, numbered bounded steps, visible current
+state, concrete estimates when relevant, and one explicit next move.
+
 ## Important local docs
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
