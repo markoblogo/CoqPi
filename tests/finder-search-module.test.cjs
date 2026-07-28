@@ -332,6 +332,39 @@ test('owner pasted source adapter extracts structured vacancy fields before prev
   assert.match(candidate.nextAction, /hiring@northfield\.example/)
 })
 
+test('owner pasted source adapter enriches job entries with compensation remote policy and contract type', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'job',
+      label: 'France product roles',
+      query: 'senior product manager france agtech',
+      goal: 'Prepare interview packs'
+    },
+    { id: 'job-owner-source-job-rich', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Company: Northfield Labs',
+      'Role: Senior Product Manager',
+      'Location: Paris, France',
+      'Compensation: EUR 90k-110k',
+      'Remote policy: Hybrid 3 days on-site',
+      'Contract type: CDI',
+      'Website: https://northfield.example/careers',
+      'Contact: hiring@northfield.example'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'structured_fields')
+  assert.match(candidate.summary, /EUR 90k-110k/)
+  assert.match(candidate.summary, /Hybrid 3 days on-site/)
+  assert.match(candidate.context, /Compensation: EUR 90k-110k/)
+  assert.match(candidate.context, /Remote policy: Hybrid 3 days on-site/)
+  assert.match(candidate.context, /Contract type: CDI/)
+})
+
 test('owner pasted source adapter extracts partner export fields before preview', () => {
   const job = createFinderSearchJob(
     {
@@ -421,6 +454,39 @@ test('owner pasted source adapter parses accelerator-style snippets', () => {
   assert.match(candidate.whyRelevant, /agricultural infrastructure/)
 })
 
+test('owner pasted source adapter enriches accelerator entries with cohort terms and criteria', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'accelerator',
+      label: 'Agri accelerators Europe',
+      query: 'agtech accelerator europe seed program'
+    },
+    { id: 'accelerator-rich-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Accelerator: AgriTech Europe Accelerator',
+      'Program: Fall 2026 cohort',
+      'Location: Paris / Remote',
+      'Applications close: September 30, 2026',
+      'Program terms: 12 weeks, 2 percent equity',
+      'Selection criteria: Seed-stage climate and agricultural workflow teams',
+      'Website: https://accelerator.example/apply'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'accelerator_snippet')
+  assert.equal(candidate.title, 'Fall 2026 cohort')
+  assert.match(candidate.context, /Program terms: 12 weeks, 2 percent equity/)
+  assert.match(
+    candidate.context,
+    /Selection criteria: Seed-stage climate and agricultural workflow teams/
+  )
+  assert.match(candidate.summary, /September 30, 2026/)
+})
+
 test('owner pasted source adapter parses CSV-like investor lists as multiple candidates', () => {
   const job = createFinderSearchJob(
     {
@@ -482,6 +548,37 @@ test('owner pasted source adapter enriches investor entries with stage ticket si
   assert.match(candidate.context, /Stage: Pre-seed \/ Seed/)
   assert.match(candidate.context, /Ticket size: €250k-€1m/)
   assert.match(candidate.context, /Thesis: Backs agricultural workflow infrastructure/)
+})
+
+test('owner pasted source adapter recognizes investor alias fields and geography mandate', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'investor',
+      label: 'Agri seed funds',
+      query: 'agri commodity seed funds europe'
+    },
+    { id: 'investor-alias-source', now: '2026-07-23T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Investor: Blue Field Ventures',
+      'Sector: Commodity workflow infrastructure',
+      'Geography mandate: France and Benelux',
+      'Check size: €500k',
+      'Investment thesis: Backs trade, logistics, and market plumbing',
+      'Website URL: https://bluefield.example',
+      'Email: partners@bluefield.example'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.detectedFormat, 'investor_list')
+  assert.equal(candidate.partnerName, 'Blue Field Ventures')
+  assert.equal(candidate.title, 'Commodity workflow infrastructure')
+  assert.match(candidate.summary, /France and Benelux/)
+  assert.match(candidate.context, /Ticket size: €500k/)
+  assert.match(candidate.context, /Thesis: Backs trade, logistics, and market plumbing/)
 })
 
 test('owner pasted source adapter scores job candidates by interview readiness', () => {

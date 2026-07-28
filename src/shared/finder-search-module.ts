@@ -643,6 +643,30 @@ const getDeadlineFromText = (text: string) =>
     180
   )
 
+const getCompensationFromText = (text: string) =>
+  sanitizeText(
+    text.match(
+      /(?:salary|compensation|package|pay range|salary range)\s*:?\s*(.+)$/i
+    )?.[1] ?? '',
+    180
+  )
+
+const getRemotePolicyFromText = (text: string) =>
+  sanitizeText(
+    text.match(
+      /(?:remote policy|work mode|working mode|remote|hybrid|on[- ]site)\s*:?\s*(.+)$/i
+    )?.[1] ?? '',
+    180
+  )
+
+const getContractTypeFromText = (text: string) =>
+  sanitizeText(
+    text.match(
+      /(?:contract type|contract|employment type|job type)\s*:?\s*(.+)$/i
+    )?.[1] ?? '',
+    180
+  )
+
 const getNonUrlLines = (lines: string[]) =>
   lines.filter((line) => !parseMaybeUrl(line))
 
@@ -736,6 +760,27 @@ const extractOwnerSourceFields = (lines: string[]) => {
     ) ?? ''
   const inferredDeadline =
     getDeadlineFromText(deadlineLine)
+  const compensationLine =
+    nonUrlLines.find((line) =>
+      /(?:salary|compensation|package|pay range|salary range)/i.test(line)
+    ) ?? ''
+  const inferredCompensation = getCompensationFromText(compensationLine)
+  const remotePolicyLine =
+    nonUrlLines.find((line) =>
+      /(?:remote policy|work mode|working mode|hybrid|on[- ]site|remote)/i.test(line)
+    ) ?? ''
+  const inferredRemotePolicy = getRemotePolicyFromText(remotePolicyLine)
+  const contractTypeLine =
+    nonUrlLines.find((line) =>
+      /(?:contract type|employment type|job type|cdi|cdd|permanent|contractor)/i.test(
+        line
+      )
+    ) ?? ''
+  const inferredContractType = getContractTypeFromText(contractTypeLine) || (
+    /\b(CDI|CDD)\b/i.test(contractTypeLine)
+      ? sanitizeText(contractTypeLine.match(/\b(CDI|CDD)\b/i)?.[1] ?? '', 80)
+      : ''
+  )
   const inferredLocation =
     nonUrlLines.find(
       (line) =>
@@ -784,6 +829,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
   const city = firstOf(['city'])
   const location =
     firstOf(['location', 'place', 'region', 'geo', 'geography']) ||
+    firstOf(['geography mandate', 'market', 'coverage']) ||
     (bulletParts.length > 1 ? bulletParts[1] : '') ||
     [city, country].filter(Boolean).join(', ')
   const contact = firstOf(['contact', 'email', 'recruiter', 'contact person'])
@@ -812,15 +858,54 @@ const extractOwnerSourceFields = (lines: string[]) => {
   const nextAction = firstOf(['next action', 'action', 'todo', 'follow up'])
   const explicitLink = firstOf(['url', 'link', 'website', 'source'])
   const stage = firstOf(['stage', 'investment stage', 'round', 'program stage'])
-  const ticketSize = firstOf(['ticket size', 'check size', 'ticket', 'investment size'])
+  const ticketSize = firstOf([
+    'ticket size',
+    'check size',
+    'ticket',
+    'investment size',
+    'cheque size'
+  ])
   const programTerms = firstOf(['program terms', 'terms', 'equity', 'fees'])
   const selectionCriteria = firstOf([
     'selection criteria',
     'criteria',
     'admission criteria'
   ])
-  const thesis = firstOf(['thesis', 'focus thesis', 'investment thesis'])
+  const focusArea = firstOf([
+    'sector',
+    'focus',
+    'investment focus',
+    'focus area'
+  ])
+  const thesis = firstOf([
+    'thesis',
+    'focus thesis',
+    'investment thesis',
+    'thesis fit'
+  ])
+  const compensation = firstOf([
+    'compensation',
+    'salary',
+    'salary range',
+    'package',
+    'pay range'
+  ]) || inferredCompensation
+  const remotePolicy = firstOf([
+    'remote policy',
+    'work mode',
+    'working mode',
+    'remote',
+    'hybrid'
+  ]) || inferredRemotePolicy
+  const contractType = firstOf([
+    'contract type',
+    'employment type',
+    'job type',
+    'contract'
+  ]) || inferredContractType
+  const cohort = firstOf(['cohort', 'batch', 'program'])
   const inferredProgramTitle =
+    cohort ||
     role ||
     (lines.some((line) => /accelerator|incubator|program/i.test(line))
       ? 'Accelerator program'
@@ -840,7 +925,12 @@ const extractOwnerSourceFields = (lines: string[]) => {
     ticketSize,
     programTerms,
     selectionCriteria,
-    thesis
+    focusArea,
+    thesis,
+    compensation,
+    remotePolicy,
+    contractType,
+    cohort
   }
 }
 
@@ -916,6 +1006,7 @@ const detectOwnerSourceFormat = ({
   }
 
   if (
+    !hasStructuredFields &&
     lines.some((line) =>
       /fund:|focus:|geography:|investor:|website:|contact:|ticket size:|stage:/i.test(
         line
@@ -1032,6 +1123,7 @@ const buildOwnerSourceParsedView = ({
       detectedFormat,
       partnerName: sanitizeText(entityLine, 220) || defaultPartnerName,
       title:
+        fields.cohort ||
         fields.role ||
         inferredTitleFromUrl ||
         'Accelerator program',
@@ -1048,6 +1140,7 @@ const buildOwnerSourceParsedView = ({
         defaultRelevance,
       body,
       parserEvidence: [
+        fields.cohort ? `Cohort: ${fields.cohort}` : '',
         fields.programTerms ? `Program terms: ${fields.programTerms}` : '',
         fields.selectionCriteria
           ? `Selection criteria: ${fields.selectionCriteria}`
@@ -1060,13 +1153,13 @@ const buildOwnerSourceParsedView = ({
     const partnerName = fields.company || defaultPartnerName
     const title =
       fields.role ||
-      fields.thesis ||
+      fields.focusArea ||
       inferredTitleFromUrl ||
       'Investor thesis match'
     const location =
       fields.location || defaultLocation
     const enrichedInvestorRationale = [
-      fields.role,
+      fields.role || fields.focusArea,
       fields.thesis,
       fields.stage,
       fields.ticketSize
@@ -1082,6 +1175,7 @@ const buildOwnerSourceParsedView = ({
     parserEvidence.push(
       fields.stage ? `Stage: ${fields.stage}` : '',
       fields.ticketSize ? `Ticket size: ${fields.ticketSize}` : '',
+      fields.focusArea ? `Focus: ${fields.focusArea}` : '',
       fields.thesis ? `Thesis: ${fields.thesis}` : ''
     )
 
@@ -1117,7 +1211,8 @@ const buildOwnerSourceParsedView = ({
       body,
       parserEvidence: [
         contact ? `Contact: ${contact}` : '',
-        fields.missingInfo ? `Known gap: ${fields.missingInfo}` : ''
+        fields.missingInfo ? `Known gap: ${fields.missingInfo}` : '',
+        fields.stage ? `Stage: ${fields.stage}` : ''
       ].filter(Boolean)
     }
   }
@@ -1335,6 +1430,9 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       parsed.partnerName ? `Company/partner: ${parsed.partnerName}.` : '',
       parsed.title ? `Role/opportunity: ${parsed.title}.` : '',
       parsed.location ? `Location: ${parsed.location}.` : '',
+      fields.compensation ? `Compensation: ${fields.compensation}.` : '',
+      fields.remotePolicy ? `Remote policy: ${fields.remotePolicy}.` : '',
+      fields.contractType ? `Contract type: ${fields.contractType}.` : '',
       contact ? `Contact: ${contact}.` : '',
       parsed.deadline ? `Deadline: ${parsed.deadline}.` : '',
       headline && !parseMaybeUrl(headline) ? `Headline: ${headline}.` : '',
@@ -1379,6 +1477,9 @@ export const createFinderCandidatesFromOwnerPastedSource = (
         `Original job query: ${job.query}.`,
         job.goal ? `Job goal: ${job.goal}.` : '',
         parsed.location ? `Extracted location: ${parsed.location}.` : '',
+        fields.compensation ? `Compensation: ${fields.compensation}.` : '',
+        fields.remotePolicy ? `Remote policy: ${fields.remotePolicy}.` : '',
+        fields.contractType ? `Contract type: ${fields.contractType}.` : '',
         contact ? `Extracted contact: ${contact}.` : '',
         parsed.deadline ? `Extracted deadline: ${parsed.deadline}.` : '',
         ...parsed.parserEvidence,
