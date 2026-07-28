@@ -30,6 +30,8 @@ The manifest does not contain file contents, folder inventories, parsed metadata
 
 History lines are appended for each local state mutation and include action, timestamp, manifest hash, previous hash, and optional local git `HEAD` for audit correlation.
 
+The same Personal Knowledge Core now also supports a narrow local memory-core layer derived from append-only ledgers. This is not a broad autonomous memory system: it is a typed local projection of evidence-backed `fact`, `interaction`, `summary`, and `relationship_state` records used to stabilize session continuity and later retrieval quality. It must remain private, local, and scoped to selected CoqPi interview/session context.
+
 ## Snapshot handoff for Cortex
 
 For local synchronous handoff, CoqPi exposes a dedicated export snapshot (no UI flow needed):
@@ -116,6 +118,7 @@ The EN/FR retrieval contract is now explicit:
 - `retrievalProvider` is a pluggable provider selector for the retrieval path with supported values `legacy | future_vector`.
 - `legacy` keeps the current compact local keyword retrieval behavior.
 - `future_vector` is vector-ready v0, not a vector engine: it first builds a metadata-only candidate set from selected, eligible pack IDs and then runs the current local scorer only inside that set. When selected pack IDs are present, captured context sources cannot broaden the candidate set.
+- local memory retrieval is also strict-set only: it may rank compact evidence from the selected pack set, selected outreach draft, owner-confirmed session summaries, and readable owner facts, but it must abstain when those selected records do not produce a strong enough match for the current utterance.
 
 Stored counterparty packs are also normalized as versioned compact records before they can enter retrieval:
 
@@ -130,6 +133,8 @@ Stored counterparty packs are also normalized as versioned compact records befor
 - Finder queue/session handoff is also local and deterministic. `import_now`, `hold_later`, `rejected`, and outreach draft states (`ready_for_contact`, `contacted`, `waiting`, `follow_up`, `closed`) may change selected session pack/draft IDs immediately, but only through the local session contract and never through an outbound action.
 - Knowledge source adapters are explicit local contracts: owner profile/CV file, counterparty material file, public profile link, company/respondent link, and local folder pointer. Only readable file adapters can be captured after explicit owner selection; link and folder adapters remain provenance pointers and must not be fetched, scanned, or exposed as raw content.
 - Knowledge ingestion readiness is a local contract summary, not a retrieval engine. It records source lifecycle, classification state, retention expiry, pointer-only boundaries, pack quality, and future vector candidate-set readiness without reading unsupported source contents.
+- Local memory core records are derived, not free-written. They may summarize captured owner facts, saved pack lifecycle, and Finder relationship state, but they must always point back to explicit local evidence refs, selected pack/draft scope, classification, and retention. They must not copy raw transcripts, local file paths, credentials, or hidden reasoning into assistant-visible context.
+- Owner-confirmed session summaries are allowed as a narrow local memory artifact. They must stay append-only, target-scoped, and evidence-backed by explicit owner confirmation after a call or mock session. They may record compact outcomes, follow-ups, risks, session label, selected pack IDs, and selected draft ID; they must not store raw transcript text or silently widen assistant scope beyond the currently selected target.
 - Knowledge extraction preview is metadata-first and compact in this phase: title, adapter type, classification, missing fields, retrieval readiness, extraction mode, provenance hash, parser pack label, and deterministic fields from explicitly captured readable `.md`, `.txt`, `.json`, `.csv`, `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.xls`, or `.html` files. It must not fetch URLs, scan folders, call an LLM, upload raw content, or expose unsupported source contents.
 - Knowledge pack assembly is owner-reviewed draft creation only. It may copy compact extracted fields into a local unselected pack form and show a review surface with summary, context, links, weak fields, retrieval state, local lifecycle events, and filters for status, selected/unselected visibility, assistant-ready entries, weak fields, and stale events. A saved weak-free pack can be explicitly handed off to active session prep; that action selects the stored pack for retrieval if needed and saves only the pack ID into `selectedCounterpartyPackIds`. `assembled`, `reviewed`, and `saved` events may be written to local manifest history, but raw source paths are redacted from lifecycle reasons and no pack becomes assistant-visible without this separate explicit save/selection action.
 - The shared eligibility helper exposes stable blocking reasons (`wrong_version`, `not_selected`, `not_retrieval_ready`, `wrong_owner`, `not_private`, `missing_interview_scope`) and the UI surfaces the same session-readiness text before a call.
@@ -137,7 +142,7 @@ Stored counterparty packs are also normalized as versioned compact records befor
 
 Folders, manual paths, links, binary files, PDFs, office documents, external URL fetching, and recursive scans remain pending. They cannot enter retrieval merely because they were recorded as ingress.
 
-Assistant retrieval is limited to sources explicitly captured into `coqpi_interview_en_fr`. It is a compact local keyword retrieval for English/French interview and self-presentation guidance. If it finds no eligible evidence, the assistant prompt requires a concise clarification or neutral answer instead of an invented personal fact. The core excerpt is read only after assistant analysis begins; it is never used by the realtime audio hot path.
+Assistant retrieval is limited to sources explicitly captured into `coqpi_interview_en_fr`. It is a compact local keyword retrieval for English/French interview and self-presentation guidance. If it finds no eligible evidence or no strong match inside the selected set, the assistant prompt requires a concise clarification or neutral answer instead of an invented personal fact. The core excerpt is read only after assistant analysis begins; it is never used by the realtime audio hot path.
 
 ## Manual verification
 

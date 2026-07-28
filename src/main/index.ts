@@ -26,6 +26,9 @@ import type {
   SaveOpenAIKeyResult,
   SessionContext,
   SessionContextResult,
+  SessionSummariesResult,
+  SessionSummary,
+  SessionSummaryDraft,
   SmokeTestNote,
   SmokeTestNoteDraft,
   SmokeTestNotesResult,
@@ -53,6 +56,10 @@ import {
   getSmokeTestNotes,
   saveSmokeTestNote
 } from '../backend/services/smoke-note-service'
+import {
+  getSessionSummaries,
+  saveSessionSummary
+} from '../backend/services/session-summary-service'
 import {
   addFinderCandidateResult,
   addFinderSearchJob,
@@ -279,6 +286,22 @@ const registerIpcHandlers = () => {
     'coqpi:smoke-notes:save',
     async (_event, draft: SmokeTestNoteDraft): Promise<SmokeTestNote> =>
       saveSmokeTestNote(draft)
+  )
+
+  ipcMain.handle(
+    'coqpi:session-summaries:get',
+    async (
+      _event,
+      sourceId?: string
+    ): Promise<SessionSummariesResult> => getSessionSummaries({ sourceId })
+  )
+
+  ipcMain.handle(
+    'coqpi:session-summaries:save',
+    async (
+      _event,
+      draft: SessionSummaryDraft
+    ): Promise<SessionSummary> => saveSessionSummary(draft)
   )
 
   ipcMain.handle(

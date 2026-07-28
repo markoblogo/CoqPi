@@ -24,6 +24,9 @@ import type {
   SaveOpenAIKeyResult,
   SessionContext,
   SessionContextResult,
+  SessionSummariesResult,
+  SessionSummary,
+  SessionSummaryDraft,
   SmokeTestNote,
   SmokeTestNoteDraft,
   SmokeTestNotesResult,
@@ -47,6 +50,10 @@ declare global {
       smokeNotes: {
         get: () => Promise<SmokeTestNotesResult>
         save: (draft: SmokeTestNoteDraft) => Promise<SmokeTestNote>
+      }
+      sessionSummaries: {
+        get: (sourceId?: string) => Promise<SessionSummariesResult>
+        save: (draft: SessionSummaryDraft) => Promise<SessionSummary>
       }
       finderSearch: {
         get: () => Promise<FinderSearchStoreResult>

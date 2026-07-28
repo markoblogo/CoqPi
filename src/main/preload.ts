@@ -14,6 +14,7 @@ import type {
   FinderSearchJobStatus,
   RealtimeTranscriptionStartRequest,
   SessionContext,
+  SessionSummaryDraft,
   SmokeTestNoteDraft
 } from '../shared/app-types'
 
@@ -34,6 +35,12 @@ contextBridge.exposeInMainWorld('coqpi', {
     get: () => ipcRenderer.invoke('coqpi:smoke-notes:get'),
     save: (draft: SmokeTestNoteDraft) =>
       ipcRenderer.invoke('coqpi:smoke-notes:save', draft)
+  },
+  sessionSummaries: {
+    get: (sourceId?: string) =>
+      ipcRenderer.invoke('coqpi:session-summaries:get', sourceId),
+    save: (draft: SessionSummaryDraft) =>
+      ipcRenderer.invoke('coqpi:session-summaries:save', draft)
   },
   finderSearch: {
     get: () => ipcRenderer.invoke('coqpi:finder-search:get'),

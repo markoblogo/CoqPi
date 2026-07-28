@@ -494,6 +494,68 @@ export interface ContextSourceManifest {
   knowledgePackLifecycle?: KnowledgePackLifecycleEntry[]
 }
 
+export type LocalMemoryRecordKind =
+  | 'fact'
+  | 'interaction'
+  | 'summary'
+  | 'preference'
+  | 'relationship_state'
+
+export type LocalMemoryRecordSourceType =
+  | 'context_source'
+  | 'counterparty_pack'
+  | 'knowledge_pack_lifecycle'
+  | 'finder_candidate'
+  | 'finder_outreach_draft'
+  | 'session_summary'
+
+export type LocalMemoryAssistantDropReason =
+  | 'not_selected'
+  | 'stale'
+  | 'disabled'
+  | 'classification_blocked'
+  | 'retention_expired'
+  | 'no_evidence'
+
+export interface LocalMemoryRecord {
+  version: 1
+  id: string
+  entityId: string
+  entityLabel: string
+  kind: LocalMemoryRecordKind
+  sourceType: LocalMemoryRecordSourceType
+  sourceId: string
+  title: string
+  content: string
+  createdAt: string
+  updatedAt: string
+  classification: 'pending' | 'private'
+  retention: {
+    mode: 'manual_deletion_required'
+    maxAgeDays: number
+    expiresAt: string
+  }
+  scopes: string[]
+  confidence: number
+  assistantEligible: boolean
+  evidenceRefs: string[]
+}
+
+export interface LocalMemoryAssistantRecord {
+  record: LocalMemoryRecord
+  status: 'included' | 'dropped'
+  reason: string
+}
+
+export interface LocalMemoryState {
+  version: 1
+  records: LocalMemoryRecord[]
+  assistantView: {
+    included: LocalMemoryAssistantRecord[]
+    dropped: LocalMemoryAssistantRecord[]
+  }
+}
+
 export type KnowledgePackLifecycleStatus = 'assembled' | 'reviewed' | 'saved'
 
 export interface KnowledgePackLifecycleEntry {
@@ -714,6 +776,36 @@ export interface SmokeTestNote extends SmokeTestNoteDraft {
 
 export interface SmokeTestNotesResult {
   notes: SmokeTestNote[]
+}
+
+export interface SessionSummaryDraft {
+  sourceId: string
+  partnerName: string
+  title: string
+  summary: string
+  confirmedOutcomes?: string[]
+  followUps?: string[]
+  risks?: string[]
+  sessionLabel?: string
+  selectedCounterpartyPackIds?: string[]
+  selectedFinderOutreachDraftId?: string
+}
+
+export interface SessionSummary extends SessionSummaryDraft {
+  version: 1
+  id: string
+  createdAt: string
+  confirmedAt: string
+  confirmedOutcomes: string[]
+  followUps: string[]
+  risks: string[]
+  sessionLabel: string
+  selectedCounterpartyPackIds: string[]
+  selectedFinderOutreachDraftId: string
+}
+
+export interface SessionSummariesResult {
+  summaries: SessionSummary[]
 }
 
 export interface SmokeFixQueueItem {

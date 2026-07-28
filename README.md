@@ -87,6 +87,13 @@ What works now:
 - document ingestion via local MarkItDown adapter for explicit `pdf/docx/pptx/xlsx/xls/html` files, still ending in compact extracted fields only;
 - parser pack set v1 is inferred on compact extraction so Knowledge and Finder use the same `job/investor/accelerator/company` routing vocabulary;
 - reviewed pack assembly and lifecycle states;
+- local memory core on top of append-only ledgers:
+  - derived fact / summary / interaction / relationship-state records,
+  - owner-confirmed session summaries for a specific target,
+  - strict selected-pack plus selected-draft assistant view,
+  - ranked retrieval across selected pack, draft, session-summary, and readable owner-fact records,
+  - compact local memory artifacts for audit and future retrieval passes,
+  - abstain when the selected set does not contain a strong enough match;
 - selected-pack retrieval boundary and session handoff into Prepare/Live;
 - strict payload audit for what is included vs dropped;
 - vector-ready contract exists, but retrieval still runs inside a strict selected candidate set without a vector DB.
@@ -124,7 +131,8 @@ flowchart LR
 ## Safety boundaries
 
 - raw files are not pushed directly into assistant requests;
-- assistant retrieval is limited to selected eligible packs;
+- assistant retrieval is limited to selected eligible packs and selected local memory records;
+- weak selected-context matches abstain instead of inventing continuity;
 - governance receipts store only operational metadata;
 - smoke notes do not store transcript text;
 - Finder/outreach remains local-only and does not send anything externally.

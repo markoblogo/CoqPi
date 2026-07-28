@@ -49,6 +49,7 @@ const withElectronMock = async (run) => {
     const sessionContextService = require('../dist-electron/backend/services/session-context-service.js')
     const finderSearchService = require('../dist-electron/backend/services/finder-search-service.js')
     const finderSessionIngressService = require('../dist-electron/backend/services/finder-session-ingress-service.js')
+    const sessionSummaryService = require('../dist-electron/backend/services/session-summary-service.js')
     const profileService = require('../dist-electron/backend/services/profile-service.js')
     const secretStorageService = require('../dist-electron/backend/services/secret-storage-service.js')
     const governanceService = require('../dist-electron/backend/services/governance-service.js')
@@ -60,6 +61,7 @@ const withElectronMock = async (run) => {
       sessionContextService,
       finderSearchService,
       finderSessionIngressService,
+      sessionSummaryService,
       profileService,
       secretStorageService,
       governanceService
@@ -847,6 +849,190 @@ test('analyzeRecentTranscript keeps selected pack context in prompt for generic 
   assert.match(observed.capturedPrompt, /selected fallback|matched/i)
   assert.match(observed.capturedPrompt, /AI Product Lead/)
   assert.match(observed.capturedPrompt, /Linked outreach draft for selected pack|Selected outreach draft/)
+})
+
+test('analyzeRecentTranscript includes owner-confirmed session summary only for the selected target', async () => {
+  const observed = {
+    capturedPrompt: ''
+  }
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:summary-target-keep',
+              partnerName: 'Northfield Labs',
+              title: 'AI Product Lead',
+              summary: 'Selected target for summary continuity.'
+            },
+            {
+              kind: 'investor',
+              sourceId: 'finder:investor:summary-target-drop',
+              partnerName: 'Cobalt Seed',
+              title: 'Seed investor',
+              summary: 'Unselected target that should stay out of continuity.'
+            }
+          ])
+
+        const keepPack = importResult.manifest.counterpartyPacks.find(
+          (pack) => pack.sourceId === 'finder:job:summary-target-keep'
+        )
+
+        await services.sessionSummaryService.saveSessionSummary({
+          sourceId: 'finder:job:summary-target-keep',
+          partnerName: 'Northfield Labs',
+          title: 'AI Product Lead',
+          summary: 'Owner confirmed that the intro call already happened.',
+          confirmedOutcomes: ['Need a tighter 90-day plan story'],
+          followUps: ['Prepare one short follow-up around workflow transformation'],
+          selectedCounterpartyPackIds: keepPack ? [keepPack.id] : []
+        })
+
+        await services.sessionSummaryService.saveSessionSummary({
+          sourceId: 'finder:investor:summary-target-drop',
+          partnerName: 'Cobalt Seed',
+          title: 'Seed investor',
+          summary: 'This unrelated investor summary must stay out of the prompt.',
+          followUps: ['Investor-specific follow-up']
+        })
+
+        await services.sessionContextService.saveSessionContext({
+          company: 'Northfield Labs',
+          role: 'AI Product Lead',
+          context: 'Selected target summary continuity',
+          goal: 'Use only the selected target history.',
+          notes: '',
+          selectedCounterpartyPackIds: keepPack ? [keepPack.id] : [],
+          selectedFinderOutreachDraftId: ''
+        })
+      },
+      requestOverrides: async (services) => {
+        const session = await services.sessionContextService.getSessionContext()
+        return {
+          ...makeRequest({
+            transcriptText:
+              'Could you briefly explain why you are a fit for this AI Product Lead role?'
+          }),
+          sessionContext: session.context,
+          selectedCounterpartyPackIds: session.context.selectedCounterpartyPackIds
+        }
+      },
+      fetchHandler: async (_url, init) => {
+        const body = init.body ? JSON.parse(init.body) : {}
+        observed.capturedPrompt = body?.messages?.[1]?.content || ''
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Нужно кратко объяснить fit к роли.',
+              detectedQuestion: 'Why are you a fit for this role?',
+              intent: 'fit summary',
+              risk: 'low',
+              suggestedAnswers: [],
+              keywordsToRemember: ['fit', 'workflow', 'plan'],
+              openingPhrase: 'Sure.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.match(
+    observed.capturedPrompt,
+    /Selected-context retrieval from local memory core/
+  )
+  assert.match(observed.capturedPrompt, /Owner confirmed that the intro call already happened/)
+  assert.match(observed.capturedPrompt, /Need a tighter 90-day plan story/)
+  assert.doesNotMatch(observed.capturedPrompt, /This unrelated investor summary must stay out/)
+})
+
+test('analyzeRecentTranscript adds abstain hint when selected-context retrieval is weak', async () => {
+  const observed = {
+    capturedPrompt: ''
+  }
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      profileCount: 1,
+      beforeAnalyze: async (services) => {
+        const importResult =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            {
+              kind: 'job',
+              sourceId: 'finder:job:weak-retrieval-target',
+              partnerName: 'Northfield Labs',
+              title: 'AI Product Lead',
+              summary: 'Selected target for product-fit discussion.'
+            }
+          ])
+
+        const keepPack = importResult.manifest.counterpartyPacks[0]
+
+        await services.sessionSummaryService.saveSessionSummary({
+          sourceId: 'finder:job:weak-retrieval-target',
+          partnerName: 'Northfield Labs',
+          title: 'AI Product Lead',
+          summary: 'Owner confirmed previous intro and product-fit discussion.',
+          confirmedOutcomes: ['Need a stronger 90-day story'],
+          followUps: ['Prepare workflow transformation follow-up'],
+          selectedCounterpartyPackIds: keepPack ? [keepPack.id] : []
+        })
+
+        await services.sessionContextService.saveSessionContext({
+          company: 'Northfield Labs',
+          role: 'AI Product Lead',
+          context: 'Selected target summary continuity',
+          goal: 'Use only the selected target history.',
+          notes: '',
+          selectedCounterpartyPackIds: keepPack ? [keepPack.id] : [],
+          selectedFinderOutreachDraftId: ''
+        })
+      },
+      requestOverrides: async (services) => {
+        const session = await services.sessionContextService.getSessionContext()
+        return {
+          ...makeRequest({
+            transcriptText:
+              'Can you explain your Mediterranean grain fund ticket assumptions?'
+          }),
+          sessionContext: session.context,
+          selectedCounterpartyPackIds: session.context.selectedCounterpartyPackIds
+        }
+      },
+      fetchHandler: async (_url, init) => {
+        const body = init.body ? JSON.parse(init.body) : {}
+        observed.capturedPrompt = body?.messages?.[1]?.content || ''
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu: 'Нужно нейтрально ответить или уточнить.',
+              detectedQuestion: 'What are your fund ticket assumptions?',
+              intent: 'out of scope continuity',
+              risk: 'medium',
+              suggestedAnswers: [],
+              keywordsToRemember: ['clarify', 'neutral'],
+              openingPhrase: 'Let me clarify that.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.match(
+    observed.capturedPrompt,
+    /no sufficiently strong selected-context retrieval matched this utterance/i
+  )
+  assert.doesNotMatch(
+    observed.capturedPrompt,
+    /Selected-context retrieval from local memory core/
+  )
 })
 
 test('analyzeRecentTranscript prunes stale selected outreach draft from persisted session while keeping selected pack audit', async () => {

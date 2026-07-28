@@ -23,6 +23,9 @@ import {
   resolveSessionFinderOutreachDraft
 } from './finder-search-service'
 import {
+  getLocalMemoryCoreState
+} from './local-memory-core-service'
+import {
   DEFAULT_OPENAI_ASSISTANT_MODEL,
   interviewAssistantSystemPrompt
 } from '../prompts/interview-assistant-prompt'
@@ -37,6 +40,7 @@ import {
   isRetryableProviderError,
   shouldContinueFallback
 } from './assistant-service-retry-policy'
+import { buildLocalMemoryRetrievalContext } from '../../shared/local-memory-core'
 
 const DEFAULT_ANALYSIS_REQUEST_TIMEOUT_MS = 10000
 const DEFAULT_ANALYSIS_BUDGET_MS = 25000
@@ -505,6 +509,30 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
     sections.push(
       '',
       'Personal Knowledge Core: no suitable current EN/FR interview context was retrieved. Do not claim owner-specific facts from this source; ask a concise clarifying question or use a neutral answer when such facts are needed.'
+    )
+  }
+
+  const localMemoryState = await getLocalMemoryCoreState({
+    selectedPackIds: request.selectedCounterpartyPackIds,
+    selectedDraftId: request.sessionContext?.selectedFinderOutreachDraftId ?? ''
+  })
+  const localMemoryRetrieval = buildLocalMemoryRetrievalContext({
+    state: localMemoryState,
+    query: request.transcriptText,
+    maxChars: 1000
+  })
+
+  if (localMemoryRetrieval.context) {
+    sections.push(
+      '',
+      'Selected-context retrieval from local memory core (strict selected set only):',
+      localMemoryRetrieval.context,
+      'Use this only as evidence-backed continuity from selected packs, drafts, session summaries, and readable owner facts.'
+    )
+  } else if (localMemoryRetrieval.shouldAbstain) {
+    sections.push(
+      '',
+      'Local memory core: no sufficiently strong selected-context retrieval matched this utterance. Do not invent continuity from selected packs, drafts, or session summaries; ask a concise clarifying question or answer neutrally when owner-specific continuity is needed.'
     )
   }
 
