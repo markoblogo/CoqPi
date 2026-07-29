@@ -237,6 +237,16 @@ the scoped path.
 `Open Code Review` (`ocr`) pass used as a second reviewer on diffs before
 push/PR. It is advisory only and does not replace smoke/governance checks.
 
+For security-shaped diffs, `codex-security` is also allowed as a local second
+reviewer. Use it for Electron/IPC boundaries, realtime/session payload paths,
+backend key handling, auth, and runtime/security-sensitive integration changes.
+Skip it for pure content/UI/text edits with no runtime effect. It remains
+advisory only and does not replace receipts, smoke checks, or owner review.
+
+```bash
+npx codex-security scan .
+```
+
 ## Not in scope yet
 
 - outbound email or message sending;
