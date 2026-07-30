@@ -2,6 +2,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type {
+  SmokeTestExecutionSnapshot,
   SmokeTestNote,
   SmokeTestNoteDraft,
   SmokeTestNotesResult
@@ -10,6 +11,7 @@ import { getAppInfo } from './app-state'
 
 const MAX_FIELD_CHARS = 1200
 const MAX_LABEL_CHARS = 180
+const MAX_SNAPSHOT_CHARS = 180
 
 const getSmokeNotesPath = () =>
   path.join(getAppInfo().sessionsDirectory, 'smoke-notes.jsonl')
@@ -17,12 +19,61 @@ const getSmokeNotesPath = () =>
 const sanitizeText = (value: unknown, maxLength = MAX_FIELD_CHARS) =>
   typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
 
+const sanitizeExecutionSnapshot = (
+  value: unknown
+): SmokeTestExecutionSnapshot | undefined => {
+  if (!value || typeof value !== 'object') {
+    return undefined
+  }
+
+  const snapshot = value as Partial<SmokeTestExecutionSnapshot>
+  const status =
+    snapshot.status === 'ready' ||
+    snapshot.status === 'attention' ||
+    snapshot.status === 'blocked'
+      ? snapshot.status
+      : undefined
+
+  if (!status) {
+    return undefined
+  }
+
+  const firstFailureStage =
+    snapshot.firstFailureStage === 'setup' ||
+    snapshot.firstFailureStage === 'realtime' ||
+    snapshot.firstFailureStage === 'transcript' ||
+    snapshot.firstFailureStage === 'assistant' ||
+    snapshot.firstFailureStage === 'quality'
+      ? snapshot.firstFailureStage
+      : undefined
+
+  return {
+    status,
+    firstFailureStage,
+    firstFailureTitle: sanitizeText(snapshot.firstFailureTitle, MAX_SNAPSHOT_CHARS),
+    assistantStatusLabel: sanitizeText(
+      snapshot.assistantStatusLabel,
+      MAX_SNAPSHOT_CHARS
+    ),
+    realtimeStatusLabel: sanitizeText(
+      snapshot.realtimeStatusLabel,
+      MAX_SNAPSHOT_CHARS
+    ),
+    payloadSummaryLabel: sanitizeText(
+      snapshot.payloadSummaryLabel,
+      MAX_SNAPSHOT_CHARS
+    ),
+    traceSummary: sanitizeText(snapshot.traceSummary, MAX_SNAPSHOT_CHARS)
+  }
+}
+
 const sanitizeDraft = (draft: SmokeTestNoteDraft): SmokeTestNoteDraft => ({
   worked: sanitizeText(draft.worked),
   broken: sanitizeText(draft.broken),
   nextFix: sanitizeText(draft.nextFix),
   sessionLabel: sanitizeText(draft.sessionLabel, MAX_LABEL_CHARS),
-  selectedPackLabel: sanitizeText(draft.selectedPackLabel, MAX_LABEL_CHARS)
+  selectedPackLabel: sanitizeText(draft.selectedPackLabel, MAX_LABEL_CHARS),
+  executionSnapshot: sanitizeExecutionSnapshot(draft.executionSnapshot)
 })
 
 const parseNoteLine = (line: string): SmokeTestNote | null => {
@@ -52,7 +103,8 @@ const parseNoteLine = (line: string): SmokeTestNote | null => {
       selectedPackLabel:
         typeof parsed.selectedPackLabel === 'string'
           ? parsed.selectedPackLabel
-          : ''
+          : '',
+      executionSnapshot: sanitizeExecutionSnapshot(parsed.executionSnapshot)
     }
   } catch {
     return null

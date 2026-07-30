@@ -1828,6 +1828,58 @@ export const App = () => {
   }
 
   const saveSmokeNote = async () => {
+    const persistDraft: SmokeTestNoteDraft = {
+      ...smokeNoteDraft,
+      sessionLabel: activeSessionPrepPreview.sessionLabel,
+      selectedPackLabel: selectedCounterpartyPacksLabel
+    }
+
+    setIsSavingSmokeNote(true)
+    setSmokeNoteError(null)
+    setSmokeNoteNotice(null)
+    setCopiedSmokeReportNoteId(null)
+
+    try {
+      const note = await window.coqpi.smokeNotes.save(persistDraft)
+      const payload = await window.coqpi.smokeNotes.get()
+
+      setSmokeNotes(payload.notes.length > 0 ? payload.notes : [note])
+      setSmokeNoteDraft(emptySmokeNoteDraft)
+      setSmokeNoteNotice('Smoke note saved locally.')
+    } catch (error) {
+      setSmokeNoteError(
+        error instanceof Error ? error.message : 'Unable to save smoke note.'
+      )
+    } finally {
+      setIsSavingSmokeNote(false)
+    }
+  }
+
+  const buildSmokeExecutionSnapshot = () => ({
+    status: smokeExecutionDiagnostics.status,
+    firstFailureStage:
+      smokeExecutionDiagnostics.firstFailure?.stage ?? undefined,
+    firstFailureTitle:
+      smokeExecutionDiagnostics.firstFailure?.title ?? undefined,
+    assistantStatusLabel: assistantStatus.label,
+    realtimeStatusLabel:
+      realtimeStatus === 'idle'
+        ? 'idle'
+        : realtimeHealthLabel.toLowerCase(),
+    payloadSummaryLabel:
+      lastAnalyzePayloadInspector?.summaryLabel ||
+      activeSessionPayloadInspector.summaryLabel,
+    traceSummary: smokeExecutionDiagnostics.trace
+      .slice(0, 4)
+      .map((item) => `${item.label.toLowerCase()}: ${item.detail}`)
+      .join(' | ')
+  } satisfies NonNullable<SmokeTestNoteDraft['executionSnapshot']>)
+
+  const saveSmokeExecutionFailureNow = async () => {
+    if (!smokeExecutionDiagnostics.firstFailure) {
+      return
+    }
+
     setIsSavingSmokeNote(true)
     setSmokeNoteError(null)
     setSmokeNoteNotice(null)
@@ -1835,15 +1887,18 @@ export const App = () => {
 
     try {
       const note = await window.coqpi.smokeNotes.save({
-        ...smokeNoteDraft,
+        worked: smokeExecutionDiagnostics.notePrefill.worked,
+        broken: smokeExecutionDiagnostics.notePrefill.broken,
+        nextFix: smokeExecutionDiagnostics.notePrefill.nextFix,
         sessionLabel: activeSessionPrepPreview.sessionLabel,
-        selectedPackLabel: selectedCounterpartyPacksLabel
+        selectedPackLabel: selectedCounterpartyPacksLabel,
+        executionSnapshot: buildSmokeExecutionSnapshot()
       })
       const payload = await window.coqpi.smokeNotes.get()
 
       setSmokeNotes(payload.notes.length > 0 ? payload.notes : [note])
       setSmokeNoteDraft(emptySmokeNoteDraft)
-      setSmokeNoteNotice('Smoke note saved locally.')
+      setSmokeNoteNotice('First failure saved to smoke notes.')
     } catch (error) {
       setSmokeNoteError(
         error instanceof Error ? error.message : 'Unable to save smoke note.'
@@ -1859,7 +1914,8 @@ export const App = () => {
     setSmokeNoteDraft({
       worked: smokeExecutionDiagnostics.notePrefill.worked,
       broken: smokeExecutionDiagnostics.notePrefill.broken,
-      nextFix: smokeExecutionDiagnostics.notePrefill.nextFix
+      nextFix: smokeExecutionDiagnostics.notePrefill.nextFix,
+      executionSnapshot: buildSmokeExecutionSnapshot()
     })
   }
 
@@ -5490,6 +5546,16 @@ export const App = () => {
                 >
                   Capture current state
                 </button>
+                <button
+                  className="secondary-button"
+                  disabled={
+                    isSavingSmokeNote || !smokeExecutionDiagnostics.firstFailure
+                  }
+                  onClick={() => void saveSmokeExecutionFailureNow()}
+                  type="button"
+                >
+                  Save first failure
+                </button>
               </div>
             </div>
             {smokeExecutionDiagnostics.firstFailure ? (
@@ -5757,6 +5823,35 @@ export const App = () => {
                     .filter(Boolean)
                     .join(' · ') || 'No session label'}
                 </code>
+                {smokeNotes[0].executionSnapshot ? (
+                  <div className="status-list">
+                    <div>
+                      Status:{' '}
+                      <strong>{smokeNotes[0].executionSnapshot.status}</strong>
+                    </div>
+                    <div>
+                      Failure:{' '}
+                      <strong>
+                        {smokeNotes[0].executionSnapshot.firstFailureStage ||
+                          'none'}
+                      </strong>
+                    </div>
+                    <div>
+                      Realtime:{' '}
+                      <strong>
+                        {smokeNotes[0].executionSnapshot.realtimeStatusLabel ||
+                          'not recorded'}
+                      </strong>
+                    </div>
+                    <div>
+                      Assistant:{' '}
+                      <strong>
+                        {smokeNotes[0].executionSnapshot.assistantStatusLabel ||
+                          'not recorded'}
+                      </strong>
+                    </div>
+                  </div>
+                ) : null}
                 <p>{smokeNotes[0].nextFix || smokeNotes[0].broken || smokeNotes[0].worked}</p>
               </div>
             ) : null}

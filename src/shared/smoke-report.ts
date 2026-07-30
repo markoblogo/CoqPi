@@ -11,12 +11,23 @@ export const buildSmokeReportText = (
   fixQueue: SmokeFixQueueItem[]
 ) => {
   const firstFix = fixQueue[0]?.title || note.nextFix
+  const snapshot = note.executionSnapshot
   const lines = [
     '# CoqPi smoke report',
     '',
     `Date: ${note.createdAt}`,
     `Session: ${formatValue(note.sessionLabel)}`,
     `Selected pack: ${formatValue(note.selectedPackLabel)}`,
+    `Execution status: ${formatValue(snapshot?.status)}`,
+    `First failure: ${formatValue(
+      snapshot?.firstFailureStage && snapshot?.firstFailureTitle
+        ? `${snapshot.firstFailureStage} · ${snapshot.firstFailureTitle}`
+        : snapshot?.firstFailureTitle || snapshot?.firstFailureStage
+    )}`,
+    `Realtime: ${formatValue(snapshot?.realtimeStatusLabel)}`,
+    `Assistant: ${formatValue(snapshot?.assistantStatusLabel)}`,
+    `Payload: ${formatValue(snapshot?.payloadSummaryLabel)}`,
+    `Trace: ${formatValue(snapshot?.traceSummary)}`,
     '',
     'Worked:',
     formatValue(note.worked),

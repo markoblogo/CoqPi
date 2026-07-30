@@ -766,6 +766,17 @@ export interface SmokeTestNoteDraft {
   nextFix: string
   sessionLabel?: string
   selectedPackLabel?: string
+  executionSnapshot?: SmokeTestExecutionSnapshot
+}
+
+export interface SmokeTestExecutionSnapshot {
+  status: 'ready' | 'attention' | 'blocked'
+  firstFailureStage?: 'setup' | 'realtime' | 'transcript' | 'assistant' | 'quality'
+  firstFailureTitle?: string
+  assistantStatusLabel?: string
+  realtimeStatusLabel?: string
+  payloadSummaryLabel?: string
+  traceSummary?: string
 }
 
 export interface SmokeTestNote extends SmokeTestNoteDraft {
@@ -783,6 +794,7 @@ export interface SessionSummaryDraft {
   partnerName: string
   title: string
   summary: string
+  agenda?: string[]
   confirmedOutcomes?: string[]
   followUps?: string[]
   risks?: string[]
@@ -796,6 +808,7 @@ export interface SessionSummary extends SessionSummaryDraft {
   id: string
   createdAt: string
   confirmedAt: string
+  agenda: string[]
   confirmedOutcomes: string[]
   followUps: string[]
   risks: string[]

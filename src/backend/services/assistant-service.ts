@@ -10,7 +10,8 @@ import { PROFILE_CONTEXT_CHARS_LIMIT_BY_MODE } from '../../shared/cost-estimator
 import { getProfileContext } from './profile-service'
 import {
   getPersonalInterviewRetrieval,
-  resolveSessionSelectedCounterpartyPackIds
+  resolveSessionSelectedCounterpartyPackIds,
+  getCounterpartyContextPacks
 } from './context-source-service'
 import {
   buildFinderOutreachDraftSessionHandoff,
@@ -41,6 +42,9 @@ import {
   shouldContinueFallback
 } from './assistant-service-retry-policy'
 import { buildLocalMemoryRetrievalContext } from '../../shared/local-memory-core'
+import { processTranscriptForAssistant } from '../../shared/transcript-processing'
+import { sanitizeForExternalAssistant } from '../../shared/privacy-sanitizer'
+import { buildPreCallPreparationPacket } from '../../shared/meeting-workflow'
 
 const DEFAULT_ANALYSIS_REQUEST_TIMEOUT_MS = 10000
 const DEFAULT_ANALYSIS_BUDGET_MS = 25000
@@ -446,6 +450,10 @@ const validateAssistantAnalysisResult = (
 }
 
 const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
+  const processedTranscript = processTranscriptForAssistant(
+    request.transcriptText,
+    request.callLanguage
+  )
   const sections = [
     `Cost mode: ${request.costMode}`,
     `Mode: ${request.mode}`,
@@ -454,7 +462,8 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
     `Recent window: ${request.recentWindowLabel}`,
     '',
     'Transcript text:',
-    request.transcriptText.trim()
+    processedTranscript.text,
+    `Transcript language hint: ${processedTranscript.languageHint}`
   ]
 
   if (request.includeProfileContext) {
@@ -490,8 +499,36 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
     )
   }
 
+  const selectedDraftResolution = await resolveSessionFinderOutreachDraft({
+    selectedDraftId: request.sessionContext?.selectedFinderOutreachDraftId ?? '',
+    selectedPackIds: request.sessionContext?.selectedCounterpartyPackIds ?? []
+  })
+  const packManifest = await getCounterpartyContextPacks()
+  const preparationPacket = buildPreCallPreparationPacket({
+    sessionContext: request.sessionContext ?? {
+      company: '',
+      role: '',
+      context: '',
+      goal: '',
+      notes: '',
+      selectedCounterpartyPackIds: [],
+      selectedFinderOutreachDraftId: ''
+    },
+    packs: packManifest.manifest.counterpartyPacks ?? [],
+    draft: selectedDraftResolution.draft
+  })
+  sections.push(
+    '',
+    'Bounded pre-call preparation packet:',
+    `Session: ${preparationPacket.sessionLabel || 'unlabeled'}`,
+    `Agenda: ${preparationPacket.agenda.join('; ') || 'not set'}`,
+    `Participant context: ${preparationPacket.participantContext.join(' | ') || 'not available'}`,
+    `Owner focus: ${preparationPacket.ownerFocus.join(' | ') || 'not set'}`,
+    `Missing context: ${preparationPacket.missingContext.join('; ') || 'none'}`
+  )
+
   const personalKnowledgeContext = await getPersonalInterviewRetrieval(
-    request.transcriptText,
+    processedTranscript.text,
     request.answerLanguage,
     request.contextPackRetrievalKinds ?? request.retrievalKinds,
     request.selectedCounterpartyPackIds,
@@ -518,7 +555,7 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
   })
   const localMemoryRetrieval = buildLocalMemoryRetrievalContext({
     state: localMemoryState,
-    query: request.transcriptText,
+    query: processedTranscript.text,
     maxChars: 1000
   })
 
@@ -555,7 +592,15 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
     )
   }
 
-  return sections.join('\n')
+  const sanitized = sanitizeForExternalAssistant(sections.join('\n'))
+
+  if (sanitized.blocked) {
+    throw new Error(
+      `Assistant prompt blocked by privacy gate: ${sanitized.reason ?? 'unsafe material detected'}`
+    )
+  }
+
+  return sanitized.safeText
 }
 
 const parseStructuredResponse = (payload: string) => {

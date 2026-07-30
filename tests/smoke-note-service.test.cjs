@@ -50,7 +50,18 @@ test('smoke note service saves local append-only notes', async () => {
       broken: 'Realtime had no transcript.',
       nextFix: 'Inspect realtime events.',
       sessionLabel: 'Northfield Labs · AI Product Lead',
-      selectedPackLabel: 'Northfield Labs'
+      selectedPackLabel: 'Northfield Labs',
+      executionSnapshot: {
+        status: 'blocked',
+        firstFailureStage: 'realtime',
+        firstFailureTitle: 'Realtime path failed before a stable transcript',
+        assistantStatusLabel: 'Timeout',
+        realtimeStatusLabel: 'error',
+        payloadSummaryLabel:
+          'included packs 1 · dropped 0 · draft included · profile 120 chars',
+        traceSummary:
+          'error · 0 transcript · 0 eligible · conversation.item.input_audio_transcription.failed'
+      }
     })
     const second = await service.saveSmokeTestNote({
       worked: 'Mic permission was ok.',
@@ -64,6 +75,7 @@ test('smoke note service saves local append-only notes', async () => {
     assert.equal(result.notes[0].id, second.id)
     assert.equal(result.notes[1].id, first.id)
     assert.equal(result.notes[1].sessionLabel, 'Northfield Labs · AI Product Lead')
+    assert.equal(result.notes[1].executionSnapshot?.firstFailureStage, 'realtime')
   })
 })
 
@@ -82,9 +94,20 @@ test('smoke note service rejects empty notes and trims fields', async () => {
     const note = await service.saveSmokeTestNote({
       worked: ` ${'a'.repeat(1400)} `,
       broken: '',
-      nextFix: ''
+      nextFix: '',
+      executionSnapshot: {
+        status: 'attention',
+        firstFailureStage: 'transcript',
+        firstFailureTitle: ` ${'b'.repeat(240)} `,
+        assistantStatusLabel: ` ${'c'.repeat(240)} `,
+        realtimeStatusLabel: ` ${'d'.repeat(240)} `,
+        payloadSummaryLabel: ` ${'e'.repeat(240)} `,
+        traceSummary: ` ${'f'.repeat(240)} `
+      }
     })
 
     assert.equal(note.worked.length, 1200)
+    assert.equal(note.executionSnapshot?.firstFailureTitle.length, 180)
+    assert.equal(note.executionSnapshot?.traceSummary.length, 180)
   })
 })

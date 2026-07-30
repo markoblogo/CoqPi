@@ -38,7 +38,14 @@ What works now:
 - real-smoke execution diagnostics now show:
   - first failed stage,
   - compact realtime/transcript trace,
-  - one-click capture into a local smoke note.
+  - one-click capture into a local smoke note;
+- bounded pre-call preparation packet with agenda, participant context, owner
+  focus and missing-context indicators;
+- local EN/FR transcript cleanup and language hint before assistant analysis;
+- fail-closed privacy gate before external provider calls: PII is redacted and
+  secret-like material blocks the request;
+- append-only post-call recap shape with agenda, confirmed outcomes, follow-ups
+  and risks.
 
 Still not done:
 - real-call tuning is stronger now, but still not fully validated by repeated live calls;
@@ -135,6 +142,8 @@ flowchart LR
 - weak selected-context matches abstain instead of inventing continuity;
 - governance receipts store only operational metadata;
 - smoke notes do not store transcript text;
+- external assistant prompts pass through the local privacy gate; recognized
+  email/phone/tracking data is redacted and secret-like material is blocked;
 - Finder/outreach remains local-only and does not send anything externally.
 
 ## Local setup
@@ -190,6 +199,7 @@ Useful handoff scripts:
 - `pnpm test:live-loop-ui`
 - `pnpm test:analyze-recent-transcript`
 - `pnpm test:assistant-output-quality`
+- `pnpm test:donor-patterns`
 - `pnpm test:finder-ui-state`
 - `pnpm test:finder-prepare-live-ui`
 - `pnpm test:governance`
