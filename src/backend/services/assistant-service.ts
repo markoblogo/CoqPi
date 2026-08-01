@@ -612,7 +612,10 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
   sections.push(
     '',
     formatKnowledgeToFinderTargetBrief(selectedTargetBrief),
-    'Use the brief to choose which owner facts to mention, which facts to avoid, and which prepared question/answer angle fits the current utterance.'
+    'Use the brief to choose which owner facts to mention, which facts to avoid, and which prepared question/answer angle fits the current utterance.',
+    'If the brief is strong or usable, use only the listed Use owner facts when owner-specific fit is needed.',
+    'Never present Avoid or downplay owner facts as achievements for this target.',
+    'If the brief is weak or has an Abstain rule, prefer a neutral answer or a concise clarifying question instead of inventing owner-specific fit.'
   )
   const localMemoryRetrieval = buildLocalMemoryRetrievalContext({
     state: localMemoryState,

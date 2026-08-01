@@ -1,6 +1,6 @@
 import type {
   CounterpartyContextPack,
-  LocalMemoryAssistantRecord,
+  LocalMemoryRecord,
   LocalMemoryState
 } from './app-types'
 
@@ -78,11 +78,19 @@ const getTargetText = (packs: KnowledgeToFinderTargetInput[]) =>
     )
     .join('\n')
 
-const isOwnerFactRecord = (entry: LocalMemoryAssistantRecord) =>
-  entry.status === 'included' &&
-  entry.record.sourceType === 'context_source' &&
-  entry.record.kind === 'fact' &&
-  entry.record.content.trim().length > 0
+const hasExpiredRetention = (expiresAt: string) => {
+  const expiresAtMs = Date.parse(expiresAt)
+  return Number.isFinite(expiresAtMs) ? expiresAtMs <= Date.now() : false
+}
+
+const isOwnerFactRecord = (record: LocalMemoryRecord) =>
+  record.sourceType === 'context_source' &&
+  record.kind === 'fact' &&
+  record.assistantEligible &&
+  record.classification === 'private' &&
+  record.scopes.includes('coqpi_interview_en_fr') &&
+  !hasExpiredRetention(record.retention.expiresAt) &&
+  record.content.trim().length > 0
 
 const scoreFactForTarget = (fact: string, targetTerms: Set<string>) => {
   const factTerms = unique(tokenize(fact))
@@ -93,6 +101,12 @@ const scoreFactForTarget = (fact: string, targetTerms: Set<string>) => {
     matches
   }
 }
+
+const splitOwnerFactSegments = (record: LocalMemoryRecord) =>
+  sanitizeText(record.content)
+    .split(/\s+\|\s+/u)
+    .map((segment) => sanitizeText(segment.replace(/^Owner profile:\s*/iu, '')))
+    .filter(Boolean)
 
 const questionByKind: Record<CounterpartyContextPack['kind'], string[]> = {
   job: [
@@ -179,19 +193,20 @@ export const buildKnowledgeToFinderTargetBrief = ({
   }
 
   const targetTerms = new Set(tokenize(getTargetText(selectedPacks)))
-  const ownerFacts = memoryState.assistantView.included
+  const ownerFacts = memoryState.records
     .filter(isOwnerFactRecord)
-    .map((entry) => {
-      const text = sanitizeText(entry.record.content)
+    .flatMap((record) =>
+      splitOwnerFactSegments(record).map((text) => {
       const scored = scoreFactForTarget(text, targetTerms)
 
       return {
-        entry,
+        record,
         text,
         score: scored.score,
         matches: scored.matches
       }
-    })
+      })
+    )
     .filter((fact) => fact.text)
 
   const useFacts = ownerFacts
@@ -201,7 +216,7 @@ export const buildKnowledgeToFinderTargetBrief = ({
     .map((fact): KnowledgeToFinderBriefFact => ({
       text: fact.text,
       reason: `matches selected target terms: ${fact.matches.slice(0, 4).join(', ')}`,
-      evidenceRefs: fact.entry.record.evidenceRefs.slice(0, 4)
+      evidenceRefs: fact.record.evidenceRefs.slice(0, 4)
     }))
 
   const avoidFacts = ownerFacts
@@ -210,7 +225,7 @@ export const buildKnowledgeToFinderTargetBrief = ({
     .map((fact): KnowledgeToFinderBriefFact => ({
       text: fact.text,
       reason: 'no direct match to selected target context',
-      evidenceRefs: fact.entry.record.evidenceRefs.slice(0, 4)
+      evidenceRefs: fact.record.evidenceRefs.slice(0, 4)
     }))
 
   const totalUseScore = ownerFacts

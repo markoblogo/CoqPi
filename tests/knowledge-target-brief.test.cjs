@@ -35,7 +35,31 @@ const makeMemoryRecord = (overrides = {}) => ({
 
 const makeMemoryState = () => ({
   version: 1,
-  records: [],
+  records: [
+    makeMemoryRecord({
+      id: 'memory:owner:ai-product',
+      content:
+        'Led AI product discovery and workflow transformation in agri commodity operations.',
+      evidenceRefs: ['source-owner', 'owner-fact-ai']
+    }),
+    makeMemoryRecord({
+      id: 'memory:owner:editorial',
+      content:
+        'Published travel guides and editorial content for Menton tourism.',
+      evidenceRefs: ['source-owner', 'owner-fact-editorial']
+    }),
+    makeMemoryRecord({
+      id: 'memory:target:summary',
+      entityId: 'target:finder:job:northfield',
+      entityLabel: 'Northfield Labs · AI Product Lead',
+      sourceType: 'counterparty_pack',
+      sourceId: 'coqpi:finder:finder:job:northfield',
+      title: 'Northfield Labs session pack',
+      content:
+        'Northfield Labs needs AI product leadership for workflow transformation.',
+      evidenceRefs: ['pack-northfield']
+    })
+  ],
   assistantView: {
     included: [
       {
@@ -142,6 +166,13 @@ test('knowledge-to-finder brief abstains when selected target has no matching ow
   const brief = buildKnowledgeToFinderTargetBrief({
     memoryState: {
       ...makeMemoryState(),
+      records: [
+        makeMemoryRecord({
+          id: 'memory:owner:tourism',
+          content: 'Published local tourism guides and short editorial notes.',
+          evidenceRefs: ['source-owner', 'owner-fact-tourism']
+        })
+      ],
       assistantView: {
         included: [
           {

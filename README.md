@@ -36,6 +36,9 @@ What works now:
 - selected pack + selected outreach draft flow into assistant payload;
 - selected Finder/session context now adds a live communication guard:
   short spoken answers, target-specific relevance, abstain on weak context, and no broad biography dump;
+- assistant output QA fixtures now verify that EN/FR suggestions use selected
+  Knowledge-to-Finder facts, avoid unrelated owner facts, and switch to a
+  clarifying answer when target fit is weak;
 - live cockpit shows what is listened to, what is ignored, what was sent, and what context actually went into the last analyze;
 - real-smoke execution diagnostics now show:
   - first failed stage,

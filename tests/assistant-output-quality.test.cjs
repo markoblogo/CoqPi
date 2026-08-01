@@ -162,8 +162,9 @@ const fixtures = [
       context: 'This investor context must stay outside the job interview answer.',
       links: ['https://example.com/cobalt']
     },
-    requiredTerms: ['Northfield'],
-    forbiddenTerms: ['Cobalt'],
+    requiredTerms: ['Northfield', 'workflow'],
+    forbiddenTerms: ['Cobalt', 'travel guides', 'Menton'],
+    expectedBriefLevel: 'strong',
     response: {
       meaningRu:
         'Собеседник просит коротко объяснить опыт в product management для AI transformation роли.',
@@ -224,8 +225,9 @@ const fixtures = [
       context: 'This job pack must not appear in the accelerator answer.',
       links: ['https://example.com/alpine-job']
     },
-    requiredTerms: ['GreenBridge'],
-    forbiddenTerms: ['Alpine'],
+    requiredTerms: ['GreenBridge', 'pilot'],
+    forbiddenTerms: ['Alpine', 'travel guides', 'Menton'],
+    expectedBriefLevel: 'usable',
     response: {
       meaningRu:
         'Собеседник просит объяснить ценность agro-commodities экосистемы для акселератора.',
@@ -259,6 +261,78 @@ const fixtures = [
       ],
       keywordsToRemember: ['pilote', 'partenaires', 'données'],
       openingPhrase: 'Oui, bien sûr.'
+    }
+  },
+  {
+    name: 'English weak target match asks a clarifying question instead of stretching owner facts',
+    request: {
+      transcriptText:
+        'How would your background help us with quantum cybersecurity compliance?',
+      callLanguage: 'en',
+      answerLanguage: 'en',
+      mode: 'full',
+      includeProfileContext: false,
+      recentWindowLabel: '30s',
+      costMode: 'balanced',
+      retrievalKinds: ['partner']
+    },
+    selectedPack: {
+      kind: 'partner',
+      sourceId: 'finder:partner:quality-quantum',
+      partnerName: 'QuantumShield',
+      title: 'Cybersecurity compliance partner',
+      summary:
+        'QuantumShield focuses on post-quantum cryptography compliance and security audits.',
+      context:
+        'The conversation should clarify whether there is a general collaboration angle before claiming fit.',
+      links: ['https://example.com/quantumshield']
+    },
+    unselectedPack: {
+      kind: 'job',
+      sourceId: 'finder:job:quality-bioai',
+      partnerName: 'BioAI Labs',
+      title: 'AI Product Manager',
+      summary: 'BioAI Labs is unrelated to this partner call.',
+      context: 'This job pack must not appear in the QuantumShield answer.',
+      links: ['https://example.com/bioai']
+    },
+    requiredTerms: ['clarify'],
+    forbiddenTerms: [
+      'BioAI',
+      'AI product discovery',
+      'agri commodity',
+      'workflow',
+      'travel guides',
+      'Menton'
+    ],
+    expectedBriefLevel: 'weak',
+    requiresClarifyingAnswer: true,
+    response: {
+      meaningRu:
+        'Собеседник спрашивает, как мой опыт поможет в quantum cybersecurity compliance.',
+      detectedQuestion:
+        'How can your background help with quantum cybersecurity compliance?',
+      intent:
+        'Check whether there is a real fit for QuantumShield before making claims.',
+      risk: 'There is no selected evidence for cybersecurity expertise.',
+      suggestedAnswers: [
+        {
+          label: 'short',
+          text:
+            'I should not overclaim here. I would first need to understand the compliance problem and where my contribution could be useful.',
+          answerMeaningRu:
+            'Я не заявляю экспертизу без фактов и уточняю задачу.'
+        },
+        {
+          label: 'clarifying',
+          text:
+            'Could you clarify whether you need security expertise itself, or help structuring the business conversation around the compliance process?',
+          answerMeaningRu:
+            'Я уточняю, нужна ли security-экспертиза или продуктовая структуризация процесса.'
+        }
+      ],
+      keywordsToRemember: ['overclaim', 'clarify', 'compliance'],
+      openingPhrase: 'I should be precise here.'
     }
   }
 ]
@@ -335,9 +409,15 @@ test('assistant output quality fixtures pass through analyzeRecentTranscript', a
                 assert.match(prompt, /Keep suggested answers short, spoken/)
                 assert.match(prompt, /Do not include broad owner biography/)
                 assert.match(prompt, /Knowledge-to-Finder relevance brief/)
+                assert.match(
+                  prompt,
+                  new RegExp(`Level: ${fixture.expectedBriefLevel}`)
+                )
                 assert.match(prompt, /Led AI product discovery/)
                 assert.match(prompt, /Avoid or downplay owner facts/)
                 assert.match(prompt, /travel guides/)
+                assert.match(prompt, /Never present Avoid or downplay owner facts/)
+                assert.match(prompt, /prefer a neutral answer or a concise clarifying question/)
                 assert.match(prompt, new RegExp(fixture.requiredTerms[0], 'i'))
                 assert.doesNotMatch(
                   prompt,
@@ -367,7 +447,8 @@ test('assistant output quality fixtures pass through analyzeRecentTranscript', a
               const issues = validateAssistantOutputQuality(result, {
                 answerLanguage: fixture.request.answerLanguage,
                 requiredTerms: fixture.requiredTerms,
-                forbiddenTerms: fixture.forbiddenTerms
+                forbiddenTerms: fixture.forbiddenTerms,
+                requiresClarifyingAnswer: fixture.requiresClarifyingAnswer
               })
 
               assert.deepEqual(issues, [], fixture.name)

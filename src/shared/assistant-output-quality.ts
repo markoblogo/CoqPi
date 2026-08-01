@@ -12,6 +12,7 @@ export type AssistantOutputQualityExpectation = {
   answerLanguage: AssistantAnswerLanguage
   requiredTerms?: string[]
   forbiddenTerms?: string[]
+  requiresClarifyingAnswer?: boolean
 }
 
 export type AssistantOutputQualityLevel =
@@ -165,6 +166,16 @@ export const validateAssistantOutputQuality = (
         reason: `Forbidden unselected-context term "${term}" appeared.`
       })
     }
+  }
+
+  if (
+    expectation.requiresClarifyingAnswer &&
+    !result.suggestedAnswers.some((answer) => answer.label === 'clarifying')
+  ) {
+    issues.push({
+      field: 'suggestedAnswers',
+      reason: 'Expected a clarifying answer for weak selected-context fit.'
+    })
   }
 
   return issues
