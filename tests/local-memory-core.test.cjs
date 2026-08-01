@@ -265,6 +265,17 @@ test('local memory core derives evidence-backed records and strict assistant vie
   assert.equal(ranked.shouldAbstain, false)
   assert.match(ranked.context, /Northfield Labs/)
   assert.match(ranked.context, /90-day/)
+  assert.match(ranked.context, /quality strong|quality usable/)
+
+  const followUp = buildLocalMemoryRetrievalContext({
+    state,
+    query: 'Any follow-up?'
+  })
+  assert.equal(followUp.shouldAbstain, false)
+  assert.match(followUp.context, /session_summary:summary/i)
+  assert.match(followUp.context, /workflow transformation/)
+  assert.match(followUp.context, /quality usable/i)
+  assert.doesNotMatch(followUp.context, /counterparty_pack:summary/)
 
   const abstained = buildLocalMemoryRetrievalContext({
     state,

@@ -536,11 +536,14 @@ export const buildLocalMemoryRetrievalContext = ({
     limit
   })
 
-  const hasStrongMatch = retrieval.matches.some(
-    (match) => !match.fallbackUsed && match.score >= 8 && match.matchedTerms.length > 0
+  const evidenceMatches = retrieval.matches.filter(
+    (match) =>
+      !match.fallbackUsed &&
+      match.quality !== 'weak' &&
+      match.matchedTerms.length > 0
   )
 
-  if (!hasStrongMatch) {
+  if (evidenceMatches.length === 0) {
     return {
       context: '',
       shouldAbstain: true,
@@ -549,7 +552,13 @@ export const buildLocalMemoryRetrievalContext = ({
   }
 
   return {
-    context: formatRetrievalQualityMatches(retrieval, maxChars),
+    context: formatRetrievalQualityMatches(
+      {
+        queryTerms: retrieval.queryTerms,
+        matches: evidenceMatches
+      },
+      maxChars
+    ),
     shouldAbstain: false,
     reason: 'matched'
   }

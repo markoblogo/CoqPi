@@ -7,6 +7,7 @@ import type {
   FinderSourceAdapterDetectedFormat,
   FinderSourceAdapterMode,
   FinderOutreachDraft,
+  FinderOutreachDraftStatus,
   FinderSearchJob,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
@@ -14,6 +15,12 @@ import type {
   FinderRunnerRunSummary,
   FinderSearchStatusCounts
 } from './app-types'
+import {
+  buildFinderOutreachDraftSessionHandoff,
+  buildFinderRelationshipMemory,
+  type FinderOutreachDraftSessionHandoff,
+  type FinderRelationshipMemory
+} from './finder-relationship-memory'
 import { inferFinderParserPackV1 } from './parser-pack-set'
 
 export type FinderPipelineStatusFilter = 'all' | FinderCandidateResult['status']
@@ -45,6 +52,28 @@ export interface FinderOutreachPrepPack {
   openingMessage: string
   nextAction: string
   warnings: string[]
+}
+
+export interface FinderCandidateOutreachPipeline {
+  result: FinderCandidateResult
+  score: FinderCandidateScoreExplanation
+  qualityReview: FinderPreviewQualityReview
+  importDecision: FinderPreviewImportDecision
+  queue: FinderDecisionQueueItem
+  prep: FinderOutreachPrepPack
+  draft: {
+    exists: boolean
+    status: FinderOutreachDraftStatus | 'missing'
+    label: string
+    warnings: string[]
+  }
+  sessionHandoff: Pick<
+    FinderOutreachDraftSessionHandoff,
+    'state' | 'included' | 'label' | 'hint'
+  >
+  relationshipMemory: FinderRelationshipMemory | null
+  recommendedAction: string
+  blockers: string[]
 }
 
 export interface FinderDecisionQueueItem {
@@ -2519,6 +2548,125 @@ export const createFinderOutreachDraft = (
         reason: 'draft recorded'
       }
     ]
+  }
+}
+
+const buildMissingDraftHandoff = (
+  qualityReview: FinderPreviewQualityReview,
+  importDecision: FinderPreviewImportDecision
+): FinderCandidateOutreachPipeline['sessionHandoff'] => {
+  if (qualityReview.level === 'weak' || importDecision.requiresConfirmation) {
+    return {
+      state: 'blocked',
+      included: false,
+      label: 'draft missing · weak candidate',
+      hint:
+        'Create or enrich the outreach draft before using this candidate in a live session.'
+    }
+  }
+
+  return {
+    state: 'review',
+    included: false,
+    label: 'draft missing',
+    hint:
+      'Candidate has usable source context, but no outreach draft is attached to the session yet.'
+  }
+}
+
+const buildFinderPipelineRecommendedAction = ({
+  queue,
+  importDecision,
+  handoff,
+  draft
+}: {
+  queue: FinderDecisionQueueItem
+  importDecision: FinderPreviewImportDecision
+  handoff: FinderCandidateOutreachPipeline['sessionHandoff']
+  draft?: FinderOutreachDraft | null
+}) => {
+  if (handoff.included && draft?.status === 'ready_for_contact') {
+    return 'Use ready draft in session prep, then run live assistant with this selected context.'
+  }
+
+  if (handoff.included && handoff.state === 'follow_up') {
+    return 'Use follow-up draft as session continuity and prepare the next call questions.'
+  }
+
+  if (queue.recommendation === 'import' && importDecision.canImport) {
+    return 'Import candidate, create or review outreach draft, then attach it to session prep.'
+  }
+
+  if (queue.recommendation === 'hold') {
+    return 'Hold for later and fill weak fields before outreach or session use.'
+  }
+
+  return 'Enrich before outreach: add source evidence, contact, why relevant, and next action.'
+}
+
+export const buildFinderCandidateOutreachPipeline = ({
+  job,
+  result,
+  draft = null,
+  selected = false,
+  confirmedWeakImport = false
+}: {
+  job: FinderSearchJob
+  result: FinderCandidateResult
+  draft?: FinderOutreachDraft | null
+  selected?: boolean
+  confirmedWeakImport?: boolean
+}): FinderCandidateOutreachPipeline => {
+  const score = explainFinderCandidateScore(result)
+  const qualityReview = reviewFinderPreviewCandidateQuality(result)
+  const importDecision = getFinderPreviewImportDecision({
+    review: qualityReview,
+    selected,
+    confirmed: confirmedWeakImport
+  })
+  const queue = buildFinderDecisionQueueItem(result)
+  const prep = createFinderOutreachPrepPack(job, result)
+  const sessionHandoff = draft
+    ? buildFinderOutreachDraftSessionHandoff(draft, result)
+    : buildMissingDraftHandoff(qualityReview, importDecision)
+  const relationshipMemory = draft ? buildFinderRelationshipMemory(draft) : null
+  const draftWarnings = [
+    ...(draft?.warnings ?? prep.warnings),
+    draft ? '' : 'No local outreach draft has been saved yet.'
+  ].filter(Boolean)
+  const blockers = [
+    importDecision.canImport ? '' : importDecision.label,
+    sessionHandoff.included ? '' : sessionHandoff.hint,
+    ...qualityReview.suggestedEdits.slice(0, 4)
+  ].filter((value, index, list) => Boolean(value) && list.indexOf(value) === index)
+
+  return {
+    result,
+    score,
+    qualityReview,
+    importDecision,
+    queue,
+    prep,
+    draft: {
+      exists: Boolean(draft),
+      status: draft?.status ?? 'missing',
+      label: draft ? `draft · ${draft.status}` : 'draft missing',
+      warnings: draftWarnings
+    },
+    sessionHandoff: {
+      state: sessionHandoff.state,
+      included: sessionHandoff.included,
+      label: sessionHandoff.label,
+      hint: sessionHandoff.hint
+    },
+    relationshipMemory,
+    recommendedAction: buildFinderPipelineRecommendedAction({
+      queue,
+      importDecision,
+      handoff: sessionHandoff,
+      draft
+    }),
+    blockers
   }
 }
 

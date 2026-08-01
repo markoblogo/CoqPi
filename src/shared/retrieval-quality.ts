@@ -25,6 +25,8 @@ export interface RetrievalQualityMatch {
   label: string
   kind: string
   score: number
+  quality: 'strong' | 'usable' | 'weak'
+  explanation: string
   fallbackUsed: boolean
   matchedTerms: string[]
   sections: RetrievalQualityMatchSection[]
@@ -37,6 +39,7 @@ export interface RetrievalQualityResult {
 
 const stopWords = new Set([
   'about',
+  'any',
   'avec',
   'avec',
   'been',
@@ -124,6 +127,49 @@ const scoreSection = (
   }
 }
 
+const resolveMatchQuality = ({
+  fallbackUsed,
+  score,
+  matchedTerms,
+  queryTerms
+}: {
+  fallbackUsed: boolean
+  score: number
+  matchedTerms: string[]
+  queryTerms: string[]
+}): RetrievalQualityMatch['quality'] => {
+  if (fallbackUsed) {
+    return 'weak'
+  }
+
+  const coverage =
+    queryTerms.length > 0 ? matchedTerms.length / queryTerms.length : 0
+
+  if (score >= 18 || (score >= 12 && matchedTerms.length >= 2 && coverage >= 0.28)) {
+    return 'strong'
+  }
+
+  if (score >= 8 && matchedTerms.length >= 1) {
+    return 'usable'
+  }
+
+  return 'weak'
+}
+
+const explainMatch = ({
+  fallbackUsed,
+  matchedTerms
+}: {
+  fallbackUsed: boolean
+  matchedTerms: string[]
+}) => {
+  if (fallbackUsed) {
+    return 'selected fallback only; no lexical match inside the selected set'
+  }
+
+  return `matched ${matchedTerms.slice(0, 5).join(', ') || 'selected context'}`
+}
+
 export const rankRetrievalCandidates = ({
   query,
   candidates,
@@ -175,6 +221,13 @@ export const rankRetrievalCandidates = ({
         label: candidate.label,
         kind: candidate.kind,
         score,
+        quality: resolveMatchQuality({
+          fallbackUsed: false,
+          score,
+          matchedTerms,
+          queryTerms
+        }),
+        explanation: explainMatch({ fallbackUsed: false, matchedTerms }),
         fallbackUsed: false,
         matchedTerms,
         sections: sections.slice(0, 3).map((section) => ({
@@ -203,6 +256,8 @@ export const rankRetrievalCandidates = ({
       label: candidate.label,
       kind: candidate.kind,
       score: candidate.fallbackPriority ?? 0,
+      quality: 'weak',
+      explanation: 'selected fallback only; no lexical match inside the selected set',
       fallbackUsed: true,
       matchedTerms: [],
       sections: candidate.sections
@@ -230,7 +285,7 @@ export const formatRetrievalQualityMatches = (
         ? 'selected fallback'
         : `matched ${match.matchedTerms.join(', ')}`
 
-      return `[${match.sourceId}] ${match.label} (${match.kind}; ${matchLabel}) ${sectionLabel}`
+      return `[${match.sourceId}] ${match.label} (${match.kind}; quality ${match.quality}; ${matchLabel}; why ${match.quality}: ${match.explanation}) ${sectionLabel}`
     })
     .join('\n\n')
     .slice(0, maxChars)

@@ -14,6 +14,7 @@ const {
   buildFinderQueueReviewColumns,
   createFinderPipelineView,
   buildFinderPreviewCompletionActions,
+  buildFinderCandidateOutreachPipeline,
   explainFinderCandidateScore,
   buildFinderQueueImportPlan,
   getFinderPreviewImportDecision,
@@ -1533,6 +1534,85 @@ test('finder candidate score explanation surfaces reasons and improvements', () 
   assert.match(weakExplanation.scoreReason, /Weak/)
   assert.ok(weakExplanation.improvements.includes('source URL'))
   assert.ok(weakExplanation.improvements.includes('interview process'))
+})
+
+test('finder outreach pipeline connects score, draft and session handoff', () => {
+  const job = createFinderSearchJob(
+    { kind: 'investor', label: 'Agri funds', query: 'agri seed fund france' },
+    { id: 'job-outreach-v2', now: '2026-07-26T10:00:00.000Z', status: 'ready' }
+  )
+  const strong = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:investor:seed-v2',
+      partnerName: 'Seed V2 Fund',
+      title: 'Agri seed fund',
+      summary:
+        'Public source. France mandate. Contact: partner@seedv2.example. Ticket size: €250k-€1m.',
+      context: 'Portfolio includes agri infrastructure and commodity workflow software.',
+      links: ['https://seedv2.example'],
+      fitScore: 88,
+      whyRelevant: 'Matches agri commodity ecosystem fundraising and France expansion.',
+      missingInfo: 'Verify decision maker and current thesis.',
+      nextAction: 'Prepare investor intro and thesis-fit questions.'
+    },
+    { id: 'candidate-outreach-v2', now: '2026-07-26T10:01:00.000Z' }
+  )
+  const draft = {
+    ...createFinderOutreachDraft(job, strong, {
+      id: 'draft-outreach-v2',
+      now: '2026-07-26T10:02:00.000Z'
+    }),
+    status: 'ready_for_contact',
+    statusHistory: [
+      {
+        status: 'ready_for_contact',
+        at: '2026-07-26T10:03:00.000Z',
+        reason: 'owner reviewed draft'
+      }
+    ]
+  }
+  const strongPipeline = buildFinderCandidateOutreachPipeline({
+    job,
+    result: strong,
+    draft,
+    selected: true,
+    confirmedWeakImport: false
+  })
+
+  assert.equal(strongPipeline.score.fitLabel, '88/100 strong')
+  assert.equal(strongPipeline.importDecision.tier, 'ready')
+  assert.equal(strongPipeline.queue.recommendation, 'import')
+  assert.equal(strongPipeline.draft.status, 'ready_for_contact')
+  assert.equal(strongPipeline.sessionHandoff.state, 'ready')
+  assert.equal(strongPipeline.sessionHandoff.included, true)
+  assert.match(strongPipeline.recommendedAction, /Use ready draft in session/)
+  assert.ok(strongPipeline.prep.openingMessage.includes('Seed V2 Fund'))
+
+  const weak = createFinderCandidateResult(
+    job,
+    {
+      sourceId: 'finder:investor:weak-v2',
+      partnerName: 'Sparse Fund',
+      title: 'Fund',
+      summary: 'Sparse source only.',
+      fitScore: 42,
+      missingInfo: 'Verify source URL, contact, ticket size, investment stage.'
+    },
+    { id: 'candidate-outreach-weak-v2', now: '2026-07-26T10:04:00.000Z' }
+  )
+  const weakPipeline = buildFinderCandidateOutreachPipeline({
+    job,
+    result: weak,
+    selected: true,
+    confirmedWeakImport: false
+  })
+
+  assert.equal(weakPipeline.importDecision.tier, 'weak')
+  assert.equal(weakPipeline.importDecision.canImport, false)
+  assert.equal(weakPipeline.queue.recommendation, 'reject')
+  assert.equal(weakPipeline.sessionHandoff.included, false)
+  assert.match(weakPipeline.recommendedAction, /Enrich before outreach/)
 })
 
 test('finder preview quality review shows ready vs weak field completion states', () => {

@@ -72,6 +72,13 @@ What works now:
 - stronger deterministic parsing for messy real-world pages and section-style fields before falling back to manual review;
 - quality tiering before import: `ready / usable / weak`;
 - queue review, hold/reject/import decisions;
+- candidate outreach pipeline v2:
+  - score explanation,
+  - import gating,
+  - outreach draft readiness,
+  - contact/follow-up state,
+  - session handoff recommendation in one local contract;
+- Finder UI now surfaces that pipeline on focused prep and candidate rows, including import/queue/draft/session labels and blockers before Prepare/Live handoff;
 - outreach prep and local outreach drafts;
 - stronger queue -> session handoff:
   - `import_now / hold_later / rejected`,
@@ -99,6 +106,8 @@ What works now:
   - owner-confirmed session summaries for a specific target,
   - strict selected-pack plus selected-draft assistant view,
   - ranked retrieval across selected pack, draft, session-summary, and readable owner-fact records,
+  - retrieval quality labels (`strong` / `usable` / `weak`) plus short match explanations,
+  - weak selected fallback is kept out of assistant evidence and becomes an abstain hint,
   - compact local memory artifacts for audit and future retrieval passes,
   - abstain when the selected set does not contain a strong enough match;
 - selected-pack retrieval boundary and session handoff into Prepare/Live;
@@ -203,8 +212,10 @@ Useful handoff scripts:
 - `pnpm test:live-loop-ui`
 - `pnpm test:analyze-recent-transcript`
 - `pnpm test:assistant-output-quality`
+- `pnpm test:knowledge-retrieval`
 - `pnpm test:donor-patterns`
 - `pnpm test:finder-ui-state`
+- `pnpm test:finder-outreach-pipeline`
 - `pnpm test:finder-prepare-live-ui`
 - `pnpm test:governance`
 - `pnpm test:pre-smoke`

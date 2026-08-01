@@ -128,11 +128,6 @@ const stripHtml = (value: string) =>
       .trim()
   )
 
-const extractHtmlMatch = (html: string, pattern: RegExp) => {
-  const match = html.match(pattern)
-  return stripHtml(match?.[1] ?? '')
-}
-
 const isPrivateHostname = (hostname: string) => {
   const normalized = hostname.trim().toLowerCase()
   if (

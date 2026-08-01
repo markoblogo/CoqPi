@@ -840,10 +840,6 @@ export const buildLiveTestCockpitItems = ({
     transcriptUtterances,
     callLanguage
   )
-  const ignoredUtterances = getIgnoredAutoAnalysisUtterances(
-    transcriptUtterances,
-    callLanguage
-  )
   const lastIgnored = ignoredSummary.latestIgnored
   const lastIgnoredReason = ignoredSummary.latestIgnoredReason
     ? getAutoAnalysisIgnoreReasonLabel(ignoredSummary.latestIgnoredReason)

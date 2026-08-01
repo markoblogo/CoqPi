@@ -42,6 +42,7 @@ test('retrieval quality ranks stronger selected candidate sections first', () =>
     formatRetrievalQualityMatches(result),
     /matched product, transformation, leadership/i
   )
+  assert.match(formatRetrievalQualityMatches(result), /quality strong/i)
 })
 
 test('retrieval quality falls back to selected candidate when lexical overlap is absent', () => {
@@ -69,5 +70,43 @@ test('retrieval quality falls back to selected candidate when lexical overlap is
   assert.equal(result.matches.length, 1)
   assert.equal(result.matches[0].fallbackUsed, true)
   assert.match(formatRetrievalQualityMatches(result), /selected fallback/i)
+  assert.match(formatRetrievalQualityMatches(result), /quality weak/i)
   assert.match(formatRetrievalQualityMatches(result), /AI Product Lead/)
+})
+
+test('retrieval quality explains usable continuity matches without broad fallback', () => {
+  const result = rankRetrievalCandidates({
+    query: 'Any follow-up?',
+    candidates: [
+      {
+        id: 'pack-a',
+        sourceId: 'finder:job:a',
+        label: 'Northfield Labs · AI Product Lead',
+        kind: 'counterparty_pack:summary',
+        fallbackPriority: 12,
+        sections: [
+          { label: 'summary', text: 'General AI Product Lead interview pack.', weight: 7 },
+          { label: 'context', text: 'Company-specific product delivery context.', weight: 5 }
+        ]
+      },
+      {
+        id: 'summary-a',
+        sourceId: 'coqpi:session-summary:finder:job:a',
+        label: 'Northfield Labs · AI Product Lead',
+        kind: 'session_summary:summary',
+        fallbackPriority: 8,
+        sections: [
+          {
+            label: 'content',
+            text: 'Owner-confirmed previous call: follow-up should focus on workflow transformation and a tighter 90-day story.',
+            weight: 10
+          }
+        ]
+      }
+    ]
+  })
+
+  assert.equal(result.matches[0].id, 'summary-a')
+  assert.equal(result.matches[0].quality, 'usable')
+  assert.match(formatRetrievalQualityMatches(result), /why usable: matched follow/i)
 })

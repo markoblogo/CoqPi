@@ -157,6 +157,7 @@ import {
   buildFinderTargetSessionHandoffPreview,
   finderOutreachDraftStatusLabels
 } from '@shared/finder-relationship-memory'
+import { buildFinderCandidatePipelineSurface } from '@shared/finder-pipeline-surface'
 import {
   buildKnowledgePackLifecycleReview,
   buildKnowledgePackReviewSurface,
@@ -984,6 +985,17 @@ export const App = () => {
         (draft) => draft.candidateResultId === focusedFinderCandidateResult.id
       )
     : []
+  const focusedFinderOutreachDraft = focusedFinderOutreachDrafts[0] ?? null
+  const focusedFinderPipelineSurface =
+    selectedFinderSearchJob && focusedFinderCandidateResult
+      ? buildFinderCandidatePipelineSurface({
+          job: selectedFinderSearchJob,
+          result: focusedFinderCandidateResult,
+          draft: focusedFinderOutreachDraft,
+          selected: true,
+          confirmedWeakImport: false
+        })
+      : null
   const selectedFinderOutreachDrafts = selectedFinderSearchJob
     ? finderOutreachDrafts.filter(
         (draft) => draft.jobId === selectedFinderSearchJob.id
@@ -8619,6 +8631,59 @@ export const App = () => {
                               <p>{finderOutreachPrepPack.nextAction}</p>
                             </div>
                           </div>
+                          {focusedFinderPipelineSurface ? (
+                            <div className="finder-pipeline-surface">
+                              <div className="finder-pipeline-surface-header">
+                                <div>
+                                  <span>Pipeline</span>
+                                  <strong>
+                                    {focusedFinderPipelineSurface.queueLabel}
+                                  </strong>
+                                </div>
+                                <span>
+                                  {focusedFinderPipelineSurface.sessionLabel}
+                                </span>
+                              </div>
+                              <div className="finder-pipeline-surface-grid">
+                                <div>
+                                  <span>Score</span>
+                                  <strong>
+                                    {focusedFinderPipelineSurface.scoreLabel}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>Import</span>
+                                  <strong>
+                                    {focusedFinderPipelineSurface.importLabel}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>Draft</span>
+                                  <strong>
+                                    {focusedFinderPipelineSurface.draftLabel}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>Session</span>
+                                  <strong title={focusedFinderPipelineSurface.sessionHint}>
+                                    {focusedFinderPipelineSurface.sessionLabel}
+                                  </strong>
+                                </div>
+                              </div>
+                              <code>
+                                {focusedFinderPipelineSurface.recommendedAction}
+                              </code>
+                              {focusedFinderPipelineSurface.blockers.length > 0 ? (
+                                <div className="finder-pipeline-blockers">
+                                  {focusedFinderPipelineSurface.blockers
+                                    .slice(0, 4)
+                                    .map((blocker) => (
+                                      <span key={blocker}>{blocker}</span>
+                                    ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
                           <div className="finder-outreach-grid">
                             <div>
                               <span>Known context</span>
@@ -8730,6 +8795,19 @@ export const App = () => {
                                       buildFinderDecisionQueueItem(result)
                                     const canImportFromQueue =
                                       finderQueueImportableSet.has(result.id)
+                                    const rowPipelineSurface =
+                                      selectedFinderSearchJob
+                                        ? buildFinderCandidatePipelineSurface({
+                                            job: selectedFinderSearchJob,
+                                            result,
+                                            draft:
+                                              finderOutreachDraftsByCandidateId.get(
+                                                result.id
+                                              ) ?? null,
+                                            selected: true,
+                                            confirmedWeakImport: false
+                                          })
+                                        : null
 
                                     return (
                             <div
@@ -8760,6 +8838,16 @@ export const App = () => {
                                     : ` · runner: ${result.score}/100`}
                                 </span>
                                 <code>{result.summary}</code>
+                                {rowPipelineSurface ? (
+                                  <div className="finder-pipeline-chips">
+                                    <span>{rowPipelineSurface.importLabel}</span>
+                                    <span>{rowPipelineSurface.queueLabel}</span>
+                                    <span>{rowPipelineSurface.draftLabel}</span>
+                                    <span title={rowPipelineSurface.sessionHint}>
+                                      {rowPipelineSurface.sessionLabel}
+                                    </span>
+                                  </div>
+                                ) : null}
                                 <div className="finder-score-explanation">
                                   <strong>{scoreExplanation.fitLabel}</strong>
                                   <span>{scoreExplanation.scoreReason}</span>

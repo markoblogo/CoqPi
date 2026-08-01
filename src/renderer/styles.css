@@ -1552,6 +1552,75 @@ button:disabled {
   font-size: var(--font-xs);
 }
 
+.finder-pipeline-surface {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #365061;
+  border-radius: 3px;
+  background: #141d25;
+}
+
+.finder-pipeline-surface-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.finder-pipeline-surface-header > div,
+.finder-pipeline-surface-grid > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.finder-pipeline-surface-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.finder-pipeline-surface span,
+.finder-pipeline-chips span,
+.finder-pipeline-blockers span {
+  color: #9fb3c4;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.finder-pipeline-surface strong {
+  color: #edf5fb;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.finder-pipeline-surface code {
+  color: #cdd8e1;
+}
+
+.finder-pipeline-chips,
+.finder-pipeline-blockers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.finder-pipeline-chips span {
+  padding: 2px 6px;
+  border: 1px solid #314757;
+  border-radius: 3px;
+  background: #141d25;
+}
+
+.finder-pipeline-blockers span {
+  padding: 2px 6px;
+  border: 1px solid #584a32;
+  border-radius: 3px;
+  background: #211c14;
+  color: #e9c77d;
+}
+
 .finder-outreach-prep {
   display: grid;
   gap: var(--space-2);
@@ -2463,7 +2532,8 @@ button:disabled {
 
   .finder-pipeline-controls,
   .finder-decision-summary,
-  .finder-queue-columns {
+  .finder-queue-columns,
+  .finder-pipeline-surface-grid {
     grid-template-columns: 1fr;
   }
 

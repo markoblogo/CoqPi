@@ -98,16 +98,6 @@ const RETENTION_DAYS = 30
 const MAX_CAPTURE_BYTES = 10 * 1024 * 1024
 const MAX_CAPTURE_TEXT_CHARS = 12000
 const directReadableExtensions = new Set(['.md', '.txt', '.csv', '.json'])
-const readableExtensions = new Set([
-  ...directReadableExtensions,
-  '.pdf',
-  '.docx',
-  '.pptx',
-  '.xlsx',
-  '.xls',
-  '.html',
-  '.htm'
-])
 
 type CounterpartyContextPackEventedManifest = ContextSourceManifest & {
   counterpartyPacks: CounterpartyContextPack[]

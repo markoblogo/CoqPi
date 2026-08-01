@@ -4,6 +4,9 @@ const Module = require('node:module')
 const path = require('node:path')
 const os = require('node:os')
 const fs = require('node:fs/promises')
+const {
+  buildFinderCandidateOutreachPipeline
+} = require('../dist-electron/shared/finder-search-module.js')
 
 const mockElectron = {
   app: {
@@ -686,6 +689,64 @@ test('finder search service updates outreach draft local contact pipeline state 
       'ready_for_contact'
     )
     assert.equal(closed.store.outreachDrafts[0].statusHistory[5].status, 'draft')
+  })
+})
+
+test('finder search service store feeds outreach pipeline follow-up handoff', async () => {
+  await withFinderWorkspace(async (service) => {
+    const afterJob = await service.addFinderSearchJob({
+      kind: 'partner',
+      label: 'Partner follow-up queue',
+      query: 'agri commodity implementation partners france'
+    })
+    const job = afterJob.store.jobs[0]
+    const afterCandidate = await service.addFinderCandidateResult(job.id, {
+      sourceId: 'finder:partner:follow-up-v2',
+      partnerName: 'Delta Field Ops',
+      title: 'Regional implementation partner',
+      summary:
+        'Public partner source. Contact: ops@deltafield.example. Works with agri operations.',
+      context: 'Relevant for France pilot and commodity workflow implementation.',
+      links: ['https://deltafield.example/partners'],
+      fitScore: 84,
+      whyRelevant: 'Strong practical fit for agri commodity ecosystem rollout.',
+      missingInfo: 'Verify decision maker and pilot budget.',
+      nextAction: 'Prepare partner intro and follow-up questions.'
+    })
+    const candidate = afterCandidate.store.results[0]
+    const afterDraft = await service.saveFinderOutreachDraft(candidate.id)
+    const draft = afterDraft.store.outreachDrafts[0]
+    await service.setFinderCandidateResultDecision(
+      candidate.id,
+      'import_now',
+      'owner priority'
+    )
+    await service.setFinderOutreachDraftStatus(draft.id, 'contacted')
+    const followUpStore = await service.setFinderOutreachDraftStatus(
+      draft.id,
+      'follow_up'
+    )
+    const storedJob = followUpStore.store.jobs.find((item) => item.id === job.id)
+    const storedCandidate = followUpStore.store.results.find(
+      (item) => item.id === candidate.id
+    )
+    const storedDraft = followUpStore.store.outreachDrafts.find(
+      (item) => item.id === draft.id
+    )
+    const pipeline = buildFinderCandidateOutreachPipeline({
+      job: storedJob,
+      result: storedCandidate,
+      draft: storedDraft,
+      selected: true,
+      confirmedWeakImport: false
+    })
+
+    assert.equal(pipeline.queue.recommendation, 'import')
+    assert.equal(pipeline.draft.status, 'follow_up')
+    assert.equal(pipeline.sessionHandoff.state, 'follow_up')
+    assert.equal(pipeline.sessionHandoff.included, true)
+    assert.match(pipeline.relationshipMemory.followUpContextLabel, /partner intro/)
+    assert.match(pipeline.recommendedAction, /follow-up draft/)
   })
 })
 
