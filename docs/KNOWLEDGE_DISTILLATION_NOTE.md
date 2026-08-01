@@ -16,6 +16,9 @@ Source: https://github.com/norrietaylor/distillery
 - deduplicate against existing participant or target context;
 - recall only selected eligible notes for a Prepare or Live session;
 - synthesize pre-call packets and post-call recaps from cited local entries.
+- build a compact Knowledge-to-Finder relevance brief for a selected target:
+  owner facts to use, owner facts to avoid/downplay, questions to prepare, and
+  answer angles.
 
 ## Not allowed
 
@@ -50,6 +53,8 @@ Before a distilled note enters Prepare or Live:
 - it must fit the target/person/project scope;
 - it must pass the privacy gate before external model use;
 - weak matches must abstain instead of inventing continuity.
+- target matching must stay inside the selected local set and must not use
+  unrelated owner biography as generic filler.
 
 Knowledge distillation supports CoqPi's selected-context layer; it does not
 replace owner review.

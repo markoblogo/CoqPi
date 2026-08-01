@@ -293,6 +293,28 @@ test('assistant output quality fixtures pass through analyzeRecentTranscript', a
             ]
           ],
           async () => {
+            const ownerFactsFile = path.join(
+              process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR,
+              'owner-quality-facts.md'
+            )
+            await fs.writeFile(
+              ownerFactsFile,
+              [
+                'Owner profile: Led AI product discovery and workflow transformation in agri commodity operations.',
+                'Owner profile: Published travel guides and editorial content for Menton tourism.'
+              ].join('\n'),
+              'utf8'
+            )
+            const addedOwnerSource =
+              await services.contextSourceService.addContextSource({
+                kind: 'owner_profile_file',
+                location: ownerFactsFile,
+                label: 'Owner quality facts'
+              })
+            await services.contextSourceService.captureAndClassifyContextSource(
+              addedOwnerSource.manifest.sources[0].id
+            )
+
             for (const fixture of fixtures) {
               const imported =
                 await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts(
@@ -312,6 +334,10 @@ test('assistant output quality fixtures pass through analyzeRecentTranscript', a
                 assert.match(prompt, /Live communication quality guard/)
                 assert.match(prompt, /Keep suggested answers short, spoken/)
                 assert.match(prompt, /Do not include broad owner biography/)
+                assert.match(prompt, /Knowledge-to-Finder relevance brief/)
+                assert.match(prompt, /Led AI product discovery/)
+                assert.match(prompt, /Avoid or downplay owner facts/)
+                assert.match(prompt, /travel guides/)
                 assert.match(prompt, new RegExp(fixture.requiredTerms[0], 'i'))
                 assert.doesNotMatch(
                   prompt,

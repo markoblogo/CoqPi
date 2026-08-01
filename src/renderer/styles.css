@@ -1621,6 +1621,67 @@ button:disabled {
   color: #e9c77d;
 }
 
+.finder-knowledge-brief {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid #334f42;
+  border-radius: 3px;
+  background: #132018;
+}
+
+.finder-knowledge-brief-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.finder-knowledge-brief-header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.finder-knowledge-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.finder-knowledge-brief-grid > div {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+}
+
+.finder-knowledge-brief span {
+  color: #9fc7b1;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.finder-knowledge-brief strong {
+  color: #edf8f1;
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+
+.finder-knowledge-brief ul {
+  margin: 0;
+  padding-left: var(--space-3);
+}
+
+.finder-knowledge-brief li,
+.finder-knowledge-brief p {
+  margin: 0;
+  color: #cbd9cf;
+  font-size: var(--font-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .finder-outreach-prep {
   display: grid;
   gap: var(--space-2);

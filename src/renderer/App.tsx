@@ -166,6 +166,8 @@ import {
   type KnowledgePackLifecycleStatusFilter,
   type KnowledgePackLifecycleVisibilityFilter
 } from '@shared/knowledge-pack-review'
+import { buildLocalMemoryState } from '@shared/local-memory-core'
+import { buildKnowledgeToFinderTargetBrief } from '@shared/knowledge-target-brief'
 import {
   buildFinderDecisionQueueItem,
   buildFinderQueueReviewColumns,
@@ -1084,6 +1086,38 @@ export const App = () => {
       candidate
     ])
   )
+  const localMemoryStateForFocusedFinderTarget = buildLocalMemoryState({
+    manifest: {
+      version: 1,
+      sources: contextSources,
+      counterpartyPacks,
+      knowledgePackLifecycle
+    },
+    finderStore: {
+      version: 1,
+      jobs: finderSearchJobs,
+      results: finderCandidateResults,
+      outreachDrafts: finderOutreachDrafts
+    } as FinderSearchStore,
+    selectedPackIds: sessionContext.selectedCounterpartyPackIds,
+    selectedDraftId: sessionContext.selectedFinderOutreachDraftId
+  })
+  const focusedFinderKnowledgeBrief = focusedFinderCandidateResult
+    ? buildKnowledgeToFinderTargetBrief({
+        memoryState: localMemoryStateForFocusedFinderTarget,
+        selectedPacks: [
+          {
+            kind: focusedFinderCandidateResult.kind,
+            partnerName: focusedFinderCandidateResult.partnerName,
+            title: focusedFinderCandidateResult.title,
+            summary: focusedFinderCandidateResult.summary,
+            context: focusedFinderCandidateResult.context ?? '',
+            links: focusedFinderCandidateResult.links ?? []
+          }
+        ],
+        maxFacts: 3
+      })
+    : null
   const knowledgePackLifecycleForDraft = knowledgePackLifecycle
     .filter((entry) => entry.sourceId === counterpartyPackReviewSurface.sourceId)
     .slice(-5)
@@ -8688,6 +8722,78 @@ export const App = () => {
                                     ))}
                                 </div>
                               ) : null}
+                            </div>
+                          ) : null}
+                          {focusedFinderKnowledgeBrief ? (
+                            <div className="finder-knowledge-brief">
+                              <div className="finder-knowledge-brief-header">
+                                <div>
+                                  <span>Knowledge fit</span>
+                                  <strong>
+                                    {focusedFinderKnowledgeBrief.level} ·{' '}
+                                    {focusedFinderKnowledgeBrief.targetLabel}
+                                  </strong>
+                                </div>
+                                {focusedFinderKnowledgeBrief.abstainReason ? (
+                                  <span>
+                                    {focusedFinderKnowledgeBrief.abstainReason}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="finder-knowledge-brief-grid">
+                                <div>
+                                  <span>Use these owner facts</span>
+                                  {focusedFinderKnowledgeBrief.useFacts.length ? (
+                                    <ul>
+                                      {focusedFinderKnowledgeBrief.useFacts
+                                        .slice(0, 3)
+                                        .map((fact) => (
+                                          <li key={fact.text}>
+                                            {fact.text}
+                                          </li>
+                                        ))}
+                                    </ul>
+                                  ) : (
+                                    <p>No strong owner fact matched this target.</p>
+                                  )}
+                                </div>
+                                <div>
+                                  <span>Avoid or downplay</span>
+                                  {focusedFinderKnowledgeBrief.avoidFacts.length ? (
+                                    <ul>
+                                      {focusedFinderKnowledgeBrief.avoidFacts
+                                        .slice(0, 3)
+                                        .map((fact) => (
+                                          <li key={fact.text}>
+                                            {fact.text}
+                                          </li>
+                                        ))}
+                                    </ul>
+                                  ) : (
+                                    <p>No unrelated owner fact was flagged.</p>
+                                  )}
+                                </div>
+                                <div>
+                                  <span>Prepare questions</span>
+                                  <ul>
+                                    {focusedFinderKnowledgeBrief.questionsToPrepare
+                                      .slice(0, 2)
+                                      .map((question) => (
+                                        <li key={question}>{question}</li>
+                                      ))}
+                                  </ul>
+                                </div>
+                                <div>
+                                  <span>Answer angles</span>
+                                  <ul>
+                                    {focusedFinderKnowledgeBrief.answerAngles
+                                      .slice(0, 2)
+                                      .map((angle) => (
+                                        <li key={angle}>{angle}</li>
+                                      ))}
+                                  </ul>
+                                </div>
+                              </div>
                             </div>
                           ) : null}
                           <div className="finder-outreach-grid">

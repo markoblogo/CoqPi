@@ -42,6 +42,10 @@ import {
   shouldContinueFallback
 } from './assistant-service-retry-policy'
 import { buildLocalMemoryRetrievalContext } from '../../shared/local-memory-core'
+import {
+  buildKnowledgeToFinderTargetBrief,
+  formatKnowledgeToFinderTargetBrief
+} from '../../shared/knowledge-target-brief'
 import { processTranscriptForAssistant } from '../../shared/transcript-processing'
 import { sanitizeForExternalAssistant } from '../../shared/privacy-sanitizer'
 import { buildPreCallPreparationPacket } from '../../shared/meeting-workflow'
@@ -599,6 +603,17 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
     selectedPackIds: request.selectedCounterpartyPackIds,
     selectedDraftId: request.sessionContext?.selectedFinderOutreachDraftId ?? ''
   })
+  const selectedTargetBrief = buildKnowledgeToFinderTargetBrief({
+    memoryState: localMemoryState,
+    selectedPacks: (packManifest.manifest.counterpartyPacks ?? []).filter((pack) =>
+      (request.selectedCounterpartyPackIds ?? []).includes(pack.id)
+    )
+  })
+  sections.push(
+    '',
+    formatKnowledgeToFinderTargetBrief(selectedTargetBrief),
+    'Use the brief to choose which owner facts to mention, which facts to avoid, and which prepared question/answer angle fits the current utterance.'
+  )
   const localMemoryRetrieval = buildLocalMemoryRetrievalContext({
     state: localMemoryState,
     query: processedTranscript.text,

@@ -87,6 +87,7 @@ What works now:
   - contact/follow-up state,
   - session handoff recommendation in one local contract;
 - Finder UI now surfaces that pipeline on focused prep and candidate rows, including readiness reason, import/queue/draft/session labels, and blockers before Prepare/Live handoff;
+- focused Finder targets now show a local Knowledge fit brief: owner facts to use, owner facts to avoid/downplay, prepared questions, and answer angles;
 - outreach prep and local outreach drafts;
 - stronger queue -> session handoff:
   - `import_now / hold_later / rejected`,
@@ -117,6 +118,7 @@ What works now:
   - ranked retrieval across selected pack, draft, session-summary, and readable owner-fact records,
   - retrieval quality labels (`strong` / `usable` / `weak`) plus short match explanations,
   - weak selected fallback is kept out of assistant evidence and becomes an abstain hint,
+  - Knowledge-to-Finder target matching that turns selected owner facts plus a target into a compact relevance brief before outreach or Live analysis,
   - compact local memory artifacts for audit and future retrieval passes,
   - abstain when the selected set does not contain a strong enough match;
 - selected-pack retrieval boundary and session handoff into Prepare/Live;
