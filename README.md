@@ -139,6 +139,8 @@ flowchart LR
 
 - Optional email intake is local, read-only, and preparation-only. See
   [docs/EMAIL_INTAKE_BOUNDARY.md](docs/EMAIL_INTAKE_BOUNDARY.md).
+- Knowledge distillation is local, reviewed, and selected-context-only. See
+  [docs/KNOWLEDGE_DISTILLATION_NOTE.md](docs/KNOWLEDGE_DISTILLATION_NOTE.md).
 - raw files are not pushed directly into assistant requests;
 - assistant retrieval is limited to selected eligible packs and selected local memory records;
 - weak selected-context matches abstain instead of inventing continuity;
