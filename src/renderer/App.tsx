@@ -8637,11 +8637,11 @@ export const App = () => {
                                 <div>
                                   <span>Pipeline</span>
                                   <strong>
-                                    {focusedFinderPipelineSurface.queueLabel}
+                                    {focusedFinderPipelineSurface.readinessLabel}
                                   </strong>
                                 </div>
                                 <span>
-                                  {focusedFinderPipelineSurface.sessionLabel}
+                                  {focusedFinderPipelineSurface.queueLabel}
                                 </span>
                               </div>
                               <div className="finder-pipeline-surface-grid">
@@ -8661,6 +8661,12 @@ export const App = () => {
                                   <span>Draft</span>
                                   <strong>
                                     {focusedFinderPipelineSurface.draftLabel}
+                                  </strong>
+                                </div>
+                                <div>
+                                  <span>Readiness</span>
+                                  <strong title={focusedFinderPipelineSurface.readinessReason}>
+                                    {focusedFinderPipelineSurface.readinessLabel}
                                   </strong>
                                 </div>
                                 <div>
@@ -8840,6 +8846,9 @@ export const App = () => {
                                 <code>{result.summary}</code>
                                 {rowPipelineSurface ? (
                                   <div className="finder-pipeline-chips">
+                                    <span title={rowPipelineSurface.readinessReason}>
+                                      {rowPipelineSurface.readinessLabel}
+                                    </span>
                                     <span>{rowPipelineSurface.importLabel}</span>
                                     <span>{rowPipelineSurface.queueLabel}</span>
                                     <span>{rowPipelineSurface.draftLabel}</span>

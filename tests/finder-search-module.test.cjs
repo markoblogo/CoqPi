@@ -848,6 +848,41 @@ test('owner pasted source adapter parses messy real-world partner pages with col
   )
 })
 
+test('owner pasted source adapter uses readiness evidence from messy partner pages', () => {
+  const job = createFinderSearchJob(
+    {
+      kind: 'partner',
+      label: 'Agro implementation partners',
+      query: 'agri commodity ecosystem implementation partners france'
+    },
+    { id: 'partner-readiness-v3-source', now: '2026-07-27T09:00:00.000Z' }
+  )
+  const parsed = createFinderCandidatesFromOwnerPastedSource(
+    job,
+    [
+      'Delta Grain Ops | Partner program',
+      'Current status: accepting pilot conversations for Q4 2026',
+      'Decision maker: Marie Laurent, Head of Partnerships',
+      'Pilot budget: €25k-€50k validation pilot',
+      'Implementation timeline: 8-10 weeks after kickoff',
+      'Geography: France and Benelux',
+      'Contact: marie@deltagrain.example',
+      'Why relevant: operates cross-border grain logistics with regional cooperatives',
+      'Source: https://deltagrain.example/partners'
+    ].join('\n')
+  )
+  const candidate = parsed.candidates[0]
+
+  assert.equal(candidate.partnerName, 'Delta Grain Ops')
+  assert.match(candidate.context, /Decision maker: Marie Laurent/)
+  assert.match(candidate.context, /Current status: accepting pilot conversations/)
+  assert.doesNotMatch(candidate.missingInfo, /decision maker/i)
+  assert.doesNotMatch(candidate.missingInfo, /pilot budget/i)
+  assert.doesNotMatch(candidate.missingInfo, /implementation timeline/i)
+  assert.doesNotMatch(candidate.missingInfo, /current status/i)
+  assert.ok((candidate.fitScore ?? 0) >= 88)
+})
+
 test('owner pasted source adapter scores job candidates by interview readiness', () => {
   const job = createFinderSearchJob(
     {

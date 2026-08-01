@@ -70,6 +70,12 @@ What works now:
   - `company_profile_v1`;
 - deterministic parsing and field extraction for vacancy/job, accelerator, investor/fund, company/partner, and CSV-like inputs;
 - stronger deterministic parsing for messy real-world pages and section-style fields before falling back to manual review;
+- source quality v3 fields for outreach readiness:
+  - decision maker / recruiter / program lead,
+  - current status,
+  - interview process,
+  - pilot budget,
+  - implementation timeline;
 - quality tiering before import: `ready / usable / weak`;
 - queue review, hold/reject/import decisions;
 - candidate outreach pipeline v2:
@@ -78,12 +84,13 @@ What works now:
   - outreach draft readiness,
   - contact/follow-up state,
   - session handoff recommendation in one local contract;
-- Finder UI now surfaces that pipeline on focused prep and candidate rows, including import/queue/draft/session labels and blockers before Prepare/Live handoff;
+- Finder UI now surfaces that pipeline on focused prep and candidate rows, including readiness reason, import/queue/draft/session labels, and blockers before Prepare/Live handoff;
 - outreach prep and local outreach drafts;
 - stronger queue -> session handoff:
   - `import_now / hold_later / rejected`,
   - `ready_for_contact / contacted / waiting / follow_up / closed`,
-  - immediate Prepare/Live effect on the next call payload.
+  - immediate Prepare/Live effect on the next call payload,
+  - weak or not-recommended candidates are skipped from session handoff even if a queue action tries to import them.
 
 Still not done:
 - no live web search engine, scraper, scheduler, or outbound sender;

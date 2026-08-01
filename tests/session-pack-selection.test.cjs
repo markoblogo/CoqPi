@@ -290,6 +290,10 @@ test('finder queue import_now re-attaches matching eligible pack to session', ()
       makeResult({
         sourceId: 'finder:job:a',
         kind: 'job',
+        links: ['https://example.com/job-a'],
+        fitScore: 86,
+        whyRelevant: 'Strong match for product leadership interview prep.',
+        nextAction: 'Prepare interview session with this selected candidate.',
         decision: {
           state: 'import_now',
           updatedAt: '2026-07-28T10:30:00.000Z'
@@ -305,12 +309,73 @@ test('finder queue import_now re-attaches matching eligible pack to session', ()
   assert.equal(reconciled.effect.changed, true)
 })
 
+test('finder queue import_now does not attach weak or not-recommended candidates to session', () => {
+  const weakPack = makePack({ id: 'pack-weak', sourceId: 'finder:job:weak' })
+  const holdPack = makePack({
+    id: 'pack-hold',
+    sourceId: 'finder:partner:hold',
+    kind: 'partner'
+  })
+  const context = makeSession([])
+
+  const reconciled = reconcileSessionContextWithFinderQueueDecision({
+    context,
+    availablePacks: [weakPack, holdPack],
+    availableOutreachDrafts: [],
+    affectedResults: [
+      makeResult({
+        id: 'weak-result',
+        sourceId: 'finder:job:weak',
+        kind: 'job',
+        partnerName: '',
+        title: '',
+        summary: 'Weak candidate with almost no evidence.',
+        links: [],
+        fitScore: 31,
+        whyRelevant: '',
+        missingInfo: 'Verify source URL, contact, current status before outreach.',
+        decision: {
+          state: 'import_now',
+          updatedAt: '2026-07-28T10:30:00.000Z'
+        }
+      }),
+      makeResult({
+        id: 'hold-result',
+        sourceId: 'finder:partner:hold',
+        kind: 'partner',
+        partnerName: 'Maybe Later',
+        title: 'Partner lead',
+        summary: 'Usable but explicitly held for later.',
+        links: ['https://example.com/hold'],
+        fitScore: 64,
+        whyRelevant: 'Could be relevant after more evidence.',
+        missingInfo: 'Verify decision maker and pilot budget before outreach.',
+        decision: {
+          state: 'hold_later',
+          reason: 'needs more evidence',
+          updatedAt: '2026-07-28T10:31:00.000Z'
+        }
+      })
+    ],
+    nextDecisionState: 'import_now'
+  })
+
+  assert.deepEqual(reconciled.context.selectedCounterpartyPackIds, [])
+  assert.deepEqual(reconciled.effect.selectedPackIdsAdded, [])
+  assert.deepEqual(
+    reconciled.effect.selectedPackIdsSkipped.map((item) => item.reason),
+    ['weak candidate', 'not recommended']
+  )
+  assert.equal(reconciled.effect.changed, false)
+})
+
 test('finder queue session effect description includes pack and draft handoff changes', () => {
   const label = describeFinderQueueSessionEffect({
     effect: {
       selectedPackIdsAdded: ['pack-A'],
       selectedPackIdsRemoved: ['pack-B'],
       selectedPackIdsPreserved: [],
+      selectedPackIdsSkipped: [{ sourceId: 'finder:job:weak', reason: 'weak candidate' }],
       clearedSelectedDraftId: null,
       selectedDraftIdChanged: false,
       changed: true
@@ -320,6 +385,7 @@ test('finder queue session effect description includes pack and draft handoff ch
 
   assert.match(label, /1 pack attached/)
   assert.match(label, /1 pack removed/)
+  assert.match(label, /1 pack skipped: weak candidate/)
   assert.match(label, /draft follow-up due/)
 })
 

@@ -670,6 +670,13 @@ const normalizeSourceLine = (value: string) =>
     240
   )
 
+const normalizeSourceEntityName = (value: string) => {
+  const normalized = normalizeSourceLine(value)
+  const [head] = normalized.split(/\s*(?:\||·)\s*|\s+[–—-]\s+/)
+
+  return sanitizeText(head || normalized, 180)
+}
+
 const getDeadlineFromText = (text: string) =>
   sanitizeText(
     text.match(
@@ -847,7 +854,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
           line
         ) && !/applications?|deadline|closing|reposted|applicants?/i.test(line)
     ) ?? ''
-  const inferredEntityName =
+  const inferredEntityName = normalizeSourceEntityName(
     bulletParts.length > 1
       ? bulletParts[0]
       : nonUrlLines.find((line) =>
@@ -855,6 +862,7 @@ const extractOwnerSourceFields = (lines: string[]) => {
             line
           )
         ) ?? ''
+  )
   const inferredRelevance =
     nonUrlLines.find(
       (line) =>
@@ -864,24 +872,27 @@ const extractOwnerSourceFields = (lines: string[]) => {
         )
     ) ?? ''
 
-  const company = firstOf([
-    'company',
-    'company name',
-    'name',
-    'employer',
-    'organization',
-    'organisation',
-    'partner',
-    'partner name',
-    'fund',
-    'fund name',
-    'accelerator',
-    'investor',
-    'fund manager',
-    'organization name',
-    'programme',
-    'program name'
-  ]) || inferredEntityName
+  const company =
+    normalizeSourceEntityName(
+      firstOf([
+        'company',
+        'company name',
+        'name',
+        'employer',
+        'organization',
+        'organisation',
+        'partner',
+        'partner name',
+        'fund',
+        'fund name',
+        'accelerator',
+        'investor',
+        'fund manager',
+        'organization name',
+        'programme',
+        'program name'
+      ])
+    ) || inferredEntityName
   const role = firstOf([
     'role',
     'title',
@@ -926,6 +937,27 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'program lead',
     'partner lead',
     'founder'
+  ])
+  const decisionMaker = firstOf([
+    'decision maker',
+    'decision-maker',
+    'owner',
+    'hiring manager',
+    'recruiter',
+    'program lead',
+    'partner lead',
+    'fund contact',
+    'who to contact'
+  ])
+  const currentStatus = firstOf([
+    'current status',
+    'status',
+    'availability',
+    'applications',
+    'applications status',
+    'open status',
+    'accepting',
+    'currently'
   ])
   const deadline = firstOf([
     'deadline',
@@ -1032,6 +1064,29 @@ const extractOwnerSourceFields = (lines: string[]) => {
     'contract',
     'type'
   ]) || inferredContractType
+  const interviewProcess = firstOf([
+    'interview process',
+    'process',
+    'hiring process',
+    'selection process',
+    'steps',
+    'timeline'
+  ])
+  const pilotBudget = firstOf([
+    'pilot budget',
+    'budget',
+    'pilot size',
+    'commercial pilot',
+    'validation pilot'
+  ])
+  const implementationTimeline = firstOf([
+    'implementation timeline',
+    'timeline',
+    'deployment timeline',
+    'pilot timeline',
+    'time to launch',
+    'kickoff'
+  ])
   const cohort = firstOf(['cohort', 'batch', 'program', 'program name'])
   const inferredProgramTitle =
     cohort ||
@@ -1045,6 +1100,8 @@ const extractOwnerSourceFields = (lines: string[]) => {
     role: inferredProgramTitle,
     location: location || inferredLocation,
     contact,
+    decisionMaker,
+    currentStatus,
     deadline,
     whyRelevant,
     missingInfo,
@@ -1059,6 +1116,9 @@ const extractOwnerSourceFields = (lines: string[]) => {
     compensation,
     remotePolicy,
     contractType,
+    interviewProcess,
+    pilotBudget,
+    implementationTimeline,
     cohort
   }
 }
@@ -1435,12 +1495,17 @@ const getScenarioMissingInfo = (
     compensation: string
     remotePolicy: string
     contractType: string
+    decisionMaker: string
+    currentStatus: string
+    interviewProcess: string
+    pilotBudget: string
+    implementationTimeline: string
   }
 ) => {
   const common = [
     evidence.links.length > 0 ? '' : 'source URL',
     evidence.contact ? '' : 'contact',
-    'current status'
+    evidence.currentStatus ? '' : 'current status'
   ]
 
   const byKind: Record<CounterpartyContextPackKind, string[]> = {
@@ -1449,13 +1514,13 @@ const getScenarioMissingInfo = (
       evidence.compensation ? '' : 'salary range',
       evidence.remotePolicy ? '' : 'remote policy',
       evidence.contractType ? '' : 'contract type',
-      'interview process',
+      evidence.interviewProcess ? '' : 'interview process',
       evidence.whyRelevant ? '' : 'fit to your product/agtech experience'
     ],
     partner: [
-      'decision maker',
-      'pilot budget',
-      'implementation timeline',
+      evidence.decisionMaker ? '' : 'decision maker',
+      evidence.pilotBudget ? '' : 'pilot budget',
+      evidence.implementationTimeline ? '' : 'implementation timeline',
       evidence.location ? '' : 'operating geography',
       evidence.whyRelevant ? '' : 'specific partnership angle'
     ],
@@ -1510,6 +1575,11 @@ const scoreOwnerSourceCandidate = (
     partnerName: string
     title: string
     whyRelevant: string
+    decisionMaker?: string
+    currentStatus?: string
+    interviewProcess?: string
+    pilotBudget?: string
+    implementationTimeline?: string
   }
 ) => {
   const points = [
@@ -1519,7 +1589,12 @@ const scoreOwnerSourceCandidate = (
     evidence.contact ? 8 : 0,
     evidence.location ? 7 : 0,
     evidence.deadline ? 5 : 0,
-    evidence.whyRelevant ? 12 : 0
+    evidence.whyRelevant ? 12 : 0,
+    evidence.decisionMaker ? 4 : 0,
+    evidence.currentStatus ? 4 : 0,
+    evidence.interviewProcess ? 3 : 0,
+    evidence.pilotBudget ? 4 : 0,
+    evidence.implementationTimeline ? 3 : 0
   ].reduce((total, value) => total + value, 0)
   const scenarioBoost: Record<CounterpartyContextPackKind, number> = {
     job: evidence.title && /product|manager|lead|director|head/i.test(evidence.title)
@@ -1616,6 +1691,8 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       fields.remotePolicy ? `Remote policy: ${fields.remotePolicy}.` : '',
       fields.contractType ? `Contract type: ${fields.contractType}.` : '',
       contact ? `Contact: ${contact}.` : '',
+      fields.decisionMaker ? `Decision maker: ${fields.decisionMaker}.` : '',
+      fields.currentStatus ? `Current status: ${fields.currentStatus}.` : '',
       parsed.deadline ? `Deadline: ${parsed.deadline}.` : '',
       headline && !parseMaybeUrl(headline) ? `Headline: ${headline}.` : '',
       parsed.body ? `Excerpt: ${sanitizeText(parsed.body, 420)}.` : '',
@@ -1633,7 +1710,12 @@ export const createFinderCandidatesFromOwnerPastedSource = (
         whyRelevant: parsed.whyRelevant,
         compensation: fields.compensation,
         remotePolicy: fields.remotePolicy,
-        contractType: fields.contractType
+        contractType: fields.contractType,
+        decisionMaker: fields.decisionMaker,
+        currentStatus: fields.currentStatus,
+        interviewProcess: fields.interviewProcess,
+        pilotBudget: fields.pilotBudget,
+        implementationTimeline: fields.implementationTimeline
       })
     const nextAction =
       fields.nextAction ||
@@ -1646,7 +1728,12 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       location: parsed.location,
       partnerName: parsed.partnerName,
       title: parsed.title,
-      whyRelevant: relevance
+      whyRelevant: relevance,
+      decisionMaker: fields.decisionMaker,
+      currentStatus: fields.currentStatus,
+      interviewProcess: fields.interviewProcess,
+      pilotBudget: fields.pilotBudget,
+      implementationTimeline: fields.implementationTimeline
     })
 
     candidates.push({
@@ -1668,6 +1755,13 @@ export const createFinderCandidatesFromOwnerPastedSource = (
         fields.remotePolicy ? `Remote policy: ${fields.remotePolicy}.` : '',
         fields.contractType ? `Contract type: ${fields.contractType}.` : '',
         contact ? `Extracted contact: ${contact}.` : '',
+        fields.decisionMaker ? `Decision maker: ${fields.decisionMaker}.` : '',
+        fields.currentStatus ? `Current status: ${fields.currentStatus}.` : '',
+        fields.interviewProcess ? `Interview process: ${fields.interviewProcess}.` : '',
+        fields.pilotBudget ? `Pilot budget: ${fields.pilotBudget}.` : '',
+        fields.implementationTimeline
+          ? `Implementation timeline: ${fields.implementationTimeline}.`
+          : '',
         parsed.deadline ? `Extracted deadline: ${parsed.deadline}.` : '',
         ...parsed.parserEvidence,
         parsed.body ? `Owner pasted excerpt: ${sanitizeText(parsed.body, 900)}` : ''
@@ -1680,7 +1774,7 @@ export const createFinderCandidatesFromOwnerPastedSource = (
       whyRelevant: relevance,
       missingInfo: missingInfo
         ? `Verify ${missingInfo} before outreach.`
-        : 'Verify current status before outreach.',
+        : 'Review source evidence before outreach.',
       nextAction
     })
   })

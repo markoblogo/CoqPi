@@ -7,6 +7,7 @@ import type {
   CounterpartyContextPackDraft,
   SessionContext
 } from './app-types'
+import { assessFinderQueueCandidateImport } from './finder-search-module'
 
 export type CounterpartyPackSessionIneligibilityReason =
   | 'wrong_version'
@@ -176,6 +177,10 @@ export type FinderQueueSessionEffect = {
   selectedPackIdsAdded: string[]
   selectedPackIdsRemoved: string[]
   selectedPackIdsPreserved: string[]
+  selectedPackIdsSkipped: {
+    sourceId: string
+    reason: string
+  }[]
   clearedSelectedDraftId: string | null
   selectedDraftIdChanged: boolean
   changed: boolean
@@ -216,6 +221,17 @@ export const describeFinderQueueSessionEffect = ({
     )
   }
 
+  if (effect.selectedPackIdsSkipped.length > 0) {
+    parts.push(
+      `${effect.selectedPackIdsSkipped.length} pack${
+        effect.selectedPackIdsSkipped.length === 1 ? '' : 's'
+      } skipped: ${effect.selectedPackIdsSkipped
+        .map((item) => item.reason)
+        .filter((reason, index, list) => list.indexOf(reason) === index)
+        .join(', ')}`
+    )
+  }
+
   if (effect.clearedSelectedDraftId) {
     parts.push('selected draft cleared')
   } else if (includedDraftLabel) {
@@ -246,12 +262,14 @@ const buildFinderQueueSessionEffect = ({
   selectedPackIds,
   selectedPackIdsBefore,
   selectedPackIdsPreserved = new Set<string>(),
+  selectedPackIdsSkipped = [],
   selectedDraftId,
   nextSelectedDraftId
 }: {
   selectedPackIds: Set<string>
   selectedPackIdsBefore: Set<string>
   selectedPackIdsPreserved?: Set<string>
+  selectedPackIdsSkipped?: FinderQueueSessionEffect['selectedPackIdsSkipped']
   selectedDraftId: string
   nextSelectedDraftId: string
 }): FinderQueueSessionEffect => {
@@ -274,6 +292,7 @@ const buildFinderQueueSessionEffect = ({
     selectedPackIdsAdded,
     selectedPackIdsRemoved,
     selectedPackIdsPreserved: selectedPackIdsPreservedList,
+    selectedPackIdsSkipped,
     clearedSelectedDraftId,
     selectedDraftIdChanged,
     changed:
@@ -416,9 +435,24 @@ export const reconcileSessionContextWithFinderQueueDecision = ({
   const selectedDraft = selectedDraftId
     ? availableOutreachDrafts.find((draft) => draft.id === selectedDraftId) ?? null
     : null
+  const selectedPackIdsSkipped: FinderQueueSessionEffect['selectedPackIdsSkipped'] = []
 
   if (nextDecisionState === 'import_now') {
-    for (const key of affectedSourceKeys) {
+    for (const result of affectedResults) {
+      const admission = assessFinderQueueCandidateImport(result)
+
+      if (!admission.canImport || admission.qualityReview.level === 'weak') {
+        selectedPackIdsSkipped.push({
+          sourceId: result.sourceId,
+          reason:
+            admission.qualityReview.level === 'weak'
+              ? 'weak candidate'
+              : admission.reason.replace(/-/g, ' ')
+        })
+        continue
+      }
+
+      const key = buildCounterpartySourceKey(result.sourceId, result.kind)
       const packId = eligiblePackBySourceKey.get(key)
       if (packId) {
         selectedPackIds.add(packId)
@@ -458,6 +492,7 @@ export const reconcileSessionContextWithFinderQueueDecision = ({
     selectedPackIds,
     selectedPackIdsBefore,
     selectedPackIdsPreserved,
+    selectedPackIdsSkipped,
     selectedDraftId,
     nextSelectedDraftId
   })

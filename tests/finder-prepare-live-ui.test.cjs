@@ -17,7 +17,8 @@ const {
 } = require('../dist-electron/shared/finder-search-module.js')
 const {
   getSessionContextWithCounterpartyPacks,
-  getSessionContextWithImportedCounterpartyPacks
+  getSessionContextWithImportedCounterpartyPacks,
+  reconcileSessionContextWithFinderQueueDecision
 } = require('../dist-electron/shared/session-pack-selection.js')
 
 const mockElectron = {
@@ -479,6 +480,146 @@ test('finder queue import now updates session payload and assistant selected pac
   assert.match(observed.capturedPrompt, /Northfield Labs/)
   assert.match(observed.capturedPrompt, /Partner outreach lead/)
   assert.equal(observed.capturedPrompt.includes('Sideline Venture'), false)
+})
+
+test('finder queue import now admits only session-ready candidates into live payload', async () => {
+  const observed = {
+    selectedPackIdsFromRetrieval: undefined,
+    capturedPrompt: '',
+    strongSourceId: '',
+    weakSourceId: '',
+    prepareSelectedPackLabel: '',
+    skippedReasons: []
+  }
+  let expectedSelectedPackIds = []
+
+  await withLocalKnowledgeWorkspace(async () => {
+    await withStubbedProviderRoute({
+      requestOverrides: {
+        sessionContext: undefined,
+        selectedCounterpartyPackIds: undefined
+      },
+      beforeAnalyze: async (services) => {
+        const afterJob = await services.finderSearchService.addFinderSearchJob({
+          kind: 'partner',
+          label: 'Queue quality handoff',
+          query: 'partner candidates france',
+          goal: 'Keep weak targets out of live context until enriched.'
+        })
+        const job = afterJob.store.jobs[0]
+
+        const strongPayload =
+          await services.finderSearchService.addFinderCandidateResult(job.id, {
+            sourceId: 'finder:partner:quality-ready',
+            partnerName: 'Delta Grain Ops',
+            title: 'Pilot partnership',
+            summary: 'Strong partner candidate for French grain logistics.',
+            links: ['https://deltagrain.example/partners'],
+            fitScore: 91,
+            whyRelevant:
+              'Operates cross-border grain logistics with regional cooperatives.',
+            nextAction: 'Prepare pilot intro call context.'
+          })
+        const weakPayload =
+          await services.finderSearchService.addFinderCandidateResult(job.id, {
+            sourceId: 'finder:partner:quality-weak',
+            partnerName: 'Unknown Agro Lead',
+            title: 'Potential partner',
+            summary: 'Thin lead without source URL or contact.',
+            fitScore: 34,
+            missingInfo:
+              'Verify source URL, contact, current status, decision maker before outreach.'
+          })
+
+        const strongResult = strongPayload.store.results.find(
+          (result) => result.sourceId === 'finder:partner:quality-ready'
+        )
+        const weakResult = weakPayload.store.results.find(
+          (result) => result.sourceId === 'finder:partner:quality-weak'
+        )
+
+        if (!strongResult || !weakResult) {
+          throw new Error('Expected quality handoff fixture results.')
+        }
+
+        observed.strongSourceId = strongResult.sourceId
+        observed.weakSourceId = weakResult.sourceId
+
+        const manifestPayload =
+          await services.contextSourceService.ingestCounterpartyFinderPayloadDrafts([
+            createContextPackDraftFromFinderResult(strongResult),
+            createContextPackDraftFromFinderResult(weakResult)
+          ])
+        const packs = manifestPayload.manifest.counterpartyPacks ?? []
+        const currentSession =
+          (await services.sessionContextService.getSessionContext()).context
+        const reconciled = reconcileSessionContextWithFinderQueueDecision({
+          context: currentSession,
+          availablePacks: packs,
+          availableOutreachDrafts: [],
+          affectedResults: [strongResult, weakResult],
+          nextDecisionState: 'import_now'
+        })
+
+        expectedSelectedPackIds = reconciled.context.selectedCounterpartyPackIds
+        observed.skippedReasons = reconciled.effect.selectedPackIdsSkipped.map(
+          (item) => item.reason
+        )
+        await services.sessionContextService.saveSessionContext(reconciled.context)
+
+        const surface = buildSessionSelectionSurface({
+          activeContext: reconciled.context,
+          draftContext: reconciled.context,
+          availablePacks: packs,
+          availableFinderResults: weakPayload.store.results,
+          availableOutreachDrafts: weakPayload.store.outreachDrafts,
+          includeProfileContext: false,
+          profileChars: 0
+        })
+
+        observed.prepareSelectedPackLabel =
+          surface.activePrepPreview.selectedPackLabel
+      },
+      onSelectedPackIds: (selectedPackIds) => {
+        observed.selectedPackIdsFromRetrieval = [...(selectedPackIds ?? [])]
+      },
+      fetchHandler: async (_url, init) => {
+        const body = JSON.parse(init.body)
+        observed.capturedPrompt = body.messages[1].content
+
+        return makeOllamaResponse({
+          message: {
+            content: JSON.stringify({
+              meaningRu:
+                'Weak candidate не попал в live payload после queue import now.',
+              detectedQuestion: 'Which partner is session-ready?',
+              intent: 'finder quality handoff check',
+              risk: 'low',
+              suggestedAnswers: [
+                {
+                  label: 'short',
+                  text: 'I will use the readiness-checked partner context only.',
+                  answerMeaningRu:
+                    'Я использую только проверенный контекст партнера.'
+                }
+              ],
+              keywordsToRemember: ['readiness', 'selected context'],
+              openingPhrase: 'Yes.'
+            })
+          }
+        })
+      }
+    })
+  })
+
+  assert.equal(expectedSelectedPackIds.length, 1)
+  assert.deepEqual(observed.selectedPackIdsFromRetrieval, expectedSelectedPackIds)
+  assert.match(observed.prepareSelectedPackLabel, /Delta Grain Ops/)
+  assert.deepEqual(observed.skippedReasons, ['weak candidate'])
+  assert.equal(observed.capturedPrompt.includes(observed.strongSourceId), true)
+  assert.equal(observed.capturedPrompt.includes(observed.weakSourceId), false)
+  assert.match(observed.capturedPrompt, /Delta Grain Ops/)
+  assert.equal(observed.capturedPrompt.includes('Unknown Agro Lead'), false)
 })
 
 test('full App-style finder import -> prepare selection -> live analyze keeps only chosen pack in prompt', async () => {

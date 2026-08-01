@@ -16,8 +16,47 @@ export interface FinderCandidatePipelineSurface {
   draftLabel: string
   sessionLabel: string
   sessionHint: string
+  readinessLabel: 'ready for contact' | 'follow-up ready' | 'needs draft' | 'needs review' | 'enrich first'
+  readinessReason: string
   recommendedAction: string
   blockers: string[]
+}
+
+const resolveReadiness = (
+  pipeline: FinderCandidateOutreachPipeline
+): Pick<FinderCandidatePipelineSurface, 'readinessLabel' | 'readinessReason'> => {
+  if (pipeline.sessionHandoff.included && pipeline.draft.status === 'ready_for_contact') {
+    return {
+      readinessLabel: 'ready for contact',
+      readinessReason: 'draft ready and included in the next session handoff'
+    }
+  }
+
+  if (pipeline.sessionHandoff.included && pipeline.sessionHandoff.state === 'follow_up') {
+    return {
+      readinessLabel: 'follow-up ready',
+      readinessReason: 'active contact or follow-up state is included in session context'
+    }
+  }
+
+  if (pipeline.qualityReview.level === 'weak') {
+    return {
+      readinessLabel: 'enrich first',
+      readinessReason: 'weak candidate evidence blocks reliable outreach or live-session use'
+    }
+  }
+
+  if (!pipeline.draft.exists) {
+    return {
+      readinessLabel: 'needs draft',
+      readinessReason: 'candidate is usable, but no local outreach draft is saved yet'
+    }
+  }
+
+  return {
+    readinessLabel: 'needs review',
+    readinessReason: pipeline.sessionHandoff.hint
+  }
 }
 
 export const buildFinderCandidatePipelineSurface = ({
@@ -40,6 +79,7 @@ export const buildFinderCandidatePipelineSurface = ({
     selected,
     confirmedWeakImport
   })
+  const readiness = resolveReadiness(pipeline)
 
   return {
     pipeline,
@@ -53,6 +93,8 @@ export const buildFinderCandidatePipelineSurface = ({
       ? `${pipeline.sessionHandoff.state} · included`
       : `${pipeline.sessionHandoff.state} · dropped`,
     sessionHint: pipeline.sessionHandoff.hint,
+    readinessLabel: readiness.readinessLabel,
+    readinessReason: readiness.readinessReason,
     recommendedAction: pipeline.recommendedAction,
     blockers: pipeline.blockers
   }
