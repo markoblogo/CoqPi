@@ -137,6 +137,8 @@ flowchart LR
 
 ## Safety boundaries
 
+- Optional email intake is local, read-only, and preparation-only. See
+  [docs/EMAIL_INTAKE_BOUNDARY.md](docs/EMAIL_INTAKE_BOUNDARY.md).
 - raw files are not pushed directly into assistant requests;
 - assistant retrieval is limited to selected eligible packs and selected local memory records;
 - weak selected-context matches abstain instead of inventing continuity;
