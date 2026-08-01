@@ -42,6 +42,9 @@ const hasLatin = (value: string) => /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(value)
 const includesTerm = (value: string, term: string) =>
   value.toLowerCase().includes(term.toLowerCase())
 
+const countSentenceLikeUnits = (value: string) =>
+  value.split(/[.!?]+/).map((part) => part.trim()).filter(Boolean).length
+
 const combinedOutputText = (result: AssistantAnalysisResult) =>
   [
     result.meaningRu,
@@ -112,6 +115,13 @@ export const validateAssistantOutputQuality = (
       issues.push({
         field: `suggestedAnswers.${index}.text`,
         reason: 'Suggested answer text must not contain Russian explanation.'
+      })
+    }
+
+    if (countSentenceLikeUnits(answer.text) > 2) {
+      issues.push({
+        field: `suggestedAnswers.${index}.text`,
+        reason: 'Suggested answer must stay within 1-2 spoken sentences.'
       })
     }
 

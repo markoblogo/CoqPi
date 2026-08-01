@@ -309,6 +309,9 @@ test('assistant output quality fixtures pass through analyzeRecentTranscript', a
                 const prompt = body.messages[1].content
 
                 assert.match(prompt, /Personal Knowledge Core retrieval/)
+                assert.match(prompt, /Live communication quality guard/)
+                assert.match(prompt, /Keep suggested answers short, spoken/)
+                assert.match(prompt, /Do not include broad owner biography/)
                 assert.match(prompt, new RegExp(fixture.requiredTerms[0], 'i'))
                 assert.doesNotMatch(
                   prompt,
@@ -393,6 +396,46 @@ test('assistant output quality flags verbose or wrong-boundary answers', () => {
     true
   )
   assert.equal(issues.some((issue) => issue.field === 'context'), true)
+})
+
+test('assistant output quality flags monologue-style suggested answers', () => {
+  const issues = validateAssistantOutputQuality(
+    {
+      meaningRu: 'Собеседник просит кратко объяснить опыт.',
+      detectedQuestion: 'Can you summarize your relevant experience?',
+      intent: 'fit check',
+      risk: 'avoid overexplaining',
+      suggestedAnswers: [
+        {
+          label: 'short',
+          text:
+            'I started in operations. Then I moved into product work. Later I worked on AI transformation and complex workflows.',
+          answerMeaningRu: 'Слишком длинный ответ, больше похожий на монолог.'
+        },
+        {
+          label: 'strong',
+          text:
+            'I can connect product discovery with practical delivery for this target.',
+          answerMeaningRu:
+            'Я связываю discovery и delivery для выбранного адресата.'
+        }
+      ],
+      keywordsToRemember: ['product', 'delivery', 'workflow'],
+      openingPhrase: 'Sure.'
+    },
+    {
+      answerLanguage: 'en'
+    }
+  )
+
+  assert.equal(
+    issues.some(
+      (issue) =>
+        issue.field === 'suggestedAnswers.0.text' &&
+        /1-2 spoken sentences/.test(issue.reason)
+    ),
+    true
+  )
 })
 
 test('assistant output quality summary reports ready state for fresh concise answer', () => {

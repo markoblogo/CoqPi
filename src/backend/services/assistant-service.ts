@@ -411,6 +411,44 @@ const compactSelectedOutreachDraft = async (
   return lines.join('\n').slice(0, limit)
 }
 
+const compactSelectedTargetGuidance = (
+  sessionContext: SessionContext | undefined,
+  packs: {
+    id: string
+    kind: string
+    sourceId: string
+    partnerName: string
+    title: string
+    summary: string
+  }[]
+) => {
+  const selectedIds = new Set(
+    sessionContext?.selectedCounterpartyPackIds?.filter(Boolean) ?? []
+  )
+  const selectedPacks = packs.filter((pack) => selectedIds.has(pack.id))
+
+  if (selectedPacks.length === 0) {
+    return ''
+  }
+
+  const targetLines = selectedPacks
+    .slice(0, 3)
+    .map(
+      (pack) =>
+        `- ${pack.partnerName} · ${pack.title} (${pack.kind}; ${pack.sourceId}): ${pack.summary}`
+    )
+
+  return [
+    'Live communication quality guard for selected Finder/session context:',
+    `Active selected target${selectedPacks.length === 1 ? '' : 's'}:`,
+    ...targetLines,
+    'Use selected target context only when it directly helps answer the current utterance.',
+    'Keep suggested answers short, spoken, and specific to the selected target; prefer 1-2 sentences per answer.',
+    'Do not include broad owner biography, unrelated projects, or unselected counterpart context unless the selected evidence directly supports it.',
+    'If selected context is weak, missing, or unrelated to the question, abstain from owner-specific claims and offer a concise clarifying question.'
+  ].join('\n')
+}
+
 const validateSuggestedAnswer = (value: unknown): value is SuggestedAnswer => {
   if (!value || typeof value !== 'object') {
     return false
@@ -504,6 +542,10 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
     selectedPackIds: request.sessionContext?.selectedCounterpartyPackIds ?? []
   })
   const packManifest = await getCounterpartyContextPacks()
+  const selectedTargetGuidance = compactSelectedTargetGuidance(
+    request.sessionContext,
+    packManifest.manifest.counterpartyPacks ?? []
+  )
   const preparationPacket = buildPreCallPreparationPacket({
     sessionContext: request.sessionContext ?? {
       company: '',
@@ -526,6 +568,10 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
     `Owner focus: ${preparationPacket.ownerFocus.join(' | ') || 'not set'}`,
     `Missing context: ${preparationPacket.missingContext.join('; ') || 'none'}`
   )
+
+  if (selectedTargetGuidance) {
+    sections.push('', selectedTargetGuidance)
+  }
 
   const personalKnowledgeContext = await getPersonalInterviewRetrieval(
     processedTranscript.text,
