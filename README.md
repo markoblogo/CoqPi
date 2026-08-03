@@ -234,6 +234,21 @@ Useful handoff scripts:
 - `pnpm test:finder-prepare-live-ui`
 - `pnpm test:governance`
 - `pnpm test:pre-smoke`
+- `pnpm test:pass2-live-smoke-readiness`
+
+### Pass 2: local smoke readiness (noise/transitions)
+
+Run once before first live probe:
+
+1. `pnpm test:pass2-live-smoke-readiness`
+2. `pnpm test:live-loop-ui`
+3. `pnpm test:analyze-recent-transcript`
+
+Checks this pass verifies:
+
+- background / short / non-EN-FR speech is ignored before analyze,
+- switching selected pack/draft before analyze updates current payload,
+- payload drift is visible and the fresh assistant answer remains tied to the latest relevant line.
 
 ## Real smoke path
 

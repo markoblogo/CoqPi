@@ -45,6 +45,22 @@ It now shows:
 
 Use `Capture current state` if you want to prefill the smoke note draft from the current failure path.
 
+### Pass 2 mini-flow (noise + payload switch)
+
+Use this short check before the first real call:
+
+1. Start in a calm place and enable `Mock Transcript`.
+2. Run one background/irrelevant phrase (RU / acknowledgment / short noise) to ensure it is ignored.
+3. Keep one selected pack active, then run a clear English/French sentence and verify it is accepted.
+4. Switch selected pack/draft, then send the same clear sentence again.
+5. Confirm diagnostics/cockpit state shows payload drift (`Pack A dropped, Pack B included`) and the latest suggestion is fresh for the current payload.
+
+If drift is not visible, run:
+
+- `pnpm test:pass2-live-smoke-readiness`
+- `pnpm test:live-loop-ui`
+- `pnpm test:analyze-recent-transcript`
+
 ## Step 3: short real mic probe
 
 1. Start realtime listening.
