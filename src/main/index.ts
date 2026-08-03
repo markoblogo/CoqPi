@@ -6,6 +6,7 @@ import type {
   AssistantAnalysisError,
   AssistantAnalysisRequest,
   AssistantAnalysisResponse,
+  CortexBridgeExport,
   ContextSourceDraft,
   ContextSourceManifestResult,
   CounterpartyContextPackDraft,
@@ -93,6 +94,7 @@ import {
   captureAndClassifyContextSource,
   getContextSourceManifest,
   getCounterpartyContextPacks,
+  buildCortexContextBridgeExport,
   recordKnowledgePackLifecycle,
   removeCounterpartyContextPack,
   removeContextSource,
@@ -246,6 +248,16 @@ const registerIpcHandlers = () => {
     'coqpi:context-packs:remove',
     async (_event, id: string): Promise<ContextSourceManifestResult> =>
       removeCounterpartyContextPack(id)
+  )
+
+  ipcMain.handle(
+    'coqpi:cortex-bridge:build-export',
+    async (): Promise<CortexBridgeExport> => {
+      const sessionContextResult = await getSessionContext()
+      return buildCortexContextBridgeExport(
+        sessionContextResult.context.selectedCounterpartyPackIds
+      )
+    }
   )
 
   ipcMain.handle('coqpi:context-sources:pick-files', async () => {

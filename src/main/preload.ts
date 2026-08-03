@@ -3,6 +3,7 @@ import type {
   AppUserSettings,
   AssistantAnalysisRequest,
   ContextSourceDraft,
+  CortexBridgeExport,
   CounterpartyContextPackDraft,
   FinderOutreachDraft,
   KnowledgePackLifecycleDraft,
@@ -221,6 +222,10 @@ contextBridge.exposeInMainWorld('coqpi', {
     get: () => ipcRenderer.invoke('coqpi:settings:get'),
     save: (settings: AppUserSettings) =>
       ipcRenderer.invoke('coqpi:settings:save', settings)
+  },
+  cortexBridge: {
+    buildExport: (): Promise<CortexBridgeExport> =>
+      ipcRenderer.invoke('coqpi:cortex-bridge:build-export')
   },
   assistant: {
     analyzeRecentTranscript: (request: AssistantAnalysisRequest) =>

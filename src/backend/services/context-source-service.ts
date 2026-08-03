@@ -9,6 +9,9 @@ import type {
   ContextSourceKind,
   ContextSourceManifest,
   ContextSourceManifestResult,
+  CortexBridgeCounterpartyPackDropReason,
+  CortexBridgeDroppedCounterpartyPack,
+  CortexBridgeExport,
   CounterpartyContextPack,
   CounterpartyContextPackDraft,
   KnowledgePackLifecycleDraft,
@@ -28,7 +31,12 @@ import {
   parseFinderCounterpartyPayloadTextPermissive,
   type ParsedFinderCounterpartyPayload
 } from '../../shared/finder-ingest-contract'
-import { isSessionEligibleCounterpartyPack } from '../../shared/session-pack-selection'
+import {
+  counterpartyPackSessionIneligibilityReasonLabels,
+  isSessionEligibleCounterpartyPack,
+  getCounterpartyPackSessionEligibility,
+  sessionCounterpartyPackRetrievalScope
+} from '../../shared/session-pack-selection'
 import {
   buildKnowledgeIngestionSummary,
   evaluateContextSourceReadiness
@@ -483,6 +491,56 @@ const deriveManifest = (
 
 const stableManifestJson = (manifest: CounterpartyContextPackEventedManifest) =>
   JSON.stringify(manifest, undefined, 2)
+
+const cortexBridgeDropFromEligibility = (
+  pack: CounterpartyContextPack
+): {
+  included: boolean
+  reasonCode: CortexBridgeCounterpartyPackDropReason | null
+  reason: string
+} => {
+  const eligibility = getCounterpartyPackSessionEligibility(pack)
+
+  if (eligibility.eligible) {
+    return {
+      included: true,
+      reasonCode: null,
+      reason: ''
+    }
+  }
+
+  const dropCode = eligibility.reasons[0] ?? 'not_selected'
+
+  return {
+    included: false,
+    reasonCode: dropCode,
+    reason: `blocked: ${eligibility.reasons
+      .map((reason) => counterpartyPackSessionIneligibilityReasonLabels[reason])
+      .join(', ')}`
+  }
+}
+
+const mapPackForCortexBridgeExport = (
+  pack: CounterpartyContextPack
+) => ({
+  id: pack.id,
+  sourceId: pack.sourceId,
+  kind: pack.kind,
+  partnerName: pack.partnerName,
+  title: pack.title,
+  summary: pack.summary,
+  context: pack.context,
+  links: pack.links,
+  selected: pack.selected,
+  status: pack.status,
+  createdAt: pack.createdAt,
+  ownerId: pack.ownerId,
+  provenance: pack.provenance,
+  contentHash: pack.contentHash,
+  classification: pack.classification,
+  retention: pack.retention,
+  retrievalScopes: pack.retrievalScopes
+})
 
 const getRepositoryHead = () => {
   try {
@@ -1024,6 +1082,76 @@ export const resolveSessionSelectedCounterpartyPackIds = async (
     const pack = packById.get(id)
     return pack ? isSessionEligibleCounterpartyPack(pack) : false
   })
+}
+
+export const buildCortexContextBridgeExport = async (
+  selectedCounterpartyPackIds: string[] = []
+): Promise<CortexBridgeExport> => {
+  const manifest = await readManifest()
+  const manifestHash = createHash('sha256')
+    .update(stableManifestJson(manifest))
+    .digest('hex')
+  const byId = new Map(
+    manifest.counterpartyPacks.map((pack) => [pack.id, pack])
+  )
+  const selectedIds = sanitizePackIds(selectedCounterpartyPackIds)
+  const seen = new Set<string>()
+
+  const selectedCounterpartyPacks: CounterpartyContextPack[] = []
+  const droppedCounterpartyPacks: CortexBridgeDroppedCounterpartyPack[] = []
+
+  for (const selectedId of selectedIds) {
+    if (seen.has(selectedId)) {
+      continue
+    }
+
+    seen.add(selectedId)
+
+    const pack = byId.get(selectedId)
+    if (!pack) {
+      droppedCounterpartyPacks.push({
+        id: selectedId,
+        sourceId: selectedId,
+        label: `counterparty pack ${selectedId}`,
+        reasonCode: 'missing',
+        reason: 'pack missing from current manifest'
+      })
+      continue
+    }
+
+    const { included, reasonCode, reason } = cortexBridgeDropFromEligibility(pack)
+    if (!included) {
+      droppedCounterpartyPacks.push({
+        id: pack.id,
+        sourceId: pack.sourceId,
+        label: pack.title || pack.partnerName || pack.id,
+        reasonCode: reasonCode ?? 'not_selected',
+        reason
+      })
+      continue
+    }
+
+    selectedCounterpartyPacks.push(pack)
+  }
+
+  return {
+    version: 1,
+    format: 'coqpi-cortex-bridge-v0',
+    generatedAt: new Date().toISOString(),
+    cortexScope: sessionCounterpartyPackRetrievalScope,
+    manifestDir: getCoreDirectory(),
+    manifestHash,
+    sourceSummary: {
+      sources: manifest.sources.length,
+      counterpartyPacks: manifest.counterpartyPacks.length,
+      knowledgePackLifecycleEvents: manifest.knowledgePackLifecycle.length
+    },
+    selectedCounterpartyPackIds: selectedCounterpartyPacks.map((pack) => pack.id),
+    selectedCounterpartyPacks: selectedCounterpartyPacks.map(
+      mapPackForCortexBridgeExport
+    ),
+    droppedCounterpartyPacks
+  }
 }
 
 export const ingestCounterpartyFinderPayload = async (

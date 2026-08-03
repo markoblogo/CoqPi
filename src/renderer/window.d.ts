@@ -2,6 +2,7 @@ import type {
   AppUserSettings,
   AssistantAnalysisRequest,
   AssistantAnalysisResponse,
+  CortexBridgeExport,
   ContextSourceDraft,
   CounterpartyContextPackDraft,
   CounterpartyFinderPayloadPreviewResult,
@@ -162,6 +163,9 @@ declare global {
       settings: {
         get: () => Promise<SettingsPayload>
         save: (settings: AppUserSettings) => Promise<SettingsPayload>
+      }
+      cortexBridge: {
+        buildExport: () => Promise<CortexBridgeExport>
       }
       assistant: {
         analyzeRecentTranscript: (

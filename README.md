@@ -273,6 +273,10 @@ the scoped path.
 - [docs/SESSION_MEMORY_VERSIONING_NOTE.md](docs/SESSION_MEMORY_VERSIONING_NOTE.md)
 - [docs/CONTINUOUS_REVIEW_BOUNDARY.md](docs/CONTINUOUS_REVIEW_BOUNDARY.md)
 
+Also note the local Cortex bridge endpoint (for strict selected-pack handoff):
+
+- `coqpi:cortex-bridge:build-export` (IPC) returns strict compact export for selected counterparty packs, included + dropped states, and source summary.
+
 `docs/CONTINUOUS_REVIEW_BOUNDARY.md` also defines the optional local
 `Open Code Review` (`ocr`) pass used as a second reviewer on diffs before
 push/PR. It is advisory only and does not replace smoke/governance checks.

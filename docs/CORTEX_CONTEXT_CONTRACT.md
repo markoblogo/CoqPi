@@ -39,7 +39,14 @@ For local synchronous handoff, CoqPi exposes a dedicated export snapshot (no UI 
 - `pnpm dump-manifest -- --dump-manifest`
 - `pnpm dump-manifest -- --handoff` (runs validate and snapshot in one flow)
 
-The snapshot includes:
+For module-to-module exchange, CoqPi also exposes a local Cortex bridge export:
+
+- `coqpi:cortex-bridge:build-export` (IPC)  
+- strict projection by selected counterparty pack IDs
+- `droppedCounterpartyPacks` section for blocked/missing IDs
+- no raw transcript/content payload
+
+The bridge export includes:
 
 - current `manifest.json` contract,
 - optional append-only history lines from `coqpi-context-pack.history.jsonl`,

@@ -814,3 +814,143 @@ test('records knowledge pack lifecycle chain without exposing raw source path', 
     await fs.rm(directory, { recursive: true, force: true })
   }
 })
+
+test('builds cortex bridge export with strict selected/dropped counterparty packs', async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-cortex-bridge-'))
+  const previousDirectory = process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+  process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = path.join(directory, 'core')
+  await fs.mkdir(path.join(directory, 'core'), { recursive: true })
+  await fs.writeFile(path.join(directory, 'core', 'coqpi-ingress.events.jsonl'), '')
+
+  try {
+    const seeded = await service.addCounterpartyContextPacks([
+      {
+        sourceId: 'finder:job:bridge-001',
+        kind: 'job',
+        partnerName: 'Acme Ventures',
+        title: 'Senior Product Lead',
+        summary: 'Candidate pack for bridge export.',
+      },
+      {
+        sourceId: 'finder:partner:bridge-002',
+        kind: 'partner',
+        partnerName: 'North Star',
+        title: 'Pilot partner',
+        summary: 'Must stay dropped when unselected.',
+      },
+      {
+        sourceId: 'finder:investor:bridge-003',
+        kind: 'investor',
+        partnerName: 'Bridge Capital',
+        title: 'Investor context',
+        summary: 'Will be forced to not retrieval-ready.',
+      }
+    ])
+
+    const [jobPack, partnerPack, investorPack] = seeded.manifest.counterpartyPacks
+
+    await service.setCounterpartyContextPackSelected(partnerPack.id, false)
+
+    const blockedInvestorId = investorPack.id
+    const badEvent = {
+      version: 1,
+      type: 'counterparty_pack_imported',
+      pack: {
+        version: 1,
+        id: blockedInvestorId,
+        sourceId: 'finder:investor:bridge-003',
+        kind: 'investor',
+        partnerName: 'Bridge Capital',
+        title: 'Investor context',
+        summary: 'Will be blocked as not retrieval-ready.',
+        context: 'Blocked pack for bridge export.',
+        links: [],
+        selected: true,
+        status: 'pending_classification',
+        createdAt: new Date().toISOString(),
+        ownerId: 'owner',
+        provenance: {
+          sourceId: 'coqpi:finder:finder:investor:bridge-003',
+          locatorSha256:
+            'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        },
+        contentHash:
+          'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+        classification: 'private',
+        retention: {
+          mode: 'manual_deletion_required',
+          maxAgeDays: 30,
+          expiresAt: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString()
+        },
+        retrievalScopes: ['coqpi_interview_en_fr']
+      }
+    }
+    await fs.appendFile(
+      path.join(directory, 'core', 'coqpi-ingress.events.jsonl'),
+      `${JSON.stringify(badEvent)}\n`,
+      'utf8'
+    )
+
+    const bridgeExport = await service.buildCortexContextBridgeExport([
+      jobPack.id,
+      partnerPack.id,
+      blockedInvestorId,
+      blockedInvestorId,
+      'missing-pack-id'
+    ])
+
+    assert.equal(bridgeExport.version, 1)
+    assert.equal(bridgeExport.format, 'coqpi-cortex-bridge-v0')
+    assert.equal(bridgeExport.manifestDir, path.join(directory, 'core'))
+    assert.equal(bridgeExport.selectedCounterpartyPackIds.length, 1)
+    assert.deepEqual(bridgeExport.selectedCounterpartyPackIds, [jobPack.id])
+    assert.equal(bridgeExport.selectedCounterpartyPacks.length, 1)
+    assert.equal(
+      bridgeExport.selectedCounterpartyPacks[0].id,
+      jobPack.id
+    )
+    assert.equal(
+      bridgeExport.selectedCounterpartyPacks[0].partnerName,
+      'Acme Ventures'
+    )
+    assert.deepEqual(bridgeExport.droppedCounterpartyPacks.length, 3)
+    assert.equal(
+      bridgeExport.droppedCounterpartyPacks.some((entry) => entry.id === partnerPack.id &&
+        entry.reasonCode === 'not_selected'),
+      true
+    )
+    assert.equal(
+      bridgeExport.droppedCounterpartyPacks.some((entry) => entry.id === blockedInvestorId &&
+        entry.reasonCode === 'not_retrieval_ready'),
+      true
+    )
+    assert.equal(
+      bridgeExport.droppedCounterpartyPacks.some(
+        (entry) => entry.id === 'missing-pack-id' && entry.reasonCode === 'missing'
+      ),
+      true
+    )
+    assert.equal(bridgeExport.sourceSummary.sources, 0)
+    assert.equal(bridgeExport.sourceSummary.counterpartyPacks, 3)
+    assert.equal(bridgeExport.sourceSummary.knowledgePackLifecycleEvents, 0)
+    assert.match(bridgeExport.manifestHash, /^[a-f0-9]{64}$/)
+
+    const includedPack = bridgeExport.selectedCounterpartyPacks[0]
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(includedPack, 'provenance'),
+      true
+    )
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(includedPack, 'contentHash'),
+      true
+    )
+    assert.equal(bridgeExport.manifestDir.includes('coqpi-cortex-bridge-'), true)
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR
+    } else {
+      process.env.COQPI_PERSONAL_KNOWLEDGE_CORE_DIR = previousDirectory
+    }
+    await fs.rm(directory, { recursive: true, force: true })
+  }
+})

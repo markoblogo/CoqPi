@@ -487,6 +487,67 @@ export interface CounterpartyContextPackManifestResult {
   }
 }
 
+export type CortexBridgeCounterpartyPackDropReason =
+  | 'missing'
+  | 'wrong_version'
+  | 'not_selected'
+  | 'not_retrieval_ready'
+  | 'wrong_owner'
+  | 'not_private'
+  | 'missing_interview_scope'
+
+export interface CortexBridgeCounterpartyPackExport {
+  id: string
+  sourceId: string
+  kind: CounterpartyContextPackKind
+  partnerName: string
+  title: string
+  summary: string
+  context: string
+  links: string[]
+  selected: boolean
+  status: 'pending_classification' | 'retrieval_ready'
+  createdAt: string
+  ownerId: 'owner'
+  provenance: {
+    sourceId: string
+    locatorSha256: string
+  }
+  contentHash: string
+  classification: 'private'
+  retention: {
+    mode: 'manual_deletion_required'
+    maxAgeDays: number
+    expiresAt: string
+  }
+  retrievalScopes: string[]
+}
+
+export interface CortexBridgeDroppedCounterpartyPack {
+  id: string
+  sourceId: string
+  label: string
+  reasonCode: CortexBridgeCounterpartyPackDropReason
+  reason: string
+}
+
+export interface CortexBridgeExport {
+  version: 1
+  format: 'coqpi-cortex-bridge-v0'
+  generatedAt: string
+  cortexScope: string
+  manifestDir: string
+  manifestHash: string
+  sourceSummary: {
+    sources: number
+    counterpartyPacks: number
+    knowledgePackLifecycleEvents: number
+  }
+  selectedCounterpartyPackIds: string[]
+  selectedCounterpartyPacks: CortexBridgeCounterpartyPackExport[]
+  droppedCounterpartyPacks: CortexBridgeDroppedCounterpartyPack[]
+}
+
 export interface ContextSourceManifest {
   version: 1
   sources: ContextSource[]
