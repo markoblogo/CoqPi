@@ -56,6 +56,17 @@ const computeHash = (value) =>
 
 const isHexDigest = (value) => /^[a-f0-9]{64}$/i.test(value || '')
 
+const buildSourceSummary = (manifest = {}, history = []) => ({
+  sources: Array.isArray(manifest.sources) ? manifest.sources.length : 0,
+  counterpartyPacks: Array.isArray(manifest.counterpartyPacks)
+    ? manifest.counterpartyPacks.length
+    : 0,
+  knowledgePackLifecycleEvents: Array.isArray(manifest.knowledgePackLifecycle)
+    ? manifest.knowledgePackLifecycle.length
+    : 0,
+  historyEvents: Array.isArray(history) ? history.length : 0
+})
+
 const isManifestSource = (source) => {
   if (!source || typeof source !== 'object') {
     return false
@@ -158,6 +169,7 @@ const validateManifest = async (options) => {
     history,
     errors,
     warnings,
+    sourceSummary: buildSourceSummary(manifest, history),
     rejectPartialEnabled,
     blockingWarnings: hasBlockingWarnings
   }
@@ -204,12 +216,14 @@ const dumpManifestSnapshot = async (options) => {
   const manifest = await readJsonFile(manifestPath)
   const history = await readHistoryEvents(historyPath)
   const manifestHash = computeHash(stableJson(manifest))
+  const sourceSummary = buildSourceSummary(manifest, history)
   const snapshot = {
     version: 1,
     format: 'coqpi-context-pack-snapshot',
     generatedAt: new Date().toISOString(),
     manifestDir,
     manifestHash,
+    sourceSummary,
     manifest,
     history
   }
@@ -344,6 +358,7 @@ const run = async () => {
 module.exports = {
   dumpManifestSnapshot,
   validateManifest,
+  buildSourceSummary,
   parseArgs,
   resolveCoreDirectory,
   signSnapshot,

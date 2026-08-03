@@ -548,6 +548,63 @@ export interface CortexBridgeExport {
   droppedCounterpartyPacks: CortexBridgeDroppedCounterpartyPack[]
 }
 
+export type CortexABVImportReasonCode =
+  | CortexBridgeCounterpartyPackDropReason
+  | 'missing'
+
+export interface CortexABVImportCounterpartyPack {
+  id: string
+  sourceId: string
+  kind: CounterpartyContextPackKind
+  partnerName: string
+  title: string
+  summary: string
+  context: string
+  links: string[]
+  selected: boolean
+  status: 'pending_classification' | 'retrieval_ready'
+  sourceSummary: {
+    provenanceSourceId?: string
+    provenanceLocatorSha256?: string
+    contentHash?: string
+    ownerId?: 'owner'
+    classification?: 'private'
+    retrievalScopes?: string[]
+  }
+}
+
+export interface CortexABVImportDecision {
+  decision: 'allow' | 'deny'
+  id: string
+  sourceId: string
+  reasonCode?: CortexABVImportReasonCode
+  reason: string
+  label: string
+  version?: 1
+  createdAt?: string
+}
+
+export interface CortexABVImportPlan {
+  version: 1
+  format: 'coqpi-cortex-to-cortexabv-ingest-v0'
+  generatedAt: string
+  manifestHash: string
+  sourceSummary: {
+    sources: number
+    counterpartyPacks: number
+    knowledgePackLifecycleEvents: number
+  }
+  decisions: {
+    allow: CortexABVImportCounterpartyPack[]
+    deny: CortexABVImportDecision[]
+  }
+  validation?: {
+    valid: boolean
+    errors: string[]
+    warnings: string[]
+  }
+}
+
 export interface ContextSourceManifest {
   version: 1
   sources: ContextSource[]

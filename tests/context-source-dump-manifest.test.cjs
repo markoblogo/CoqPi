@@ -92,13 +92,8 @@ test('dumps manifest snapshot with stable hash and optional signature', async ()
     const expectedSignature = nodeCrypto
       .createHmac('sha256', signingKey)
       .update(stableJson({
-        version: 1,
-        format: 'coqpi-context-pack-snapshot',
-        generatedAt: signed.generatedAt,
-        manifestDir: directory,
-        manifestHash: signed.manifestHash,
-        manifest: signed.manifest,
-        history: signed.history
+        ...signed,
+        signature: undefined
       }))
       .digest('hex')
     assert.equal(signed.signature.digest, expectedSignature)

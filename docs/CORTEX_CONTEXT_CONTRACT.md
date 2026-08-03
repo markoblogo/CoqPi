@@ -53,6 +53,26 @@ The bridge export includes:
 - `manifestHash`,
 - optional `signature` when `--sign` is used.
 
+For CortexABV ingestion, CoqPi ships a strict local importer contract:
+
+- `coqpi-cortex-to-cortexabv-ingest-v0` sink document includes:
+  - required `manifestHash` and required `sourceSummary` (`sources`, `counterpartyPacks`, `knowledgePackLifecycleEvents`);
+  - `decisions.allow[]` (compact pack payload, no raw transcripts/content) and `decisions.deny[]` with `reasonCode`.
+- explicit reason mapping for:
+  - `missing`, `wrong_version`, `not_selected`, `not_retrieval_ready`, `wrong_owner`, `not_private`, `missing_interview_scope`.
+- required sink artifact field contract is enforced on both:
+  - handoff snapshot input (`coqpi-context-pack-snapshot`) and
+  - bridge input (`coqpi-cortex-bridge-v0`).
+
+Example local import command:
+
+```bash
+node scripts/cortex-abv-importer.cjs \
+  --snapshot <handoff.snapshot.json> \
+  --validation <handoff.validation.json> \
+  --output cortexabv-import-plan.json
+```
+
 Signing key resolution:
 
 - `--key <value>` CLI parameter or `COQPI_CONTEXT_PACK_SIGNING_KEY` env var.

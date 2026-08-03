@@ -220,6 +220,7 @@ Useful handoff scripts:
 - `pnpm handoff:with-dates`
 - `pnpm handoff:with-dates:signed`
 - `pnpm handoff:with-dates:reject-partial`
+- `node scripts/cortex-abv-importer.cjs --snapshot <handoff.snapshot.json> [--validation <handoff.validation.json>]` for CortexABV import planning
 
 ## Recommended test commands
 
