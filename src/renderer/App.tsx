@@ -4295,6 +4295,92 @@ export const App = () => {
     targetUtteranceId = null,
     bypassCooldown = false
   }: RunAssistantAnalysisOptions): Promise<boolean> => {
+    const normalizePackSelectionsForAssistant = () => {
+      const normalizedSessionContext = getSessionContextWithCounterpartyPacks(
+        sessionContext,
+        counterpartyPacks
+      )
+      const payloadInspector = buildSessionPayloadInspector({
+        context: normalizedSessionContext,
+        availablePacks: counterpartyPacks,
+        availableOutreachDrafts: finderOutreachDrafts,
+        includeProfileContext,
+        profileChars: profileContext.length
+      })
+
+      return {
+        context: {
+          ...normalizedSessionContext,
+          selectedFinderOutreachDraftId: payloadInspector.includedOutreachDraft
+            ? normalizedSessionContext.selectedFinderOutreachDraftId
+            : ''
+        },
+        payloadInspector
+      }
+    }
+
+    const persistSelectedContextIfNeeded = (
+      analysisContext: SessionContext
+    ) => {
+      const hasSamePackSelection =
+        analysisContext.selectedCounterpartyPackIds.length ===
+          sessionContext.selectedCounterpartyPackIds.length &&
+        analysisContext.selectedCounterpartyPackIds.every(
+          (id, index) =>
+            sessionContext.selectedCounterpartyPackIds[index] === id
+        )
+
+      if (
+        hasSamePackSelection &&
+        analysisContext.selectedFinderOutreachDraftId ===
+          sessionContext.selectedFinderOutreachDraftId
+      ) {
+        return
+      }
+
+      setSessionContext((current) => {
+        if (
+          analysisContext.selectedFinderOutreachDraftId ===
+            current.selectedFinderOutreachDraftId &&
+          analysisContext.selectedCounterpartyPackIds.length ===
+            current.selectedCounterpartyPackIds.length &&
+          analysisContext.selectedCounterpartyPackIds.every(
+            (id, index) =>
+              current.selectedCounterpartyPackIds[index] === id
+          )
+        ) {
+          return current
+        }
+
+        return {
+          ...current,
+          selectedCounterpartyPackIds: [...analysisContext.selectedCounterpartyPackIds],
+          selectedFinderOutreachDraftId: analysisContext.selectedFinderOutreachDraftId
+        }
+      })
+
+      setSessionContextDraft((current) => {
+        if (
+          analysisContext.selectedFinderOutreachDraftId ===
+            current.selectedFinderOutreachDraftId &&
+          analysisContext.selectedCounterpartyPackIds.length ===
+            current.selectedCounterpartyPackIds.length &&
+          analysisContext.selectedCounterpartyPackIds.every(
+            (id, index) =>
+              current.selectedCounterpartyPackIds[index] === id
+          )
+        ) {
+          return current
+        }
+
+        return {
+          ...current,
+          selectedCounterpartyPackIds: [...analysisContext.selectedCounterpartyPackIds],
+          selectedFinderOutreachDraftId: analysisContext.selectedFinderOutreachDraftId
+        }
+      })
+    }
+
     const setErrorState = (
       message: string,
       code: AssistantStatusCode = 'assistant_error',
@@ -4348,6 +4434,9 @@ export const App = () => {
       return false
     }
 
+    const normalizedForAnalysis = normalizePackSelectionsForAssistant()
+    persistSelectedContextIfNeeded(normalizedForAnalysis.context)
+
     let effectiveMode = mode
 
     if (
@@ -4368,7 +4457,7 @@ export const App = () => {
       ? profileContext.length
       : 0
     const estimatedSessionContextChars =
-      getSessionContextText(sessionContext).length
+      getSessionContextText(normalizedForAnalysis.context).length
     const totalChars =
       transcriptToSend.length +
       estimatedProfileChars +
@@ -4410,9 +4499,10 @@ export const App = () => {
       answerLanguage: toAssistantAnswerLanguage(controls.answerLanguage),
       mode: effectiveMode,
       includeProfileContext,
-      sessionContext,
-      retrievalKinds: getSessionContextRetrievalKinds(sessionContext),
-      selectedCounterpartyPackIds: sessionContext.selectedCounterpartyPackIds,
+      sessionContext: normalizedForAnalysis.context,
+      retrievalKinds: getSessionContextRetrievalKinds(normalizedForAnalysis.context),
+      selectedCounterpartyPackIds:
+        normalizedForAnalysis.context.selectedCounterpartyPackIds,
       recentWindowLabel,
       costMode
     }
@@ -4422,7 +4512,7 @@ export const App = () => {
     setAssistantErrorCode(null)
     setAssistantErrorSource(null)
     setAnalysisCooldownUntil(Date.now() + ANALYSIS_COOLDOWN_MS)
-    setLastAnalyzePayloadInspector(activeSessionPayloadInspector)
+    setLastAnalyzePayloadInspector(normalizedForAnalysis.payloadInspector)
     setLastAnalyzeTranscriptText(transcriptToSend)
 
     try {
@@ -4510,6 +4600,20 @@ export const App = () => {
     }
 
     const analysisText = getRecentTranscriptText(transcriptUtterances, 30)
+    const normalizedForAnalysis = getSessionContextWithCounterpartyPacks(
+      sessionContext,
+      counterpartyPacks
+    )
+    const normalizedAnalysisPayload = buildSessionPayloadInspector({
+      context: normalizedForAnalysis,
+      availablePacks: counterpartyPacks,
+      availableOutreachDrafts: finderOutreachDrafts,
+      includeProfileContext,
+      profileChars: profileContext.length
+    })
+    const normalizedDraftId = normalizedAnalysisPayload.includedOutreachDraft
+      ? normalizedForAnalysis.selectedFinderOutreachDraftId
+      : ''
     const plan = buildAutoAnalysisSchedule({
       latestFinalUtterance,
       transcriptText: analysisText,
@@ -4519,8 +4623,8 @@ export const App = () => {
       scheduledAutoAnalysisFingerprint: scheduledAutoAnalysisFingerprintRef.current,
       assistantState,
       analysisCooldownUntil,
-      selectedCounterpartyPackIds: sessionContext.selectedCounterpartyPackIds,
-      selectedFinderOutreachDraftId: sessionContext.selectedFinderOutreachDraftId
+      selectedCounterpartyPackIds: normalizedForAnalysis.selectedCounterpartyPackIds,
+      selectedFinderOutreachDraftId: normalizedDraftId
     })
 
     if (!plan.shouldRun || plan.fingerprint === null) {
@@ -4569,6 +4673,11 @@ export const App = () => {
     assistantState,
     controls.callLanguage,
     transcriptUtterances,
+    sessionContext,
+    counterpartyPacks,
+    finderOutreachDrafts,
+    includeProfileContext,
+    profileContext.length,
     sessionContext.selectedCounterpartyPackIds,
     sessionContext.selectedFinderOutreachDraftId
   ])
