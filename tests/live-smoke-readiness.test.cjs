@@ -8,6 +8,8 @@ const {
   getAutoAnalysisIgnoreReasonLabel
 } = require('../dist-electron/shared/live-loop.js')
 
+const { buildSmokeReadinessPack } = require('../dist-electron/shared/smoke-readiness-pack.js')
+
 const {
   buildSmokeExecutionDiagnostics
 } = require('../dist-electron/shared/smoke-execution-diagnostics.js')
@@ -168,4 +170,25 @@ test('pass2 smoke diagnostics captures noise-first failures and payload mismatch
   assert.match(diagnostics.trace.find((item) => item.id === 'payload')?.detail ?? '', /current included packs 1 · dropped 1/)
   assert.equal(diagnostics.trace.find((item) => item.id === 'payload')?.tone, 'warning')
   assert.match(diagnostics.notePrefill.broken, /background|short/i)
+})
+
+test('real mic readiness never claims ready before the realtime path is ready', () => {
+  const pack = buildSmokeReadinessPack({
+    apiKeyAvailable: true,
+    selectedPackCount: 1,
+    selectedPackLabel: 'Pack A',
+    selectedPackQualityLevel: 'strong',
+    weakFieldCount: 0,
+    mockModeEnabled: true,
+    transcriptCount: 1,
+    autoWindowChars: 80,
+    assistantFreshness: 'fresh',
+    assistantQualityLevel: 'ready',
+    assistantQualityDetail: 'Answer is short and selected-context grounded.',
+    realtimeReady: false
+  })
+
+  assert.notEqual(pack.status, 'ready_for_real_mic')
+  assert.equal(pack.gates.find((gate) => gate.id === 'real_mic')?.status, 'waiting')
+  assert.equal(pack.scenario.find((step) => step.id === 'real_mic')?.status, 'waiting')
 })

@@ -138,7 +138,11 @@ export const buildSmokeReadinessPack = (
 
   const readyForMock = setupReady && contextReady
   const readyForRealMic =
-    readyForMock && mockPathReady && assistantReady && communicationReady
+    readyForMock &&
+    mockPathReady &&
+    assistantReady &&
+    communicationReady &&
+    realMicReady
 
   const status = readyForRealMic
     ? 'ready_for_real_mic'
