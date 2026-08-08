@@ -4,6 +4,7 @@ import type {
   AudioLevelReading,
   AudioLevelStatus
 } from '@shared/app-types'
+import { buildAudioInputConstraints } from '@shared/audio-input-config'
 
 const AUDIO_INPUT_STORAGE_KEY = 'coqpi.selectedAudioInputId'
 
@@ -219,9 +220,7 @@ export class AudioLevelMonitor {
 
     try {
       this.mediaStream = await getMediaDevices().getUserMedia({
-        audio: {
-          deviceId: deviceId ? { exact: deviceId } : undefined
-        },
+        audio: buildAudioInputConstraints(deviceId),
         video: false
       })
     } catch (error) {

@@ -199,6 +199,7 @@ import {
   requestAudioInputPermission,
   storeSelectedAudioInputId
 } from '@renderer/audio-device-service'
+import { resolveAudioInputSelection } from '@shared/audio-input-config'
 import {
   getNextMockTranscriptLine,
   mockTranscriptScenarios,
@@ -1357,8 +1358,10 @@ export const App = () => {
       const matchedStoredDevice = devices.find(
         (device) => device.deviceId === storedDeviceId
       )
-      const nextSelectedDeviceId =
-        matchedStoredDevice?.deviceId ?? devices[0]?.deviceId ?? ''
+      const nextSelectedDeviceId = resolveAudioInputSelection(
+        storedDeviceId,
+        devices.map((device) => device.deviceId)
+      )
 
       startTransition(() => {
         setAudioPermissionStatus(permissionStatus)
@@ -1399,14 +1402,14 @@ export const App = () => {
       return
     }
 
-    if (audioPermissionStatus !== 'granted' || !selectedAudioDeviceId) {
+    if (audioPermissionStatus !== 'granted') {
       setAudioLevel(defaultAudioLevelReading)
       return
     }
 
-    const selectedDeviceExists = audioDevices.some(
-      (device) => device.deviceId === selectedAudioDeviceId
-    )
+    const selectedDeviceExists =
+      !selectedAudioDeviceId ||
+      audioDevices.some((device) => device.deviceId === selectedAudioDeviceId)
 
     if (!selectedDeviceExists) {
       setAudioLevel(defaultAudioLevelReading)
@@ -3884,8 +3887,10 @@ export const App = () => {
       const matchedSelectedDevice = devices.find(
         (device) => device.deviceId === selectedAudioDeviceId
       )
-      const nextSelectedDeviceId =
-        matchedSelectedDevice?.deviceId ?? devices[0]?.deviceId ?? ''
+      const nextSelectedDeviceId = resolveAudioInputSelection(
+        selectedAudioDeviceId,
+        devices.map((device) => device.deviceId)
+      )
 
       startTransition(() => {
         setAudioDevices(devices)
@@ -4116,15 +4121,6 @@ export const App = () => {
     if (audioPermissionStatus === 'denied') {
       const message =
         'Microphone permission was denied. Allow microphone access and try again.'
-      setRealtimeStatus('error')
-      setRealtimeError(message)
-      setLastSanitizedRealtimeError(message)
-      return
-    }
-
-    if (!selectedAudioDeviceId) {
-      const message =
-        'No selected audio input. Choose an input device before starting listening.'
       setRealtimeStatus('error')
       setRealtimeError(message)
       setLastSanitizedRealtimeError(message)
@@ -4753,7 +4749,7 @@ export const App = () => {
   const hasTranscriptActivity = transcriptUtterances.length > 0
   const isRealtimeReady =
     audioPermissionStatus === 'granted' &&
-    Boolean(selectedAudioDeviceId) &&
+    audioDevices.length > 0 &&
     configStatus.effectiveKeyAvailable
   const realtimeHealthLabel = formatRealtimeHealthLabel(
     realtimeStatus,
@@ -4763,7 +4759,7 @@ export const App = () => {
   )
   const selectedDeviceLabel =
     audioDevices.find((device) => device.deviceId === selectedAudioDeviceId)
-      ?.label || 'No device selected'
+      ?.label || 'System default (macOS)'
   const autoAnalysisTranscriptText = getRecentTranscriptText(
     getAutoAnalysisTranscriptUtterances(
       transcriptUtterances,
@@ -4945,7 +4941,7 @@ export const App = () => {
   })
   const smokeExecutionDiagnostics = buildSmokeExecutionDiagnostics({
     audioPermissionStatus,
-    hasSelectedAudioDevice: Boolean(selectedAudioDeviceId),
+    hasSelectedAudioDevice: audioDevices.length > 0,
     audioLevelStatus: audioLevel.status,
     realtimeStatus,
     realtimeHealthLabel,
@@ -6130,16 +6126,13 @@ export const App = () => {
                 onChange={handleAudioDeviceChange}
                 value={selectedAudioDeviceId}
               >
-                {audioDevices.length === 0 ? (
-                  <option value="">No devices available</option>
-                ) : (
-                  audioDevices.map((device) => (
-                    <option key={device.deviceId} value={device.deviceId}>
-                      {device.label || 'Unnamed input'}{' '}
-                      {device.isDefault ? '(Default)' : ''}
-                    </option>
-                  ))
-                )}
+                <option value="">System default (macOS)</option>
+                {audioDevices.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || 'Unnamed input'}{' '}
+                    {device.isDefault ? '(Default)' : ''}
+                  </option>
+                ))}
               </select>
             </label>
           </div>
@@ -6473,16 +6466,13 @@ export const App = () => {
                       }}
                       value={selectedAudioDeviceId}
                     >
-                      {audioDevices.length === 0 ? (
-                        <option value="">No devices available</option>
-                      ) : (
-                        audioDevices.map((device) => (
-                          <option key={device.deviceId} value={device.deviceId}>
-                            {device.label || 'Unnamed input'}{' '}
-                            {device.isDefault ? '(Default)' : ''}
-                          </option>
-                        ))
-                      )}
+                      <option value="">System default (macOS)</option>
+                      {audioDevices.map((device) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || 'Unnamed input'}{' '}
+                          {device.isDefault ? '(Default)' : ''}
+                        </option>
+                      ))}
                     </select>
                     <div className="button-row">
                       <button

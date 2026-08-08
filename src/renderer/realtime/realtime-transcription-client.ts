@@ -2,6 +2,7 @@ import type {
   RealtimeConnectionStatus,
   RealtimeTranscriptionStartRequest
 } from '@shared/app-types'
+import { buildAudioInputConstraints } from '@shared/audio-input-config'
 
 type RealtimeServerEvent = {
   type?: string
@@ -83,12 +84,6 @@ export class RealtimeTranscriptionClient {
   private isStopping = false
 
   async start(options: StartRealtimeTranscriptionOptions) {
-    if (!options.selectedAudioDeviceId) {
-      throw new Error(
-        'No selected audio input device. Choose an input before starting realtime listening.'
-      )
-    }
-
     await this.stop()
     this.isStopping = false
     options.onStatusChange('connecting')
@@ -96,9 +91,7 @@ export class RealtimeTranscriptionClient {
 
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: { exact: options.selectedAudioDeviceId }
-        },
+        audio: buildAudioInputConstraints(options.selectedAudioDeviceId),
         video: false
       })
       options.onLifecycleLog('microphone stream acquired')
