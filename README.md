@@ -18,6 +18,13 @@ OpenAI Realtime is the primary live transcription path. OpenAI text analysis is 
 
 ## Current product status
 
+Read first for a fresh coding session:
+
+1. `README.md`
+2. `docs/ARCHITECTURE.md`
+3. `docs/CORTEX_CONTEXT_CONTRACT.md`
+4. task-specific docs only
+
 ### 1) Communicator: live assistant / translator
 
 Status: MVP is real and fairly stable.
@@ -46,6 +53,8 @@ What works now:
   - one-click capture into a local smoke note;
 - bounded pre-call preparation packet with agenda, participant context, owner
   focus and missing-context indicators;
+- bounded Cortex-backed preparation context in Prepare mode:
+  `SessionContext -> ABVX ContextRequest -> ContextPack -> compact review sections`;
 - local EN/FR transcript cleanup and language hint before assistant analysis;
 - fail-closed privacy gate before external provider calls: PII is redacted and
   secret-like material blocks the request;
@@ -54,6 +63,7 @@ What works now:
 
 Still not done:
 - real-call tuning is stronger now, but still not fully validated by repeated live calls;
+- live microphone / OpenAI Realtime validation remains human-gated and currently deferred, not silently passed;
 - no system-audio capture;
 - no offline/local realtime STT.
 
@@ -125,12 +135,14 @@ What works now:
   - compact local memory artifacts for audit and future retrieval passes,
   - abstain when the selected set does not contain a strong enough match;
 - selected-pack retrieval boundary and session handoff into Prepare/Live;
+- read-only ABVX/Cortex preparation bridge for compact professional-call prep context, shown only on demand and kept in local session memory rather than persisted into saved session state;
 - strict payload audit for what is included vs dropped;
 - vector-ready contract exists, but retrieval still runs inside a strict selected candidate set without a vector DB.
 
 Still not done:
 - no full vector retrieval infrastructure;
 - no broad automatic ingestion from links/folders/web.
+- no Opportunity Engine, outreach automation, or broad memory integration.
 
 ## Architecture
 

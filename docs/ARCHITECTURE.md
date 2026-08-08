@@ -3,7 +3,7 @@
 ## UX modes
 
 - `Live Call`: default cockpit for active calls. It keeps only critical information visible by default.
-- `Prepare`: session prep, selected-pack review, outreach-draft handoff, and payload inspection.
+- `Prepare`: session prep, selected-pack review, outreach-draft handoff, payload inspection, and optional Cortex-backed preparation context review.
 - `Finder`: local pipeline for candidate intake, preview, queue review, drafts, and session handoff.
 - `Context`: local knowledge ingress, extraction preview, pack assembly, and lifecycle review.
 - `Settings / Debug`: local configuration, secure key handling, and collapsed diagnostics.
@@ -12,6 +12,7 @@
 
 - **Electron main process**: owns the desktop window, loads backend-only environment variables, registers IPC, and coordinates local services.
 - **Preload / IPC bridge**: exposes a narrow `window.coqpi` API with safe renderer access to config, profile, settings, secrets, assistant analysis, and realtime SDP exchange.
+- **Preparation context adapter**: a thin local ABVX bridge that turns CoqPi `SessionContext` into a bounded `ContextRequest`, reads back a `ContextPack`, and returns only compact result fields to the renderer.
 - **React renderer**: renders the three UX modes, manages local transcript state, runs microphone selection and audio metering, and drives manual user actions.
 - **Backend services**: hold config validation, profile file handling, assistant analysis, realtime backend exchange, secure secret storage, and user settings persistence.
 - **Shared layer**: contains cross-process types plus transcript and cost estimation helpers.
@@ -26,6 +27,12 @@
 - Secure stored secrets are written under `app.getPath("userData")`.
 
 ## Current renderer-side data flow
+
+### Cortex-backed preparation path
+
+`Prepare fields -> SessionContext -> ABVX ContextRequest -> ABVX ContextPack -> compact Prepare review sections`
+
+This path is on-demand only. It is read-only, does not use microphone/audio, and does not persist the returned private pack into `current-session.json`.
 
 ### Audio diagnostics
 
