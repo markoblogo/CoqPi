@@ -13,6 +13,7 @@ import type {
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
+  PreparationContextResult,
   RealtimeTranscriptionStartRequest,
   SessionContext,
   SessionSummaryDraft,
@@ -226,6 +227,10 @@ contextBridge.exposeInMainWorld('coqpi', {
   cortexBridge: {
     buildExport: (): Promise<CortexBridgeExport> =>
       ipcRenderer.invoke('coqpi:cortex-bridge:build-export')
+  },
+  preparationContext: {
+    request: (context: SessionContext): Promise<PreparationContextResult> =>
+      ipcRenderer.invoke('coqpi:preparation-context:request', context)
   },
   assistant: {
     analyzeRecentTranscript: (request: AssistantAnalysisRequest) =>

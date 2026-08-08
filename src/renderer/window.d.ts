@@ -19,6 +19,7 @@ import type {
   FinderSearchStoreResult,
   KnowledgePackLifecycleDraft,
   OpenAIKeyStatus,
+  PreparationContextResult,
   ProfileContextResult,
   RealtimeTranscriptionResponse,
   RealtimeTranscriptionStartRequest,
@@ -166,6 +167,9 @@ declare global {
       }
       cortexBridge: {
         buildExport: () => Promise<CortexBridgeExport>
+      }
+      preparationContext: {
+        request: (context: SessionContext) => Promise<PreparationContextResult>
       }
       assistant: {
         analyzeRecentTranscript: (

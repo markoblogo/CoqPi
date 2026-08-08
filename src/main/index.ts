@@ -21,6 +21,7 @@ import type {
   FinderSearchJobStatus,
   FinderSearchStoreResult,
   OpenAIKeyStatus,
+  PreparationContextResult,
   RealtimeTranscriptionError,
   RealtimeTranscriptionResponse,
   RealtimeTranscriptionStartRequest,
@@ -53,6 +54,7 @@ import {
   getSessionContext,
   saveSessionContext
 } from '../backend/services/session-context-service'
+import { requestPreparationContext } from '../backend/services/preparation-context-service'
 import {
   getSmokeTestNotes,
   saveSmokeTestNote
@@ -258,6 +260,14 @@ const registerIpcHandlers = () => {
         sessionContextResult.context.selectedCounterpartyPackIds
       )
     }
+  )
+
+  ipcMain.handle(
+    'coqpi:preparation-context:request',
+    async (
+      _event,
+      context: SessionContext
+    ): Promise<PreparationContextResult> => requestPreparationContext(context)
   )
 
   ipcMain.handle('coqpi:context-sources:pick-files', async () => {

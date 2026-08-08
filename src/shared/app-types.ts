@@ -143,6 +143,79 @@ export interface SessionContextResult {
   persistedContext: SessionContext
 }
 
+export interface AbvxContextBudget {
+  max_excerpt_chars: number
+  provider_timeout_seconds: number
+  token_usage: 'NOT_METERED'
+}
+
+export interface AbvxContextRequest {
+  schema_version: 'v1'
+  request_id: string
+  consumer: 'coqpi'
+  task: string
+  intent: 'professional_preparation'
+  related_projects: string[]
+  entities: string[]
+  domains: string[]
+  freshness_requirement: 'CURRENT' | 'RECENT' | 'HISTORICAL' | 'ANY'
+  privacy_domain: 'PERSONAL_PRIVATE'
+  max_items: number
+  context_budget: AbvxContextBudget
+  provider_hints?: ('cortexabv' | 'index-cortex')[]
+}
+
+export interface PreparationContextKnowledgeItem {
+  id: string
+  category: string
+  title: string
+  summary: string
+  excerpt: string
+  confidence: string
+  provider: string
+  privacy_classification: string
+  provenance_label: string
+  proof_url?: string
+}
+
+export interface PreparationContextProviderStatus {
+  id: string
+  status: string
+  items_returned: number
+}
+
+export interface PreparationContextOperationalState {
+  project: string
+  operational_state: string
+  current_outcome: string
+  next_action: string
+  waiting_reason?: string
+  human_attention_required: boolean
+}
+
+export type PreparationContextStatus =
+  | 'ready'
+  | 'partial'
+  | 'empty'
+  | 'unavailable'
+  | 'denied'
+
+export interface PreparationContextResult {
+  status: PreparationContextStatus
+  message: string
+  request: AbvxContextRequest
+  pack_id: string | null
+  generated_at: string | null
+  item_count: number
+  pack_bytes: number
+  truncated: boolean
+  available_more: boolean
+  known_gaps: string[]
+  provider_statuses: PreparationContextProviderStatus[]
+  items: PreparationContextKnowledgeItem[]
+  operational_context: PreparationContextOperationalState[]
+}
+
 export const contextSourceKindValues = [
   'link',
   'file',

@@ -33,6 +33,7 @@ import {
   type FinderSearchStore,
   type KnowledgePackLifecycleEntry,
   type OpenAIKeyStatus,
+  type PreparationContextResult,
   type RealtimeConnectionStatus,
   type SettingsMeta,
   type SessionContext,
@@ -94,6 +95,9 @@ import {
 import {
   buildSessionSelectionSurface
 } from '@shared/session-selection-surface'
+import {
+  buildPreparationContextSurface
+} from '@shared/preparation-context-surface'
 import {
   buildSessionPackReviewItems,
   filterSessionPackReviewItems,
@@ -776,6 +780,10 @@ export const App = () => {
   const [sessionContextNotice, setSessionContextNotice] = useState<
     string | null
   >(null)
+  const [preparationContextResult, setPreparationContextResult] =
+    useState<PreparationContextResult | null>(null)
+  const [isLoadingPreparationContext, setIsLoadingPreparationContext] =
+    useState(false)
   const [preparePackReviewFilter, setPreparePackReviewFilter] =
     useState<SessionPackReviewFilter>('all')
   const [isSavingSessionContext, setIsSavingSessionContext] = useState(false)
@@ -1873,6 +1881,19 @@ export const App = () => {
       )
     } finally {
       setIsSavingSessionContext(false)
+    }
+  }
+
+  const loadPreparationContext = async () => {
+    setIsLoadingPreparationContext(true)
+
+    try {
+      const result = await window.coqpi.preparationContext.request(
+        sessionContextDraft
+      )
+      setPreparationContextResult(result)
+    } finally {
+      setIsLoadingPreparationContext(false)
     }
   }
 
@@ -4801,6 +4822,9 @@ export const App = () => {
     sessionSelectionSurface.activePayloadInspector
   const activeSessionPackSummary = sessionSelectionSurface.activePackSummary
   const manualPrepPreview = sessionSelectionSurface.draftPrepPreview
+  const preparationContextSurface = preparationContextResult
+    ? buildPreparationContextSurface(preparationContextResult)
+    : null
   const draftSessionPayloadInspector =
     sessionSelectionSurface.draftPayloadInspector
   const sessionPackReviewItems = buildSessionPackReviewItems({
@@ -6841,6 +6865,94 @@ export const App = () => {
                   draftSessionPayloadInspector,
                   'Draft assistant payload'
                 )}
+                <div className="context-source-list">
+                  <div className="settings-row-label">
+                    Cortex-backed preparation context
+                  </div>
+                  <div className="button-row settings-actions">
+                    <button
+                      disabled={isLoadingPreparationContext}
+                      onClick={() => void loadPreparationContext()}
+                      type="button"
+                    >
+                      {preparationContextResult ? 'Refresh context' : 'Load context'}
+                    </button>
+                  </div>
+                  {preparationContextSurface ? (
+                    <>
+                      <div className="manual-prep-preview">
+                        <div className="manual-prep-preview-header">
+                          <div>
+                            <strong>{preparationContextSurface.statusLabel}</strong>
+                            <span>{preparationContextSurface.hint}</span>
+                          </div>
+                          <span>{preparationContextSurface.statsLabel}</span>
+                        </div>
+                      </div>
+                      {preparationContextResult!.operational_context.length > 0 ? (
+                        <div className="context-source-item">
+                          <div className="context-source-details">
+                            <strong>
+                              {preparationContextResult!.operational_context[0]
+                                .operational_state}
+                            </strong>
+                            <span>
+                              {
+                                preparationContextResult!.operational_context[0]
+                                  .current_outcome
+                              }
+                            </span>
+                            <code>
+                              next:{' '}
+                              {
+                                preparationContextResult!.operational_context[0]
+                                  .next_action
+                              }
+                            </code>
+                          </div>
+                        </div>
+                      ) : null}
+                      {preparationContextSurface.sections.length === 0 ? (
+                        <div className="context-source-empty">
+                          {preparationContextResult!.message}
+                        </div>
+                      ) : (
+                        preparationContextSurface.sections.map((section) => (
+                          <div className="context-source-list" key={section.id}>
+                            <div className="settings-row-label">{section.title}</div>
+                            {section.items.map((item) => (
+                              <div
+                                className="context-source-item"
+                                key={`${section.id}-${item.id}`}
+                              >
+                                <div className="context-source-details">
+                                  <strong>{item.title}</strong>
+                                  <span>{item.summary}</span>
+                                  <code>{item.meta}</code>
+                                  {item.proofUrl ? (
+                                    <a
+                                      href={item.proofUrl}
+                                      rel="noreferrer"
+                                      target="_blank"
+                                    >
+                                      Public proof
+                                    </a>
+                                  ) : null}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ))
+                      )}
+                    </>
+                  ) : (
+                    <div className="context-source-empty">
+                      Load a bounded private ContextPack from ABVX for this call.
+                      It stays in this CoqPi session memory and does not overwrite
+                      saved prep fields.
+                    </div>
+                  )}
+                </div>
                 <div className="context-source-list">
                   <div className="settings-row-label">Outreach draft for this call</div>
                   {finderOutreachDrafts.length === 0 ? (
