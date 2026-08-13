@@ -39,6 +39,16 @@ test('enforce mode blocks denied and approval-gated future tool side effects', (
   assert.deepEqual([denied.decision, denied.shouldProceed], ['deny', false])
 })
 
+test('enforce mode allows an external write bound to explicit approval', () => {
+  const approved = evaluateGovernanceAction(
+    { ...fixtures.approvalTool, approvalGranted: true },
+    'enforce'
+  )
+
+  assert.deepEqual([approved.decision, approved.shouldProceed], ['allow', true])
+  assert.match(approved.reason, /explicit approval artifact/)
+})
+
 test('enforce mode records and blocks a prohibited side effect before execution', async () => {
   const previousMode = process.env.COQPI_GOVERNANCE_MODE
   process.env.COQPI_GOVERNANCE_MODE = 'enforce'

@@ -90,6 +90,7 @@ export interface GovernanceAction {
   model?: string
   external: boolean
   toolRisk?: GovernanceToolRisk
+  approvalGranted?: boolean
   routeIndex?: number
   routeCount?: number
   routeLabel?: string
@@ -136,6 +137,9 @@ export interface SessionContext {
   notes: string
   selectedCounterpartyPackIds: string[]
   selectedFinderOutreachDraftId: string
+  selectedOpportunityApplicationPackId?: string
+  selectedCommunicationThreadSummaryId?: string
+  selectedCalendarProposalId?: string
 }
 
 export interface SessionContextResult {

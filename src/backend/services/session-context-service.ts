@@ -15,7 +15,10 @@ const emptySessionContext: SessionContext = {
   goal: '',
   notes: '',
   selectedCounterpartyPackIds: [],
-  selectedFinderOutreachDraftId: ''
+  selectedFinderOutreachDraftId: '',
+  selectedOpportunityApplicationPackId: '',
+  selectedCommunicationThreadSummaryId: '',
+  selectedCalendarProposalId: ''
 }
 
 const getSessionContextPath = () => {
@@ -61,7 +64,14 @@ const sanitizeSessionContext = (value: unknown): SessionContext => {
     selectedCounterpartyPackIds: sanitizeStringArray(candidate.selectedCounterpartyPackIds),
     selectedFinderOutreachDraftId: sanitizeText(
       candidate.selectedFinderOutreachDraftId
-    )
+    ),
+    selectedOpportunityApplicationPackId: sanitizeText(
+      candidate.selectedOpportunityApplicationPackId
+    ),
+    selectedCommunicationThreadSummaryId: sanitizeText(
+      candidate.selectedCommunicationThreadSummaryId
+    ),
+    selectedCalendarProposalId: sanitizeText(candidate.selectedCalendarProposalId)
   }
 }
 

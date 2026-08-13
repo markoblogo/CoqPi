@@ -23,6 +23,7 @@ import { getSessionContext } from './session-context-service'
 import {
   resolveSessionFinderOutreachDraft
 } from './finder-search-service'
+import { buildOpportunitySessionHandoff } from './opportunity-service'
 import {
   getLocalMemoryCoreState
 } from './local-memory-core-service'
@@ -525,6 +526,22 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
 
   if (sessionContext) {
     sections.push('', 'Current session context:', sessionContext)
+  }
+
+  const opportunityHandoff = await buildOpportunitySessionHandoff({
+    applicationPackId:
+      request.sessionContext?.selectedOpportunityApplicationPackId,
+    threadSummaryId:
+      request.sessionContext?.selectedCommunicationThreadSummaryId,
+    calendarProposalId: request.sessionContext?.selectedCalendarProposalId
+  })
+
+  if (opportunityHandoff.included) {
+    sections.push(
+      '',
+      'Selected opportunity-to-call handoff:',
+      opportunityHandoff.text
+    )
   }
 
   const selectedOutreachDraft = await compactSelectedOutreachDraft(

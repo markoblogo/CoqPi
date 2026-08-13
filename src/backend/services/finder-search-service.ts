@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import dns from 'node:dns/promises'
 import { CheerioCrawler, LogLevel } from '@crawlee/cheerio'
 import type {
   CounterpartyContextPack,
@@ -142,15 +143,33 @@ const isPrivateHostname = (hostname: string) => {
   if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized)) {
     const [a, b] = normalized.split('.').map((part) => Number.parseInt(part, 10))
     return (
+      a === 0 ||
       a === 10 ||
       a === 127 ||
+      (a === 100 && b >= 64 && b <= 127) ||
       (a === 169 && b === 254) ||
       (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168)
+      (a === 192 && b === 168) ||
+      a >= 224
     )
   }
 
-  return normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80')
+  return (
+    normalized.startsWith('fc') ||
+    normalized.startsWith('fd') ||
+    normalized.startsWith('fe80') ||
+    normalized.startsWith('::ffff:127.') ||
+    normalized.startsWith('::ffff:10.') ||
+    normalized.startsWith('::ffff:192.168.')
+  )
+}
+
+const validatePublicHostResolution = async (url: string) => {
+  const parsed = new URL(url)
+  const addresses = await dns.lookup(parsed.hostname, { all: true })
+  if (addresses.length === 0 || addresses.some((entry) => isPrivateHostname(entry.address))) {
+    throw new Error('Public URL resolved to a private or unavailable network address.')
+  }
 }
 
 const validateFinderPublicPageUrl = (value: string) => {
@@ -187,6 +206,7 @@ const validateFinderPublicPageUrl = (value: string) => {
 }
 
 const defaultFinderPublicPageFetcher: FinderPublicPageFetcher = async (url) => {
+  await validatePublicHostResolution(url)
   const tempStorageDirectory = await fs.mkdtemp(
     path.join(os.tmpdir(), 'coqpi-crawlee-public-page-')
   )
@@ -202,6 +222,12 @@ const defaultFinderPublicPageFetcher: FinderPublicPageFetcher = async (url) => {
       minConcurrency: 1,
       maxConcurrency: 1,
       maxRequestRetries: 0,
+      preNavigationHooks: [
+        async (_context, gotOptions) => {
+          // Redirects are not followed so a public URL cannot bounce into a private host.
+          gotOptions.followRedirect = false
+        }
+      ],
       requestHandlerTimeoutSecs: Math.ceil(DEFAULT_PUBLIC_SOURCE_TIMEOUT_MS / 1000),
       additionalMimeTypes: ['text/plain'],
       requestHandler: async ({ $, body, contentType, request, response }) => {

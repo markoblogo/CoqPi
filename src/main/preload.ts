@@ -21,6 +21,12 @@ import type {
   SmokeTestNoteDraft
 } from '../shared/app-types'
 import type { MeetingTranscriptionSession } from '../shared/meeting-transcription'
+import type {
+  CalendarProposal,
+  MailDraftRecord,
+  OpportunitySearchJobV2,
+  OpportunityStoreV2
+} from '../shared/opportunity-contracts'
 
 contextBridge.exposeInMainWorld('coqpi', {
   config: {
@@ -182,6 +188,40 @@ contextBridge.exposeInMainWorld('coqpi', {
         draftId,
         status
       )
+  },
+  opportunities: {
+    get: () => ipcRenderer.invoke('coqpi:opportunities:get') as Promise<OpportunityStoreV2>,
+    configureJob: (jobId: string, config: Partial<OpportunitySearchJobV2>) =>
+      ipcRenderer.invoke('coqpi:opportunities:configure-job', jobId, config) as Promise<OpportunityStoreV2>,
+    runDiscovery: (jobId: string) =>
+      ipcRenderer.invoke('coqpi:opportunities:run-discovery', jobId),
+    runDue: () => ipcRenderer.invoke('coqpi:opportunities:run-due'),
+    assemblePack: (input: { candidateId: string; ownerFactsToUse: string[]; ownerFactsToAvoid: string[]; materialIds?: string[] }) =>
+      ipcRenderer.invoke('coqpi:opportunities:assemble-pack', input),
+    saveMailDraft: (input: { applicationPackId: string; recipient: string; subject: string; body: string; attachmentPaths?: string[] }) =>
+      ipcRenderer.invoke('coqpi:opportunities:save-mail-draft', input) as Promise<MailDraftRecord>,
+    updateMailDraft: (id: string, patch: Pick<MailDraftRecord, 'recipient' | 'subject' | 'body' | 'attachmentPaths'>) =>
+      ipcRenderer.invoke('coqpi:opportunities:update-mail-draft', id, patch) as Promise<MailDraftRecord>,
+    approveMailBatch: (draftIds: string[]) =>
+      ipcRenderer.invoke('coqpi:opportunities:approve-mail-batch', draftIds),
+    getGoogleStatus: () => ipcRenderer.invoke('coqpi:opportunities:google-status'),
+    connectGoogle: (capability: 'mail' | 'calendar') =>
+      ipcRenderer.invoke('coqpi:opportunities:google-connect', capability),
+    disconnectGoogle: () => ipcRenderer.invoke('coqpi:opportunities:google-disconnect'),
+    createGmailDraft: (draftId: string) =>
+      ipcRenderer.invoke('coqpi:opportunities:create-gmail-draft', draftId),
+    sendApprovedBatch: (approvalId: string) =>
+      ipcRenderer.invoke('coqpi:opportunities:send-approved-batch', approvalId),
+    syncReplies: () => ipcRenderer.invoke('coqpi:opportunities:sync-replies'),
+    createReplyDraft: (input: { threadSummaryId: string; body?: string }) =>
+      ipcRenderer.invoke('coqpi:opportunities:create-reply-draft', input),
+    createPostCallFollowUp: (input: { sessionSummaryId: string; applicationPackId: string; recipient: string; body?: string }) =>
+      ipcRenderer.invoke('coqpi:opportunities:create-post-call-follow-up', input),
+    createCalendarProposal: (input: Omit<CalendarProposal, 'version' | 'id' | 'status' | 'contentHash'>) =>
+      ipcRenderer.invoke('coqpi:opportunities:create-calendar-proposal', input),
+    createCalendarEvent: (proposalId: string, approvedContentHash: string) =>
+      ipcRenderer.invoke('coqpi:opportunities:create-calendar-event', proposalId, approvedContentHash),
+    getMetrics: () => ipcRenderer.invoke('coqpi:opportunities:get-metrics')
   },
   contextSources: {
     get: () => ipcRenderer.invoke('coqpi:context-sources:get'),

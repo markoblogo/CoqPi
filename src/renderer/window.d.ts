@@ -38,6 +38,18 @@ import type {
   SettingsPayload
 } from '@shared/app-types'
 import type { MeetingTranscriptionSession } from '@shared/meeting-transcription'
+import type {
+  BatchSendApproval,
+  CalendarProposal,
+  CommunicationThreadSummary,
+  GoogleConnectionStatus,
+  MailDraftRecord,
+  OpportunityApplicationPack,
+  OpportunityMetrics,
+  OpportunitySearchJobV2,
+  OpportunityStoreV2,
+  SearchRunResult
+} from '@shared/opportunity-contracts'
 
 declare global {
   interface Window {
@@ -133,6 +145,67 @@ declare global {
           draftId: string,
           status: FinderOutreachDraft['status']
         ) => Promise<FinderSearchStoreResult>
+      }
+      opportunities: {
+        get: () => Promise<OpportunityStoreV2>
+        configureJob: (
+          jobId: string,
+          config: Partial<OpportunitySearchJobV2>
+        ) => Promise<OpportunityStoreV2>
+        runDiscovery: (jobId: string) => Promise<SearchRunResult>
+        runDue: () => Promise<SearchRunResult[]>
+        assemblePack: (input: {
+          candidateId: string
+          ownerFactsToUse: string[]
+          ownerFactsToAvoid: string[]
+          materialIds?: string[]
+        }) => Promise<OpportunityApplicationPack>
+        saveMailDraft: (input: {
+          applicationPackId: string
+          recipient: string
+          subject: string
+          body: string
+          attachmentPaths?: string[]
+        }) => Promise<MailDraftRecord>
+        updateMailDraft: (
+          id: string,
+          patch: Pick<
+            MailDraftRecord,
+            'recipient' | 'subject' | 'body' | 'attachmentPaths'
+          >
+        ) => Promise<MailDraftRecord>
+        approveMailBatch: (draftIds: string[]) => Promise<BatchSendApproval>
+        getGoogleStatus: () => Promise<GoogleConnectionStatus>
+        connectGoogle: (
+          capability: 'mail' | 'calendar'
+        ) => Promise<GoogleConnectionStatus>
+        disconnectGoogle: () => Promise<GoogleConnectionStatus>
+        createGmailDraft: (draftId: string) => Promise<MailDraftRecord>
+        sendApprovedBatch: (
+          approvalId: string
+        ) => Promise<Array<{ draftId: string; ok: boolean; error?: string }>>
+        syncReplies: () => Promise<CommunicationThreadSummary[]>
+        createReplyDraft: (input: {
+          threadSummaryId: string
+          body?: string
+        }) => Promise<MailDraftRecord>
+        createPostCallFollowUp: (input: {
+          sessionSummaryId: string
+          applicationPackId: string
+          recipient: string
+          body?: string
+        }) => Promise<MailDraftRecord>
+        createCalendarProposal: (
+          input: Omit<
+            CalendarProposal,
+            'version' | 'id' | 'status' | 'contentHash'
+          >
+        ) => Promise<CalendarProposal>
+        createCalendarEvent: (
+          proposalId: string,
+          approvedContentHash: string
+        ) => Promise<CalendarProposal>
+        getMetrics: () => Promise<OpportunityMetrics>
       }
       contextSources: {
         get: () => Promise<ContextSourceManifestResult>

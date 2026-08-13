@@ -17,6 +17,7 @@
     "test:governance": "pnpm build:electron && node --test tests/governance.test.cjs tests/context-source-manifest.test.cjs tests/context-source-dump-manifest.test.cjs tests/knowledge-ingestion-quality.test.cjs tests/knowledge-pack-review.test.cjs tests/session-payload-inspector.test.cjs tests/assistant-retry-policy.test.cjs tests/counterparty-pack-import.test.cjs tests/counterparty-pack-import-flow.test.cjs tests/counterparty-pack-ingest-api.test.cjs tests/finder-preview-ui-state.test.cjs tests/finder-search-module.test.cjs tests/finder-search-service.test.cjs",
     "test:finder-ui-state": "pnpm build:electron && node --test tests/finder-preview-ui-state.test.cjs tests/finder-search-module.test.cjs tests/finder-search-service.test.cjs",
     "test:finder-outreach-pipeline": "pnpm build:electron && node --test tests/finder-pipeline-surface.test.cjs tests/finder-search-module.test.cjs tests/finder-search-service.test.cjs",
+    "test:opportunity-to-call": "pnpm build:electron && node --test --test-concurrency=1 tests/opportunity-contracts.test.cjs tests/opportunity-service.test.cjs",
     "test:finder-prepare-live-ui": "pnpm build:electron && node --test --test-concurrency=1 tests/finder-prepare-live-ui.test.cjs",
     "test:session-pack-selection": "pnpm build:electron && node --test tests/session-pack-selection.test.cjs",
     "test:manual-prep-preview": "pnpm build:electron && node --test tests/manual-prep-preview.test.cjs",
@@ -50,11 +51,16 @@
     "files": [
       "dist/**",
       "dist-electron/**",
+      "scripts/jobspy_adapter.py",
       "package.json",
       "!**/.env",
       "!**/.env.*"
     ],
+    "asarUnpack": [
+      "scripts/jobspy_adapter.py"
+    ],
     "mac": {
+      "icon": "assets/CoqPi.icns",
       "target": [
         "dir",
         "dmg"
@@ -66,6 +72,7 @@
   "dependencies": {
     "@crawlee/cheerio": "^3.17.0",
     "dotenv": "^16.5.0",
+    "googleapis": "^174.0.1",
     "lucide-react": "^1.31.0",
     "openai": "^6.42.0",
     "react": "^19.1.0",

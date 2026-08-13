@@ -97,12 +97,17 @@ Limits:
 - no speaker diarization;
 - call quality still depends on the selected mic hearing both sides of the call.
 
-### 2) Finder: jobs / investors / accelerators / partners
+### 2) Finder and opportunity workflow
 
-Status: strong local foundation, but not autonomous search yet.
+Status: functional v1 runtime; real provider credentials and two vertical pilots remain.
 
 What works now:
 - local Finder jobs and candidate pipeline;
+- versioned opportunity jobs with scenario, geography, languages, include/exclude terms, recency, provider targets, daily schedule, and run status;
+- real bounded discovery through Brave Search, public Greenhouse boards, and public Lever postings;
+- optional bounded JobSpy Python sidecar for Indeed/Google Jobs (disabled unless explicitly configured);
+- startup catch-up and in-app daily scheduler; one provider failure produces a partial run and never triggers outreach;
+- provider/source ID, canonical URL, and content-hash deduplication plus new/changed/unchanged run history;
 - manual/mock runner contract;
 - source adapter preview for pasted URL/text/export inputs;
 - one explicit public URL -> local preview candidate flow for job/fund/accelerator/company pages;
@@ -132,6 +137,13 @@ What works now:
 - Finder UI now surfaces that pipeline on focused prep and candidate rows, including readiness reason, import/queue/draft/session labels, and blockers before Prepare/Live handoff;
 - focused Finder targets now show a local Knowledge fit brief: owner facts to use, owner facts to avoid/downplay, prepared questions, and answer angles;
 - outreach prep and local outreach drafts;
+- immutable target-specific application packs with evidence, owner facts to use/avoid, opener, motivation letter, questions, material version IDs, missing information, and confidence;
+- Google Workspace desktop OAuth with Gmail and Calendar scopes requested separately;
+- reviewed Gmail drafts, exact hash-bound batch approval, partial-send results, and a hard limit of 20 sent messages per local day;
+- reply sync limited to Gmail thread IDs created by CoqPi, compact reply classification, local reply/follow-up drafts, and no full-mailbox scan;
+- local Calendar proposals and explicit event creation by matching content hash;
+- application pack + compact thread summary + Calendar proposal handoff into Prepare/Live;
+- owner-confirmed post-call recap into relationship memory, followed by a separate local follow-up draft action;
 - stronger queue -> session handoff:
   - `import_now / hold_later / rejected`,
   - `ready_for_contact / contacted / waiting / follow_up / closed`,
@@ -139,9 +151,10 @@ What works now:
   - weak or not-recommended candidates are skipped from session handoff even if a queue action tries to import them.
 
 Still not done:
-- no live web search engine, scraper, scheduler, or outbound sender;
-- public web ingress is still bounded single-page fetch, not broad crawling;
-- no automatic outreach.
+- manual Brave/Google credential setup and send-to-self OAuth smoke;
+- repeated real-source quality tuning and two full pilots (one vacancy, one fund/accelerator);
+- automatic Greenhouse/Lever tenant discovery; v1 uses explicit board/site slugs;
+- mass crawling, browser sessions, automatic sending, and automatic Calendar writes remain intentionally out of scope.
 
 ### 3) Knowledge / RAG-like layer
 
@@ -185,7 +198,8 @@ flowchart LR
   AS["Assistant analysis"]
   OL["Ollama text fallback"]
   PK["Personal Knowledge Core"]
-  FD["Finder jobs / drafts / queue"]
+  FD["Finder / discovery / application packs"]
+  GW["Gmail + Calendar approval boundary"]
   GOV["Local governance receipts"]
 
   U --> UI
@@ -195,6 +209,7 @@ flowchart LR
   AS -. "operational fallback only" .-> OL
   PK --> IPC
   FD --> IPC
+  IPC --> GW
   IPC --> GOV
   PK -. "selected context only" .-> AS
   FD -. "selected draft only" .-> AS
@@ -213,7 +228,10 @@ flowchart LR
 - smoke notes do not store transcript text;
 - external assistant prompts pass through the local privacy gate; recognized
   email/phone/tracking data is redacted and secret-like material is blocked;
-- Finder/outreach remains local-only and does not send anything externally.
+- Discovery reads only bounded public endpoints/pages.
+- Gmail send requires a one-time approval bound to exact message hashes; edits invalidate approval and the local limit is 20 sends/day.
+- Calendar events require explicit confirmation bound to proposal hash.
+- linked-reply sync reads only Gmail thread IDs created by CoqPi, not the full inbox.
 
 ## Local setup
 
@@ -239,6 +257,10 @@ COQPI_ENABLE_CRAWL4AI_ENRICHMENT=0
 COQPI_CRAWL4AI_PYTHON=
 COQPI_PERSONAL_KNOWLEDGE_CORE_DIR=./data/context-sources
 COQPI_GOVERNANCE_DIR=./data/governance
+BRAVE_SEARCH_API_KEY=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+COQPI_JOBSPY_PYTHON=
 ```
 
 Optional Finder enrichment:
@@ -293,6 +315,7 @@ Useful handoff scripts:
 - `pnpm test:governance`
 - `pnpm test:pre-smoke`
 - `pnpm test:pass2-live-smoke-readiness`
+- `pnpm test:opportunity-to-call`
 
 ### Pass 2: local smoke readiness (noise/transitions)
 
@@ -368,10 +391,12 @@ advisory only and does not replace receipts, smoke checks, or owner review.
 npx codex-security scan .
 ```
 
-## Not in scope yet
+## Not in scope
 
-- outbound email or message sending;
-- autonomous Finder crawling/searching at scale;
+- automatic or unapproved outbound email/message sending;
+- autonomous Finder crawling/searching at scale or authenticated browser scraping;
 - training mode;
 - full local/offline voice stack;
 - broad RAG appliance or separate vector infrastructure.
+
+Opportunity setup and operator flow: [docs/OPPORTUNITY_TO_CALL.md](docs/OPPORTUNITY_TO_CALL.md).

@@ -7,16 +7,50 @@ import type {
   SaveOpenAIKeyResult
 } from '../../shared/app-types'
 
-const secretFilePath = path.join(
-  app.getPath('userData'),
-  'secrets',
-  'openai-key.bin'
-)
+const secretsDirectory = path.join(app.getPath('userData'), 'secrets')
+const secretFilePath = path.join(secretsDirectory, 'openai-key.bin')
 
 const isSafeStorageAvailable = () => safeStorage.isEncryptionAvailable()
 
 const ensureSecretDirectory = async () => {
-  await fs.mkdir(path.dirname(secretFilePath), { recursive: true })
+  await fs.mkdir(secretsDirectory, { recursive: true })
+}
+
+const namedSecretPath = (name: string) => {
+  if (!/^[a-z0-9-]+$/i.test(name)) {
+    throw new Error('Invalid local secret name.')
+  }
+  return path.join(secretsDirectory, `${name}.bin`)
+}
+
+export const saveEncryptedSecret = async (name: string, value: string) => {
+  if (!value.trim()) throw new Error('Secret value cannot be empty.')
+  if (!isSafeStorageAvailable()) {
+    throw new Error('Electron safeStorage is unavailable on this machine.')
+  }
+  await ensureSecretDirectory()
+  await fs.writeFile(
+    namedSecretPath(name),
+    safeStorage.encryptString(value.trim())
+  )
+}
+
+export const resolveEncryptedSecret = async (name: string) => {
+  try {
+    if (!isSafeStorageAvailable()) return ''
+    return safeStorage.decryptString(await fs.readFile(namedSecretPath(name))).trim()
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+    throw error
+  }
+}
+
+export const deleteEncryptedSecret = async (name: string) => {
+  try {
+    await fs.unlink(namedSecretPath(name))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
 }
 
 const hasStoredKey = async () => {

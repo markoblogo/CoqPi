@@ -24,6 +24,7 @@ import {
   Square,
   Tags
 } from 'lucide-react'
+import { OpportunityWorkflowPanel } from './OpportunityWorkflowPanel'
 import {
   type AppUserSettings,
   type AssistantAnalysisRequest,
@@ -7881,6 +7882,7 @@ export const App = () => {
       {activeTab === 'finder' ? (
         <section className="prepare-layout scroll-section">
           <section className="prepare-grid prepare-grid-single">
+            <OpportunityWorkflowPanel />
             <article className="panel-card context-sources-card">
               <div className="panel-header">
                 <div>

@@ -31,8 +31,13 @@ export const evaluateGovernanceAction = (
       decision = 'deny'
       reason = 'system write tool routes are not enabled in CoqPi'
     } else if (action.toolRisk === 'external_write') {
-      decision = 'require_approval'
-      reason = 'external write tool routes require explicit approval'
+      if (action.approvalGranted) {
+        decision = 'allow'
+        reason = 'external write is bound to an explicit approval artifact'
+      } else {
+        decision = 'require_approval'
+        reason = 'external write tool routes require explicit approval'
+      }
     } else {
       reason = 'read-only external tool route'
     }

@@ -4,7 +4,7 @@
 
 - `Live Call`: default cockpit for active calls. It keeps only critical information visible by default.
 - `Prepare`: session prep, selected-pack review, outreach-draft handoff, payload inspection, and optional Cortex-backed preparation context review.
-- `Finder`: local pipeline for candidate intake, preview, queue review, drafts, and session handoff.
+- `Finder`: local opportunity pipeline for bounded discovery, preview, queue review, application packs, Gmail/Calendar approvals, and session handoff.
 - `Context`: local knowledge ingress, extraction preview, pack assembly, and lifecycle review.
 - `Settings / Debug`: local configuration, secure key handling, and collapsed diagnostics.
 
@@ -16,6 +16,7 @@
 - **React renderer**: renders the three UX modes, manages local transcript state, runs microphone selection and audio metering, and drives manual user actions.
 - **Backend services**: hold config validation, profile file handling, assistant analysis, realtime backend exchange, secure secret storage, and user settings persistence.
 - **Shared layer**: contains cross-process types plus transcript and cost estimation helpers.
+- **Opportunity services**: v2 overlay over the existing Finder append-only source, bounded Brave/Greenhouse/Lever/optional JobSpy discovery, immutable application packs, Google Workspace adapters, and approval-bound writes.
 
 ## Privacy and secret model
 
@@ -25,6 +26,18 @@
   1. secure stored key from Electron `safeStorage`
   2. `OPENAI_API_KEY` from `.env`
 - Secure stored secrets are written under `app.getPath("userData")`.
+- Google refresh/access tokens use the same encrypted `safeStorage` boundary. Google client configuration and Brave keys stay backend-only.
+
+## Opportunity-to-call path
+
+`FinderSearchJob v1 -> safe v2 migration -> bounded provider run -> Crawlee/parser preview -> dedupe -> candidate queue -> immutable application pack -> local mail draft -> Gmail draft -> exact hash approval -> Gmail send -> linked-thread sync -> Calendar proposal -> explicit event creation -> selected SessionContext -> Live`
+
+- Search providers are independent; a single provider failure yields a partial run.
+- Daily monitoring exists only while the Electron app is open and performs at most one startup catch-up per job/local date.
+- Gmail draft/send and Calendar create are `external_write` routes. A UI action is required for draft creation; send additionally requires a one-time hash-bound batch approval. Calendar creation requires the reviewed proposal hash.
+- The 20-message local-day limit is enforced before provider calls.
+- Reply sync only addresses Gmail thread IDs already stored on sent CoqPi records.
+- The assistant receives a compact selected opportunity handoff; it never receives OAuth tokens, raw attachments, or unselected candidates.
 
 ## Current renderer-side data flow
 
@@ -107,7 +120,7 @@ Shared cost constants live in:
 - **Counterparty/context packs**: compact partner and role-specific records from Finder or manually curated intake are stored in the same local manifest under `manifest.counterpartyPacks` with explicit provenance, selection flag, retention, and a compact hash.
 - **Finder outreach drafts**: local append-only Finder drafts can be attached to `current-session.json` by draft ID. Drafts support a local-only execution-prep status (`draft` or `ready_for_contact`) plus queue-lane actions such as copy, attach-to-session, and batch-ready marking. The assistant receives only the compact selected draft summary, never an outbound send action.
 - **Finder -> session handoff**: queue decisions and outreach-draft status changes can immediately alter `selectedCounterpartyPackIds` and `selectedFinderOutreachDraftId`, so Prepare, Live, and the next assistant request stay aligned without reload/save workarounds. `import_now` still passes through a local admission check: weak, duplicate, not-ready, or not-recommended candidates are skipped from session handoff and reported in the session effect instead of silently entering the live assistant payload.
-- **Finder runner**: `manual_mock` is the only runnable adapter in this phase. It creates deterministic local placeholder candidates from a selected job so the review/scoring/import path can be exercised without web search, scraping, external APIs, scheduling, or outreach.
+- **Finder runner**: `manual_mock` remains available for deterministic testing. Opportunity v2 adds owner-triggered Brave, Greenhouse, Lever and optional JobSpy discovery without authenticated browsing or mass crawling.
 - **Finder source adapter v1 + parser pack set v1**: CoqPi now has three bounded ingress modes for a selected Finder job. `owner_paste_v0` normalizes owner-pasted URLs, vacancy/export text, LinkedIn-style job snippets, accelerator/program snippets, investor/fund lists, partner exports, and CSV-like candidate exports into a no-write preview. `public_page_v1` fetches exactly one explicit public `http(s)` URL, extracts a compact title/description/heading/excerpt view, then routes that through the same deterministic preview/import flow. `manual_complex_page_v1` is the supervised escape hatch for difficult pages: the same public URL plus owner-reviewed notes/markdown are normalized locally into one reviewed preview, without browser automation. All three modes enrich compact local fields such as company/partner, role/opportunity, location, contact, deadline, relevance, stage/ticket/thesis, decision maker, current status, interview process, pilot budget, implementation timeline where available, and missing information. Each preview candidate is tagged with one parser pack from `job_page_v1 | investor_fund_v1 | accelerator_program_v1 | company_profile_v1` so downstream review/import/session logic can reason over a stable scenario label rather than raw source shape. For thin deterministic `public_page_v1` previews only, CoqPi may optionally ask a local Crawl4AI markdown adapter for one richer markdown pass and keep it only if the candidate quality actually improves; if the adapter is absent or fails, the deterministic preview remains the result. The owner can select and edit candidates before the reviewed draft is appended. No scheduler, batch crawl, browser automation, auth session, or outbound action is introduced in this phase.
 - **Finder candidate scoring**: preview candidates get deterministic scenario-aware `fitScore`, `missingInfo`, and `nextAction` for `job`, `partner`, `investor`, `accelerator`, and `other`. The UI explains score strength, readiness reason, positive signals, and missing improvements before outreach or session handoff. Owner-provided review fields override generated defaults.
 - **Knowledge source adapters**: context ingress distinguishes owner profile/CV files, counterparty material files, public profile links, company/respondent links, local folder pointers, and legacy source kinds. Only explicitly selected readable file adapters can be captured; links and folders remain provenance-only and are never fetched or scanned.
@@ -149,7 +162,7 @@ CoqPi uses a narrow, ODS-inspired policy-and-receipt contract around external pr
 - Receipt serialization is allowlisted. It excludes transcript text, profile/session context, PII, API keys, raw provider errors, prompts, and hidden reasoning.
 - `local_stt_transcription` is explicitly outside the receipt path: no policy LLM, filesystem I/O, or extra round trip in the audio hot path.
 
-There are no tool routes in the current product. The contract reserves `read_only -> allow`, `external_write -> require_approval`, and `system_write -> deny` for a future explicitly scoped feature.
+Google Workspace now uses tool routes: linked-thread reads are `read_only`; Gmail/Calendar writes are `external_write` and proceed only with explicit UI action plus the relevant approval artifact. `system_write` remains denied.
 
 ## Packaging path
 

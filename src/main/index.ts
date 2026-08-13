@@ -114,6 +114,29 @@ import {
   setCounterpartyContextPackSelected,
   setContextSourceSelected
 } from '../backend/services/context-source-service'
+import {
+  approveMailDraftBatch,
+  assembleOpportunityApplicationPack,
+  configureOpportunityJob,
+  createReplyDraftFromThread,
+  createFollowUpDraftFromSessionSummary,
+  getOpportunityMetrics,
+  getOpportunityStore,
+  runDueOpportunityJobs,
+  runOpportunityDiscovery,
+  saveLocalMailDraft,
+  updateLocalMailDraft
+} from '../backend/services/opportunity-service'
+import {
+  connectGoogleWorkspace,
+  createApprovedCalendarEvent,
+  createCalendarProposalFromReply,
+  createGmailDraft,
+  disconnectGoogleWorkspace,
+  getGoogleConnectionStatus,
+  sendApprovedMailBatch,
+  syncLinkedGmailThreads
+} from '../backend/services/google-workspace-service'
 
 const loadLocalEnv = () => {
   const candidatePaths = [
@@ -565,6 +588,52 @@ const registerIpcHandlers = () => {
       setFinderOutreachDraftStatus(draftId, status)
   )
 
+  ipcMain.handle('coqpi:opportunities:get', async () => getOpportunityStore())
+  ipcMain.handle('coqpi:opportunities:configure-job', async (_event, jobId, config) =>
+    configureOpportunityJob(jobId, config)
+  )
+  ipcMain.handle('coqpi:opportunities:run-discovery', async (_event, jobId) =>
+    runOpportunityDiscovery(jobId)
+  )
+  ipcMain.handle('coqpi:opportunities:run-due', async () => runDueOpportunityJobs())
+  ipcMain.handle('coqpi:opportunities:assemble-pack', async (_event, input) =>
+    assembleOpportunityApplicationPack(input)
+  )
+  ipcMain.handle('coqpi:opportunities:save-mail-draft', async (_event, input) =>
+    saveLocalMailDraft(input)
+  )
+  ipcMain.handle('coqpi:opportunities:update-mail-draft', async (_event, id, patch) =>
+    updateLocalMailDraft(id, patch)
+  )
+  ipcMain.handle('coqpi:opportunities:approve-mail-batch', async (_event, draftIds) =>
+    approveMailDraftBatch(draftIds)
+  )
+  ipcMain.handle('coqpi:opportunities:google-status', async () => getGoogleConnectionStatus())
+  ipcMain.handle('coqpi:opportunities:google-connect', async (_event, capability) =>
+    connectGoogleWorkspace(capability)
+  )
+  ipcMain.handle('coqpi:opportunities:google-disconnect', async () => disconnectGoogleWorkspace())
+  ipcMain.handle('coqpi:opportunities:create-gmail-draft', async (_event, draftId) =>
+    createGmailDraft(draftId)
+  )
+  ipcMain.handle('coqpi:opportunities:send-approved-batch', async (_event, approvalId) =>
+    sendApprovedMailBatch(approvalId)
+  )
+  ipcMain.handle('coqpi:opportunities:sync-replies', async () => syncLinkedGmailThreads())
+  ipcMain.handle('coqpi:opportunities:create-reply-draft', async (_event, input) =>
+    createReplyDraftFromThread(input)
+  )
+  ipcMain.handle('coqpi:opportunities:create-post-call-follow-up', async (_event, input) =>
+    createFollowUpDraftFromSessionSummary(input)
+  )
+  ipcMain.handle('coqpi:opportunities:create-calendar-proposal', async (_event, input) =>
+    createCalendarProposalFromReply(input)
+  )
+  ipcMain.handle('coqpi:opportunities:create-calendar-event', async (_event, proposalId, approvedContentHash) =>
+    createApprovedCalendarEvent(proposalId, approvedContentHash)
+  )
+  ipcMain.handle('coqpi:opportunities:get-metrics', async () => getOpportunityMetrics())
+
   ipcMain.handle(
     'coqpi:secrets:get-openai-key-status',
     async (): Promise<OpenAIKeyStatus> => {
@@ -757,6 +826,15 @@ app.whenReady().then(async () => {
   app.setName('CoqPi')
   registerIpcHandlers()
   await createMainWindow()
+  void runDueOpportunityJobs().catch((error) => {
+    console.warn('Opportunity daily catch-up failed:', error)
+  })
+  const opportunityScheduler = setInterval(() => {
+    void runDueOpportunityJobs().catch((error) => {
+      console.warn('Opportunity daily scheduler failed:', error)
+    })
+  }, 15 * 60 * 1000)
+  opportunityScheduler.unref()
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
