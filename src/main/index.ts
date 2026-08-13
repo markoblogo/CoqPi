@@ -140,10 +140,10 @@ loadLocalEnv()
 
 const createMainWindow = async () => {
   const window = new BrowserWindow({
-    width: 720,
-    height: 430,
-    minWidth: 440,
-    minHeight: 320,
+    width: 860,
+    height: 540,
+    minWidth: 720,
+    minHeight: 480,
     title: 'CoqPi',
     backgroundColor: '#0f1115',
     alwaysOnTop: true,
@@ -153,6 +153,26 @@ const createMainWindow = async () => {
       nodeIntegration: false
     }
   })
+
+  window.webContents.on(
+    'console-message',
+    (_event, level, message, line, sourceId) => {
+      if (level >= 2) {
+        console.warn(
+          `[renderer:${level}] ${message} (${sourceId}:${line})`
+        )
+      }
+    }
+  )
+
+  window.webContents.on(
+    'did-fail-load',
+    (_event, errorCode, errorDescription, validatedURL) => {
+      console.error(
+        `[renderer:load-failed] ${errorCode} ${errorDescription} ${validatedURL}`
+      )
+    }
+  )
 
   if (process.platform === 'darwin') {
     window.setAlwaysOnTop(true, 'floating')

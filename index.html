@@ -4,9 +4,64 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CoqPi</title>
+    <style>
+      html,
+      body,
+      #root {
+        height: 100%;
+      }
+
+      body {
+        margin: 0;
+        background: #0b0e12;
+        color: #edf2f7;
+        font-family:
+          'SF Pro Text',
+          'Segoe UI',
+          system-ui,
+          sans-serif;
+      }
+
+      .boot-shell {
+        display: grid;
+        place-items: center;
+        height: 100%;
+        background:
+          radial-gradient(circle at 35% 25%, rgba(73, 118, 164, 0.18), transparent 36%),
+          #0b0e12;
+      }
+
+      .boot-card {
+        display: grid;
+        gap: 10px;
+        min-width: 220px;
+        padding: 20px;
+        border: 1px solid rgba(139, 160, 181, 0.18);
+        border-radius: 14px;
+        background: rgba(17, 22, 28, 0.82);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+      }
+
+      .boot-title {
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .boot-status {
+        color: #9daab8;
+        font-size: 13px;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-shell">
+        <div class="boot-card">
+          <div class="boot-title">CoqPi</div>
+          <div class="boot-status">Loading local cockpit…</div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/renderer/main.tsx"></script>
   </body>
 </html>

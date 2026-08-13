@@ -5491,11 +5491,13 @@ export const App = () => {
           <h2>Transcript {transcriptUtterances.length}</h2>
         </div>
         <button
-          className="secondary-button"
+          aria-label="Reset conversation"
+          className="secondary-button icon-command-button panel-reset-button"
           onClick={clearTranscriptState}
+          title="Reset conversation"
           type="button"
         >
-          Reset conversation
+          <span aria-hidden="true">↺</span>
         </button>
       </div>
       {transcriptUtterances.length === 0 ? (
@@ -5559,7 +5561,8 @@ export const App = () => {
           <h2>Assist</h2>
         </div>
         <button
-          className="secondary-button"
+          aria-label="Reset assistant result"
+          className="secondary-button icon-command-button panel-reset-button"
           type="button"
           onClick={() =>
             resetAssistantConversationState({
@@ -5568,7 +5571,7 @@ export const App = () => {
           }
           title="Reset assistant result without clearing transcript."
         >
-          Reset
+          <span aria-hidden="true">↺</span>
         </button>
         <span
           className={`assist-status assist-status-${assistantStatus.classNameSuffix}`}
@@ -5685,18 +5688,42 @@ export const App = () => {
   )
 
   const testCockpitPanel = (
-    <section className="test-cockpit" aria-label="Live test cockpit">
-      {liveTestCockpitItems.map((item) => (
-        <div
-          className={`test-cockpit-item test-cockpit-item-${item.tone}`}
-          key={item.id}
-          title={item.title}
-        >
-          <span>{item.label}</span>
-          <strong>{item.value}</strong>
-          {item.detail ? <p>{item.detail}</p> : null}
+    <section className="live-status-surface" aria-label="Live cockpit status">
+      <div className="live-status-grid">
+        {liveTestCockpitItems
+          .filter((item) =>
+            ['listening', 'boundary', 'current-payload', 'assistant'].includes(
+              item.id
+            )
+          )
+          .map((item) => (
+            <div
+              className={`test-cockpit-item test-cockpit-item-${item.tone}`}
+              key={item.id}
+              title={item.title}
+            >
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              {item.detail ? <p>{item.detail}</p> : null}
+            </div>
+          ))}
+      </div>
+      <details className="live-audit-details">
+        <summary>Payload & filter audit</summary>
+        <div className="test-cockpit">
+          {liveTestCockpitItems.map((item) => (
+            <div
+              className={`test-cockpit-item test-cockpit-item-${item.tone}`}
+              key={item.id}
+              title={item.title}
+            >
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+              {item.detail ? <p>{item.detail}</p> : null}
+            </div>
+          ))}
         </div>
-      ))}
+      </details>
     </section>
   )
 
@@ -6949,25 +6976,31 @@ export const App = () => {
 
       {activeTab === 'live' ? (
         <section className="live-layout">
-          <section className="control-strip">
+          <section className="live-toolbar-panel">
             <div className="control-group live-primary-actions">
               <button
-                className="primary-button"
+                aria-label="Start listening"
+                className="primary-button icon-command-button"
                 disabled={!canStartListening}
                 onClick={() => void startRealtimeListening()}
+                title="Start listening"
                 type="button"
               >
-                Start
+                <span aria-hidden="true">▶</span>
               </button>
               <button
+                aria-label="Stop listening"
+                className="icon-command-button"
                 disabled={!canStopListening}
                 onClick={() => void stopRealtimeListening()}
+                title="Stop listening"
                 type="button"
               >
-                Stop
+                <span aria-hidden="true">■</span>
               </button>
               <button
-                title="Analyze last 30 seconds"
+                aria-label="Analyze last 30 seconds"
+                className="compact-command-button"
                 disabled={cooldownRemainingSeconds > 0}
                 onClick={() =>
                   void runAssistantAnalysis({
@@ -6976,12 +7009,14 @@ export const App = () => {
                     mode: 'full'
                   })
                 }
+                title="Analyze last 30 seconds"
                 type="button"
               >
                 A30
               </button>
               <button
-                title="Generate keywords only"
+                aria-label="Generate keywords only"
+                className="compact-command-button"
                 disabled={cooldownRemainingSeconds > 0}
                 onClick={() =>
                   void runAssistantAnalysis({
@@ -6990,32 +7025,39 @@ export const App = () => {
                     mode: 'keywords'
                   })
                 }
+                title="Generate keywords only"
                 type="button"
               >
                 KW
               </button>
               <button
-                title="Retry last analysis with current context"
+                aria-label="Retry last analysis with current context"
+                className="icon-command-button"
                 disabled={retryButtonDisabled}
                 onClick={() => {
                   void runManualAssistantRetry()
                 }}
+                title="Retry last analysis with current context"
                 type="button"
               >
-                Retry
+                <span aria-hidden="true">↻</span>
               </button>
               <button
-                title="Run retry now"
+                aria-label="Run retry now"
+                className="icon-command-button"
                 disabled={retryNowButtonDisabled}
                 onClick={() => {
                   void runManualAssistantRetryNow()
                 }}
+                title="Run retry now"
                 type="button"
               >
-                Retry now
+                <span aria-hidden="true">⟳</span>
               </button>
             </div>
+          </section>
 
+          <section className="live-context-panel">
             <div className="control-group live-selectors">
               <span
                 className={`session-chip ${
@@ -7215,16 +7257,21 @@ export const App = () => {
           )}
 
           {testCockpitPanel}
-          {renderSessionPayloadInspector(
-            activeSessionPayloadInspector,
-            'Active assistant payload'
-          )}
-          {lastAnalyzePayloadInspector ? (
-            renderSessionPayloadInspector(
-              lastAnalyzePayloadInspector,
-              'Last analyze payload'
-            )
-          ) : null}
+          <details className="payload-audit-details">
+            <summary>
+              Assistant payload: {activeSessionPayloadInspector.summaryLabel}
+            </summary>
+            {renderSessionPayloadInspector(
+              activeSessionPayloadInspector,
+              'Active assistant payload'
+            )}
+            {lastAnalyzePayloadInspector ? (
+              renderSessionPayloadInspector(
+                lastAnalyzePayloadInspector,
+                'Last analyze payload'
+              )
+            ) : null}
+          </details>
 
           {!isMiniLayout ? (
             <section className="live-main">
