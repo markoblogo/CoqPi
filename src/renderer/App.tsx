@@ -7,6 +7,24 @@ import {
   type ReactNode
 } from 'react'
 import {
+  ClipboardList,
+  Copy,
+  Database,
+  FileAudio,
+  Maximize2,
+  Minimize2,
+  Play,
+  Radio,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  Search,
+  Settings,
+  Sparkles,
+  Square,
+  Tags
+} from 'lucide-react'
+import {
   type AppUserSettings,
   type AssistantAnalysisRequest,
   type AssistantAnalysisResult,
@@ -1266,6 +1284,17 @@ export const App = () => {
   const [settingsSection, setSettingsSection] = useState<
     'key' | 'defaults' | 'test' | 'profile' | 'cost' | 'debug' | 'about'
   >('key')
+  const [interfaceDensity, setInterfaceDensity] = useState<
+    'compact' | 'comfortable'
+  >(() => {
+    const storedDensity = window.localStorage.getItem('coqpi:interface-density')
+    return storedDensity === 'comfortable' ? 'comfortable' : 'compact'
+  })
+
+  useEffect(() => {
+    document.documentElement.dataset.density = interfaceDensity
+    window.localStorage.setItem('coqpi:interface-density', interfaceDensity)
+  }, [interfaceDensity])
 
   useEffect(() => {
     const loadInitialState = async () => {
@@ -5497,7 +5526,7 @@ export const App = () => {
           title="Reset conversation"
           type="button"
         >
-          <span aria-hidden="true">↺</span>
+          <RotateCcw aria-hidden="true" size={14} strokeWidth={2} />
         </button>
       </div>
       {transcriptUtterances.length === 0 ? (
@@ -5571,7 +5600,7 @@ export const App = () => {
           }
           title="Reset assistant result without clearing transcript."
         >
-          <span aria-hidden="true">↺</span>
+          <RotateCcw aria-hidden="true" size={14} strokeWidth={2} />
         </button>
         <span
           className={`assist-status assist-status-${assistantStatus.classNameSuffix}`}
@@ -5692,7 +5721,7 @@ export const App = () => {
       <div className="live-status-grid">
         {liveTestCockpitItems
           .filter((item) =>
-            ['listening', 'boundary', 'current-payload', 'assistant'].includes(
+            ['listening', 'boundary', 'assistant'].includes(
               item.id
             )
           )
@@ -6744,9 +6773,9 @@ export const App = () => {
   } satisfies Record<string, ReactNode>
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell density-${interfaceDensity}`}>
       <header className="app-bar">
-        <div className="app-bar-left">
+        <div className="app-bar-left" title={topStatusItems.join(' · ')}>
           <span className="app-brand">
             <img
               alt="CoqPi logo"
@@ -6759,9 +6788,9 @@ export const App = () => {
             className={`health-pill health-${getHealthTone(realtimeHealthLabel)}`}
           >
             <span className="health-dot" />
-            {`RT: ${
+            {`${
               realtimeStatus === 'idle'
-                ? 'idle'
+                ? 'Ready'
                 : realtimeHealthLabel.toLowerCase()
             }`}
           </div>
@@ -6776,46 +6805,79 @@ export const App = () => {
           <button
             className={activeTab === 'live' ? 'tab-active' : ''}
             onClick={() => setActiveTab('live')}
+            title="Live assistant"
             type="button"
           >
-            Live
+            <Radio aria-hidden="true" size={15} />
+            <span className="nav-label">Live</span>
           </button>
           <button
             className={activeTab === 'transcribe' ? 'tab-active' : ''}
             onClick={() => setActiveTab('transcribe')}
+            title="Meeting transcription"
             type="button"
           >
-            Transcribe
+            <FileAudio aria-hidden="true" size={15} />
+            <span className="nav-label">Transcribe</span>
           </button>
           <button
             className={activeTab === 'prepare' ? 'tab-active' : ''}
             onClick={() => setActiveTab('prepare')}
+            title="Prepare a session"
             type="button"
           >
-            Prep
+            <ClipboardList aria-hidden="true" size={15} />
+            <span className="nav-label">Prepare</span>
           </button>
           <button
             className={activeTab === 'finder' ? 'tab-active' : ''}
             onClick={() => setActiveTab('finder')}
+            title="Find and review targets"
             type="button"
           >
-            Finder
+            <Search aria-hidden="true" size={15} />
+            <span className="nav-label">Finder</span>
           </button>
           <button
             className={activeTab === 'context' ? 'tab-active' : ''}
             onClick={() => setActiveTab('context')}
+            title="Knowledge and context packs"
             type="button"
           >
-            Context
+            <Database aria-hidden="true" size={15} />
+            <span className="nav-label">Knowledge</span>
           </button>
           <button
             className={activeTab === 'settings' ? 'tab-active' : ''}
             onClick={() => setActiveTab('settings')}
+            title="Settings"
             type="button"
           >
-            Settings
+            <Settings aria-hidden="true" size={15} />
+            <span className="nav-label">Settings</span>
           </button>
         </nav>
+        <button
+          aria-label={`Switch to ${
+            interfaceDensity === 'compact' ? 'comfortable' : 'compact'
+          } density`}
+          className="density-toggle"
+          onClick={() =>
+            setInterfaceDensity((current) =>
+              current === 'compact' ? 'comfortable' : 'compact'
+            )
+          }
+          title={`${
+            interfaceDensity === 'compact' ? 'Comfortable' : 'Compact'
+          } layout`}
+          type="button"
+        >
+          {interfaceDensity === 'compact' ? (
+            <Maximize2 aria-hidden="true" size={15} />
+          ) : (
+            <Minimize2 aria-hidden="true" size={15} />
+          )}
+        </button>
       </header>
 
       {activeTab === 'transcribe' ? (
@@ -6828,21 +6890,24 @@ export const App = () => {
                 onClick={() => void startMeetingTranscription()}
                 type="button"
               >
-                Start Transcription
+                <Play aria-hidden="true" size={15} />
+                <span>Start</span>
               </button>
               <button
                 disabled={!canStopMeetingTranscription}
                 onClick={() => void stopMeetingTranscription()}
                 type="button"
               >
-                Stop
+                <Square aria-hidden="true" size={14} />
+                <span>Stop</span>
               </button>
               <button
                 disabled={!meetingSession}
                 onClick={() => void clearMeetingTranscription()}
                 type="button"
               >
-                Clear
+                <RotateCcw aria-hidden="true" size={14} />
+                <span>Clear</span>
               </button>
             </div>
             <div className="control-group live-selectors">
@@ -6920,7 +6985,8 @@ export const App = () => {
                     onClick={() => void exportMeetingTranscription('md')}
                     type="button"
                   >
-                    Save Markdown
+                    <Save aria-hidden="true" size={14} />
+                    <span>Markdown</span>
                   </button>
                   <button
                     className="secondary-button"
@@ -6931,7 +6997,8 @@ export const App = () => {
                     onClick={() => void copyMeetingTranscriptMarkdown()}
                     type="button"
                   >
-                    Copy Markdown
+                    <Copy aria-hidden="true" size={14} />
+                    <span>Copy</span>
                   </button>
                   <button
                     className="secondary-button"
@@ -6943,7 +7010,8 @@ export const App = () => {
                     onClick={() => void exportMeetingTranscription('txt')}
                     type="button"
                   >
-                    Save TXT
+                    <Save aria-hidden="true" size={14} />
+                    <span>TXT</span>
                   </button>
                 </div>
               </div>
@@ -6986,7 +7054,7 @@ export const App = () => {
                 title="Start listening"
                 type="button"
               >
-                <span aria-hidden="true">▶</span>
+                <Play aria-hidden="true" size={15} fill="currentColor" />
               </button>
               <button
                 aria-label="Stop listening"
@@ -6996,7 +7064,7 @@ export const App = () => {
                 title="Stop listening"
                 type="button"
               >
-                <span aria-hidden="true">■</span>
+                <Square aria-hidden="true" size={13} fill="currentColor" />
               </button>
               <button
                 aria-label="Analyze last 30 seconds"
@@ -7012,7 +7080,7 @@ export const App = () => {
                 title="Analyze last 30 seconds"
                 type="button"
               >
-                A30
+                <Sparkles aria-hidden="true" size={14} />
               </button>
               <button
                 aria-label="Generate keywords only"
@@ -7028,7 +7096,7 @@ export const App = () => {
                 title="Generate keywords only"
                 type="button"
               >
-                KW
+                <Tags aria-hidden="true" size={14} />
               </button>
               <button
                 aria-label="Retry last analysis with current context"
@@ -7040,7 +7108,7 @@ export const App = () => {
                 title="Retry last analysis with current context"
                 type="button"
               >
-                <span aria-hidden="true">↻</span>
+                <RefreshCw aria-hidden="true" size={14} />
               </button>
               <button
                 aria-label="Run retry now"
@@ -7052,7 +7120,7 @@ export const App = () => {
                 title="Run retry now"
                 type="button"
               >
-                <span aria-hidden="true">⟳</span>
+                <RotateCcw aria-hidden="true" size={14} />
               </button>
             </div>
           </section>
@@ -7821,7 +7889,7 @@ export const App = () => {
                 <span>{finderSearchJobs.length} local jobs</span>
               </div>
               <p className="context-sources-description">
-                Local foundation for search tasks. No outbound search runs here yet; a future runner can write candidate results into this contract.
+                Create focused searches, review candidates, and move the strongest targets into session preparation. External search remains owner-triggered.
               </p>
               {(finderSearchError || finderSearchNotice) && (
                 <div className="stack">
@@ -7846,8 +7914,8 @@ export const App = () => {
               <div className="finder-runner-import context-source-form">
                 <div className="finder-runner-header">
                   <div>
-                    <strong>Runner payload</strong>
-                    <span>Paste JSON from a future search module. Valid results become local candidates.</span>
+                    <strong>Import search results</strong>
+                    <span>Paste a supported JSON export to preview candidates before adding them to the queue.</span>
                   </div>
                   {finderRunnerPayloadPreview ? (
                     <span>
@@ -7955,7 +8023,7 @@ export const App = () => {
                             query: event.target.value
                           }))
                         }
-                        placeholder="What should the future finder look for?"
+                        placeholder="What should CoqPi look for?"
                         rows={3}
                         value={finderSearchDraft.query}
                       />
@@ -9916,14 +9984,14 @@ export const App = () => {
             <article className="panel-card context-sources-card">
               <div className="panel-header">
                 <div>
-                  <h2>Context Sources</h2>
+                  <h2>Knowledge</h2>
                 </div>
                 <span>
                   {knowledgeIngestionSummary.sourceReadyCount}/{contextSources.length} ready
                 </span>
               </div>
               <p className="context-sources-description">
-                Shared RAG ingress. Every record stays CoqPi-only and pending classification until an explicit audited promotion.
+                Add information about you and the person or organisation you are meeting. Sources stay private until explicitly classified and selected.
               </p>
               <div className="finder-status-strip">
                 <div className="finder-status-card">
@@ -9956,13 +10024,13 @@ export const App = () => {
                   </span>
                 </div>
                 <div className="finder-status-card">
-                  <span>Future vector</span>
+                  <span>Retrieval</span>
                   <strong>
                     {knowledgeIngestionSummary.vectorReady
                       ? 'candidate set ready'
-                      : 'legacy only'}
+                      : 'selected sources only'}
                   </strong>
-                  <span>strict selected IDs remain required</span>
+                  <span>Only selected source IDs can be used</span>
                 </div>
               </div>
               {(contextSourcesError || contextSourcesNotice) && (
@@ -10092,9 +10160,9 @@ export const App = () => {
                           <span>
                             {source.kind} · {source.status.replaceAll('_', ' ')}
                           </span>
-                          <div className="knowledge-extraction-preview">
+                          <div className="knowledge-extraction-preview knowledge-extraction-preview-primary">
                             <div>
-                              <span>Preview</span>
+                              <span>Detected title</span>
                               <strong>{extractionPreview.title}</strong>
                             </div>
                             <div>
@@ -10102,40 +10170,10 @@ export const App = () => {
                               <strong>{extractionPreview.sourceTypeLabel}</strong>
                             </div>
                             <div>
-                              <span>Classification</span>
-                              <strong>{extractionPreview.classificationLabel}</strong>
-                            </div>
-                            <div>
-                              <span>Extraction</span>
-                              <strong>
-                                {extractionPreview.extractionMode.replaceAll(
-                                  '_',
-                                  ' '
-                                )}{' '}
-                                · {extractionPreview.sourceFormatLabel}
-                              </strong>
-                            </div>
-                            <div>
-                              <span>Parser pack</span>
-                              <strong>{extractionPreview.parserPackLabel}</strong>
+                              <span>Ready for assistant</span>
+                              <strong>{extractionPreview.retrievalReadinessLabel}</strong>
                             </div>
                           </div>
-                          <span
-                            className={
-                              extractionPreview.retrievalReady
-                                ? 'context-source-status-ready'
-                                : 'context-source-status-blocked'
-                            }
-                          >
-                            preview readiness:{' '}
-                            {extractionPreview.retrievalReadinessLabel}
-                          </span>
-                          <span>
-                            missing:{' '}
-                            {extractionPreview.missingFields.length > 0
-                              ? extractionPreview.missingFields.join(', ')
-                              : 'none'}
-                          </span>
                           {extractionPreview.ownerFacts.length > 0 ? (
                             <div className="knowledge-extraction-fields">
                               <span>owner facts</span>
@@ -10164,12 +10202,6 @@ export const App = () => {
                               {extractionPreview.dates.length} dates
                             </span>
                           ) : null}
-                          <code>{extractionPreview.provenanceLabel}</code>
-                          <span>
-                            scope: {source.retrievalScopes[0] ?? 'none'} ·
-                            content hash{' '}
-                            {source.contentHash ? 'captured' : 'pending'}
-                          </span>
                           <span
                             className={
                               readiness.retrievalReady
@@ -10179,12 +10211,43 @@ export const App = () => {
                           >
                             readiness: {readiness.label}
                           </span>
-                          {readiness.issues.length > 0 ? (
-                            <code>
-                              fix: {formatContextSourceReadinessFixes(readiness)}
-                            </code>
-                          ) : null}
-                          <code>{source.location}</code>
+                          <details className="source-technical-details">
+                            <summary>Technical details</summary>
+                            <div className="knowledge-extraction-preview">
+                              <div>
+                                <span>Classification</span>
+                                <strong>{extractionPreview.classificationLabel}</strong>
+                              </div>
+                              <div>
+                                <span>Extraction</span>
+                                <strong>
+                                  {extractionPreview.extractionMode.replaceAll('_', ' ')} ·{' '}
+                                  {extractionPreview.sourceFormatLabel}
+                                </strong>
+                              </div>
+                              <div>
+                                <span>Parser</span>
+                                <strong>{extractionPreview.parserPackLabel}</strong>
+                              </div>
+                            </div>
+                            <code>{extractionPreview.provenanceLabel}</code>
+                            <span>
+                              scope: {source.retrievalScopes[0] ?? 'none'} · content hash{' '}
+                              {source.contentHash ? 'captured' : 'pending'}
+                            </span>
+                            <span>
+                              missing:{' '}
+                              {extractionPreview.missingFields.length > 0
+                                ? extractionPreview.missingFields.join(', ')
+                                : 'none'}
+                            </span>
+                            {readiness.issues.length > 0 ? (
+                              <code>
+                                fix: {formatContextSourceReadinessFixes(readiness)}
+                              </code>
+                            ) : null}
+                            <code>{source.location}</code>
+                          </details>
                         </div>
                         <div className="context-source-actions">
                           {fileContextSourceKinds.has(source.kind) &&

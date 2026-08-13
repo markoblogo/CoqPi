@@ -10,3 +10,4 @@ data/
 tmp
 dist-packages/
 build/
+.lazyweb/
