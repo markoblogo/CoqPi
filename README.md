@@ -73,7 +73,7 @@ Still not done:
 
 ### Meeting transcription utility
 
-Status: implemented for local testing.
+Status: implemented and manually checked on the local Mac.
 
 What works now:
 - `Transcribe` tab with microphone selector, language selector, Start/Stop,
@@ -89,7 +89,7 @@ What works now:
 Limits:
 - v1 uses selected microphone only; no system-audio routing;
 - no speaker diarization;
-- live microphone/OpenAI verification still requires a manual run on the Mac.
+- call quality still depends on the selected mic hearing both sides of the call.
 
 ### 2) Finder: jobs / investors / accelerators / partners
 
@@ -248,6 +248,21 @@ Optional Finder enrichment:
 - `pnpm build`
 - `pnpm typecheck`
 - `pnpm lint`
+
+### Clickable macOS app
+
+For normal local use without Terminal:
+
+1. Build a local app bundle:
+   - `pnpm pack:mac`
+2. Open:
+   - `dist-packages/mac-arm64/CoqPi.app`
+3. Optional: drag `CoqPi.app` to `/Applications` or add it to Dock.
+
+This creates a local unsigned Electron app. macOS may show the standard
+first-run warning for unsigned apps; open it with right click -> `Open` if
+needed. The app still uses local settings, saved OpenAI key, microphone
+permission, and local session files.
 
 Useful handoff scripts:
 
