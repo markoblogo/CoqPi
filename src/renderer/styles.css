@@ -206,6 +206,12 @@ button:disabled {
   padding-right: 1px;
 }
 
+.live-layout > .control-strip {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+}
+
 .transcribe-layout {
   display: grid;
   grid-template-rows: auto auto auto 1fr;
@@ -253,6 +259,7 @@ button:disabled {
 .live-selectors {
   justify-content: flex-end;
   flex: 1 1 auto;
+  align-items: flex-start;
   overflow: visible;
 }
 
@@ -623,13 +630,13 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1.22fr) minmax(0, 1fr);
   gap: var(--space-2);
-  min-height: 260px;
+  min-height: 520px;
   overflow: hidden;
 }
 
 .live-side {
   display: grid;
-  grid-template-rows: minmax(0, 0.4fr) minmax(0, 0.6fr);
+  grid-template-rows: minmax(210px, 0.9fr) minmax(240px, 1.1fr);
   gap: var(--space-2);
   min-height: 0;
 }
@@ -678,6 +685,20 @@ button:disabled {
 .answers-panel-card {
   display: grid;
   grid-template-rows: auto 1fr;
+}
+
+.assist-panel {
+  min-height: 210px;
+}
+
+.assist-panel .panel-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+}
+
+.assist-panel .panel-header .secondary-button {
+  min-height: 22px !important;
 }
 
 .panel-header {
@@ -2652,6 +2673,10 @@ button:disabled {
 }
 
 @media (max-width: 620px) {
+  .live-layout > .control-strip {
+    grid-template-columns: 1fr;
+  }
+
   .control-strip {
     flex-wrap: wrap;
     align-items: flex-start;

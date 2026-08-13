@@ -5550,7 +5550,7 @@ export const App = () => {
 
   const assistPanel = (
     <article
-      className={`panel-card compact-panel ${
+      className={`panel-card compact-panel assist-panel ${
         isAssistantResultStale ? 'panel-stale' : ''
       }`}
     >
@@ -5559,6 +5559,7 @@ export const App = () => {
           <h2>Assist</h2>
         </div>
         <button
+          className="secondary-button"
           type="button"
           onClick={() =>
             resetAssistantConversationState({
