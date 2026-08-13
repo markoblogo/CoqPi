@@ -352,10 +352,7 @@ const emptySmokeNoteDraft: SmokeTestNoteDraft = {
   nextFix: ''
 }
 
-const coqPiLogoSrc = new URL(
-  '../../assets/coqpi-logo-dark-bg-transparent.png',
-  import.meta.url
-).href
+const coqPiLogoSrc = './coqpi-logo-dark-bg-transparent.png'
 
 const permissionLabels: Record<AudioInputPermissionStatus, string> = {
   unknown: 'Unknown',

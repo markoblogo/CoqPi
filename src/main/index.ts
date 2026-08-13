@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import type {
   AppUserSettings,
@@ -142,7 +143,9 @@ const createMainWindow = async () => {
     return
   }
 
-  await window.loadFile(path.join(__dirname, '../../dist/index.html'))
+  await window.loadURL(
+    pathToFileURL(path.join(__dirname, '../../dist/index.html')).toString()
+  )
 }
 
 const registerIpcHandlers = () => {
