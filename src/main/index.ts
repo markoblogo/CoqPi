@@ -1,4 +1,4 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, dialog, ipcMain } from 'electron'
@@ -114,6 +114,29 @@ import {
   setCounterpartyContextPackSelected,
   setContextSourceSelected
 } from '../backend/services/context-source-service'
+
+const loadLocalEnv = () => {
+  const candidatePaths = [
+    process.env.COQPI_ENV_FILE,
+    path.join(process.cwd(), '.env'),
+    process.resourcesPath
+      ? path.resolve(process.resourcesPath, '..', '..', '..', '..', '.env')
+      : undefined,
+    process.execPath
+      ? path.resolve(path.dirname(process.execPath), '..', '..', '..', '..', '..', '.env')
+      : undefined
+  ].filter((candidate): candidate is string => Boolean(candidate))
+
+  for (const envPath of candidatePaths) {
+    dotenv.config({ path: envPath })
+
+    if (process.env.OPENAI_API_KEY?.trim()) {
+      break
+    }
+  }
+}
+
+loadLocalEnv()
 
 const createMainWindow = async () => {
   const window = new BrowserWindow({

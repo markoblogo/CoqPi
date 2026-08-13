@@ -77,13 +77,19 @@ Status: implemented and manually checked on the local Mac.
 
 What works now:
 - `Transcribe` tab with microphone selector, language selector, Start/Stop,
-  Clear, Markdown/TXT export, status, elapsed time, live transcript area;
+  Clear, Markdown/TXT export, clipboard copy, status, elapsed time, live
+  transcript area;
 - explicit transcription languages: Ukrainian (`uk`), Russian (`ru`),
   English (`en`), French (`fr`);
 - finalized transcript segments are accumulated separately from realtime
   interim events, so partial fragments are not duplicated in export;
+- the transcript view follows the latest finalized/interim text during a call;
 - autosave of finalized session transcript to local session storage;
 - startup restore for the autosaved meeting transcript;
+- `RT:error` in transcription mode is treated as an interrupted session with
+  finalized transcript preserved and visible recovery actions;
+- `Clear` asks for confirmation when finalized text has not been exported or
+  copied yet;
 - no assistant request is made from Transcribe mode.
 
 Limits:

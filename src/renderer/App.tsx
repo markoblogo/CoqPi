@@ -47,6 +47,7 @@ import {
 import {
   applyMeetingTranscriptionRealtimeEvent,
   createMeetingTranscriptionSession,
+  exportMeetingTranscriptMarkdown,
   formatMeetingDuration,
   meetingTranscriptionLanguageLabels,
   stopMeetingTranscriptionSession,
@@ -747,6 +748,7 @@ export const App = () => {
   const noEventTimeoutRef = useRef<number | null>(null)
   const autoAnalysisTimeoutRef = useRef<number | null>(null)
   const preparePackReviewSectionRef = useRef<HTMLDivElement | null>(null)
+  const meetingTranscriptEndRef = useRef<HTMLDivElement | null>(null)
   const lastAutoAnalyzedFingerprintRef = useRef<string | null>(null)
   const scheduledAutoAnalysisFingerprintRef = useRef<string | null>(null)
   const runAssistantAnalysisRef = useRef<
@@ -1188,6 +1190,8 @@ export const App = () => {
   const [meetingNotice, setMeetingNotice] = useState<string | null>(null)
   const [isExportingMeetingTranscript, setIsExportingMeetingTranscript] =
     useState(false)
+  const [hasExportedMeetingTranscript, setHasExportedMeetingTranscript] =
+    useState(false)
   const [includeProfileContext, setIncludeProfileContext] = useState(
     defaultSettings.includeProfileContextByDefault
   )
@@ -1329,6 +1333,7 @@ export const App = () => {
         if (meetingTranscriptionSession) {
           setMeetingSession(meetingTranscriptionSession)
           setMeetingLanguage(meetingTranscriptionSession.language)
+          setHasExportedMeetingTranscript(false)
           setMeetingNotice('Restored autosaved meeting transcript.')
         }
         applyFinderSearchStore(initialLoadState.finderSearchStore)
@@ -1356,6 +1361,7 @@ export const App = () => {
         setMeetingSession(null)
         setMeetingNotice(null)
         setMeetingError(null)
+        setHasExportedMeetingTranscript(false)
         applyFinderSearchStore({
           version: 1,
           jobs: [],
@@ -1848,6 +1854,34 @@ export const App = () => {
       })
   }
 
+  const markMeetingSessionInterrupted = (message: string) => {
+    if (realtimeStartedAt !== null) {
+      setAccumulatedRealtimeMs(
+        (currentValue) => currentValue + (Date.now() - realtimeStartedAt)
+      )
+    }
+
+    setRealtimeStartedAt(null)
+    setMeetingSession((currentSession) => {
+      if (!currentSession) {
+        return currentSession
+      }
+
+      const interrupted: MeetingTranscriptionSession = {
+        ...currentSession,
+        status: 'error',
+        stoppedAt: currentSession.stoppedAt ?? new Date().toISOString(),
+        interim: {}
+      }
+      autosaveMeetingSession(interrupted)
+      return interrupted
+    })
+    setMeetingNotice(
+      'Realtime interrupted. Finalized transcript is preserved; use Stop, Save, or Copy.'
+    )
+    setMeetingError(message)
+  }
+
   const handleMeetingRealtimeEvent = (event: Record<string, unknown>) => {
     setRealtimeEventCounters((current) => ({
       ...current,
@@ -1912,7 +1946,7 @@ export const App = () => {
         (event as { error?: unknown }).error
       )
       setRealtimeStatus('error')
-      setMeetingError(`Transcription failed. ${message}`)
+      markMeetingSessionInterrupted(`Transcription failed. ${message}`)
       setLastSanitizedRealtimeError(message)
       return
     }
@@ -1924,7 +1958,7 @@ export const App = () => {
       }))
       const message = extractRealtimeErrorMessage(event)
       setRealtimeStatus('error')
-      setMeetingError(message)
+      markMeetingSessionInterrupted(message)
       setLastSanitizedRealtimeError(message)
     }
   }
@@ -4389,6 +4423,7 @@ export const App = () => {
     setMeetingSession(session)
     setMeetingError(null)
     setMeetingNotice('Meeting transcription started.')
+    setHasExportedMeetingTranscript(false)
     autosaveMeetingSession(session)
 
     setRealtimeError(null)
@@ -4424,7 +4459,7 @@ export const App = () => {
         onEvent: handleMeetingRealtimeEvent,
         onError: (message) => {
           setRealtimeStatus('error')
-          setMeetingError(message)
+          markMeetingSessionInterrupted(message)
           setLastSanitizedRealtimeError(message)
         }
       })
@@ -4436,7 +4471,7 @@ export const App = () => {
         error instanceof Error
           ? error.message
           : 'Unable to start meeting transcription.'
-      setMeetingError(message)
+      markMeetingSessionInterrupted(message)
       setLastSanitizedRealtimeError(message)
     }
   }
@@ -4486,9 +4521,21 @@ export const App = () => {
 
   const clearMeetingTranscription = async () => {
     if (
+      meetingSession &&
+      meetingSession.segments.length > 0 &&
+      !hasExportedMeetingTranscript &&
+      !window.confirm(
+        'This meeting transcript has not been exported yet. Clear it anyway?'
+      )
+    ) {
+      return
+    }
+
+    if (
       realtimeStatus === 'connecting' ||
       realtimeStatus === 'connected' ||
-      realtimeStatus === 'listening'
+      realtimeStatus === 'listening' ||
+      realtimeStatus === 'error'
     ) {
       await stopMeetingTranscription()
     }
@@ -4496,6 +4543,7 @@ export const App = () => {
     setMeetingSession(null)
     setMeetingError(null)
     setMeetingNotice('Meeting transcript cleared.')
+    setHasExportedMeetingTranscript(false)
     await window.coqpi.meetingTranscription.clearCurrent()
   }
 
@@ -4519,6 +4567,7 @@ export const App = () => {
         setMeetingNotice('Export canceled.')
       } else {
         setMeetingNotice(`Transcript exported: ${result.filePath}`)
+        setHasExportedMeetingTranscript(true)
       }
     } catch (error) {
       setMeetingError(
@@ -4528,6 +4577,28 @@ export const App = () => {
       )
     } finally {
       setIsExportingMeetingTranscript(false)
+    }
+  }
+
+  const copyMeetingTranscriptMarkdown = async () => {
+    if (!meetingSession || meetingSession.segments.length === 0) {
+      setMeetingError('No finalized transcript segments to copy.')
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        exportMeetingTranscriptMarkdown(meetingSession)
+      )
+      setHasExportedMeetingTranscript(true)
+      setMeetingError(null)
+      setMeetingNotice('Transcript copied to clipboard as Markdown.')
+    } catch (error) {
+      setMeetingError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to copy meeting transcript.'
+      )
     }
   }
 
@@ -5064,10 +5135,16 @@ export const App = () => {
     realtimeStatus === 'error'
   const canStartMeetingTranscription =
     canStartListening && !(meetingSession && meetingSession.segments.length > 0)
-  const canStopMeetingTranscription =
+  const isMeetingRealtimeRunning =
     realtimeStatus === 'connecting' ||
     realtimeStatus === 'connected' ||
     realtimeStatus === 'listening'
+  const canStopMeetingTranscription =
+    Boolean(meetingSession) &&
+    (realtimeStatus === 'connecting' ||
+      realtimeStatus === 'connected' ||
+      realtimeStatus === 'listening' ||
+      realtimeStatus === 'error')
   const hasTranscriptActivity = transcriptUtterances.length > 0
   const isRealtimeReady =
     audioPermissionStatus === 'granted' &&
@@ -5083,7 +5160,12 @@ export const App = () => {
     audioDevices.find((device) => device.deviceId === selectedAudioDeviceId)
       ?.label || 'System default (macOS)'
   const meetingElapsedMs = meetingSession
-    ? new Date(meetingSession.stoppedAt ?? new Date(uiNow).toISOString()).getTime() -
+    ? new Date(
+        meetingSession.stoppedAt ??
+          (isMeetingRealtimeRunning
+            ? new Date(uiNow).toISOString()
+            : new Date().toISOString())
+      ).getTime() -
       new Date(meetingSession.startedAt).getTime()
     : 0
   const meetingInterimText = meetingSession
@@ -5091,6 +5173,14 @@ export const App = () => {
         .map((interim) => interim.text)
         .join(' ')
     : ''
+  const meetingStatusLabel =
+    realtimeStatus === 'error' && meetingSession?.segments.length
+      ? 'interrupted - transcript preserved'
+      : realtimeStatus
+
+  useEffect(() => {
+    meetingTranscriptEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [meetingSession?.segments.length, meetingInterimText])
   const autoAnalysisTranscriptText = getRecentTranscriptText(
     getAutoAnalysisTranscriptUtterances(
       transcriptUtterances,
@@ -6765,7 +6855,7 @@ export const App = () => {
 
           <section className="transcribe-status-grid">
             <div className="metric-card">
-              <strong>{realtimeStatus}</strong>
+              <strong>{meetingStatusLabel}</strong>
               <span>Status</span>
             </div>
             <div className="metric-card">
@@ -6807,6 +6897,17 @@ export const App = () => {
                   <button
                     className="secondary-button"
                     disabled={
+                      !meetingSession ||
+                      meetingSession.segments.length === 0
+                    }
+                    onClick={() => void copyMeetingTranscriptMarkdown()}
+                    type="button"
+                  >
+                    Copy Markdown
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={
                       isExportingMeetingTranscript ||
                       !meetingSession ||
                       meetingSession.segments.length === 0
@@ -6831,6 +6932,7 @@ export const App = () => {
                       <p className="transcript-item-text">{segment.text}</p>
                     </article>
                   ))}
+                  <div ref={meetingTranscriptEndRef} />
                 </div>
               )}
               {meetingInterimText ? (

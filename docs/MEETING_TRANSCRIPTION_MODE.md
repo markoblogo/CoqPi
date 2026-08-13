@@ -4,7 +4,7 @@ Use this mode when the goal is only to record a meeting transcript.
 
 Path:
 
-`Open CoqPi -> Transcribe -> choose language -> Start -> meeting -> Stop -> Save Markdown`
+`Open CoqPi -> Transcribe -> choose language -> Start -> meeting -> Stop -> Save Markdown or Copy Markdown`
 
 Current status: manually checked on the local Mac. The app can transcribe from
 the selected microphone, stop without clearing the transcript, and export a
@@ -16,8 +16,12 @@ UTF-8 Markdown transcript.
 - sends audio only to the realtime transcription provider;
 - displays interim text live;
 - commits only finalized transcript segments;
+- scrolls the transcript view toward the latest text;
 - autosaves the current meeting transcript locally;
-- exports Markdown or TXT as UTF-8.
+- exports Markdown or TXT as UTF-8;
+- can copy the Markdown transcript directly to clipboard if the save dialog is
+  inconvenient during a call;
+- preserves finalized text when realtime transcription is interrupted.
 
 ## What It Does Not Do
 
@@ -38,8 +42,9 @@ UTF-8 Markdown transcript.
 6. Play another Ukrainian speaker through Mac speakers so the microphone hears both voices.
 7. Confirm finalized lines appear in the transcript area.
 8. Press `Stop`.
-9. Press `Save Markdown`.
-10. Open the exported file and check Ukrainian characters and obvious duplicate fragments.
+9. Press `Save Markdown` or `Copy Markdown`.
+10. Open the exported file, or paste copied Markdown into a note, and check
+    Ukrainian characters and obvious duplicate fragments.
 
 Repeat a short one-sentence check for:
 
@@ -58,7 +63,12 @@ Use this when the call is in Google Meet or another app on the same Mac:
 5. Keep call audio on Mac speakers if you need both sides captured by the mic.
 6. Press `Start Transcription` before the important part begins.
 7. Press `Stop` after the call.
-8. Export Markdown.
+8. Export Markdown, or use `Copy Markdown` if the file dialog is not convenient.
+
+If status becomes `interrupted - transcript preserved`, realtime transcription
+failed but finalized text remains in the local session. Use `Stop`, then
+`Save Markdown` or `Copy Markdown`. `Clear` asks for confirmation when the
+current transcript has not been exported/copied yet.
 
 If headphones are used, CoqPi will usually capture only your own voice unless
 the headset leaks enough audio into the microphone. System-audio routing is not
@@ -70,7 +80,7 @@ Build a local macOS app bundle:
 
 ```bash
 cd /Volumes/Work/Work/CoqPi
-pnpm pack:mac
+pnpm run pack:mac
 ```
 
 Then open:
