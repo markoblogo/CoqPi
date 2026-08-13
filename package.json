@@ -26,6 +26,7 @@
     "test:donor-patterns": "pnpm build:electron && node --test tests/donor-patterns.test.cjs tests/session-summary-service.test.cjs",
     "test:cortexabv-importer": "pnpm build:electron && node --test tests/cortex-abv-importer.test.cjs",
     "test:live-loop-ui": "pnpm build:electron && node --test tests/live-loop-ui.test.cjs",
+    "test:meeting-transcription": "pnpm build:electron && node --test tests/meeting-transcription.test.cjs tests/meeting-transcription-service.test.cjs tests/realtime-transcription-config.test.cjs",
     "test:pass2-live-smoke-readiness": "pnpm build:electron && node --test tests/live-smoke-readiness.test.cjs",
     "test:pre-smoke": "pnpm build:electron && node --test --test-concurrency=1 tests/mock-transcript-scenarios.test.cjs tests/smoke-checklist.test.cjs tests/smoke-readiness-pack.test.cjs tests/pre-test-reset.test.cjs tests/smoke-note-service.test.cjs tests/smoke-fix-queue.test.cjs tests/smoke-report.test.cjs tests/context-pack-quality.test.cjs tests/knowledge-ingestion-quality.test.cjs tests/knowledge-pack-review.test.cjs tests/session-payload-inspector.test.cjs tests/manual-prep-preview.test.cjs tests/session-pack-selection.test.cjs tests/live-loop-ui.test.cjs tests/analyze-recent-transcript.test.cjs tests/assistant-output-quality.test.cjs tests/donor-patterns.test.cjs tests/session-summary-service.test.cjs",
     "pack:mac": "pnpm build && electron-builder --mac dir",

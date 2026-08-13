@@ -13,12 +13,14 @@ import type {
   FinderSourceAdapterPreviewResult,
   FinderSearchJobDraft,
   FinderSearchJobStatus,
+  MeetingTranscriptionExportRequest,
   PreparationContextResult,
   RealtimeTranscriptionStartRequest,
   SessionContext,
   SessionSummaryDraft,
   SmokeTestNoteDraft
 } from '../shared/app-types'
+import type { MeetingTranscriptionSession } from '../shared/meeting-transcription'
 
 contextBridge.exposeInMainWorld('coqpi', {
   config: {
@@ -239,5 +241,15 @@ contextBridge.exposeInMainWorld('coqpi', {
   realtime: {
     createTranscriptionAnswer: (request: RealtimeTranscriptionStartRequest) =>
       ipcRenderer.invoke('coqpi:realtime:create-transcription-answer', request)
+  },
+  meetingTranscription: {
+    getCurrent: (): Promise<MeetingTranscriptionSession | null> =>
+      ipcRenderer.invoke('coqpi:meeting-transcription:get-current'),
+    saveCurrent: (session: MeetingTranscriptionSession) =>
+      ipcRenderer.invoke('coqpi:meeting-transcription:save-current', session),
+    clearCurrent: () =>
+      ipcRenderer.invoke('coqpi:meeting-transcription:clear-current'),
+    exportSession: (request: MeetingTranscriptionExportRequest) =>
+      ipcRenderer.invoke('coqpi:meeting-transcription:export', request)
   }
 })

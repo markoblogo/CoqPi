@@ -4,7 +4,7 @@ export interface RealtimeCallSessionConfig {
     input: {
       transcription: {
         model: string
-        language?: 'en' | 'fr'
+        language?: 'en' | 'fr' | 'uk' | 'ru'
         prompt: string
       }
       turn_detection: {

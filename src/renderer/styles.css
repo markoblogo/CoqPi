@@ -187,6 +187,7 @@ button:disabled {
 }
 
 .live-layout,
+.transcribe-layout,
 .prepare-layout,
 .settings-layout {
   min-height: 0;
@@ -199,6 +200,15 @@ button:disabled {
   flex: 1;
   min-height: 0;
   overflow: visible;
+}
+
+.transcribe-layout {
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: var(--space-2);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .scroll-section {
@@ -240,6 +250,23 @@ button:disabled {
   overflow: visible;
 }
 
+.compact-field {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: #aab8c6;
+  font-size: var(--font-xs);
+}
+
+.compact-field select {
+  min-width: 160px;
+}
+
+.compact-field-short select {
+  min-width: 118px;
+}
+
 .control-strip button,
 .control-strip select,
 .settings-layout button,
@@ -271,6 +298,55 @@ button:disabled {
   background: #22364a !important;
   color: #f4f8fc !important;
 }
+
+.transcribe-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+.transcribe-main {
+  display: block;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.transcribe-transcript-card {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.meeting-transcript-list {
+  display: grid;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: var(--space-1);
+}
+
+.meeting-interim {
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  border: 1px dashed #3b4a59;
+  border-radius: 4px;
+  background: #111820;
+  color: #c7d2dd;
+}
+
+.meeting-interim span {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: #8fa3b6;
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+}
+
+.meeting-interim p {
+  margin: 0;
+}
+
 
 .secondary-button,
 .copy-button {

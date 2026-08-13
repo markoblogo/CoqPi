@@ -929,7 +929,7 @@ export type RealtimeConnectionStatus =
 
 export interface RealtimeTranscriptionStartRequest {
   offerSdp: string
-  callLanguage: 'auto' | 'en' | 'fr'
+  callLanguage: 'auto' | 'en' | 'fr' | 'uk' | 'ru'
 }
 
 export interface RealtimeTranscriptionSdpResult {
@@ -950,6 +950,20 @@ export type RealtimeTranscriptionResponse =
       ok: false
       error: RealtimeTranscriptionError
     }
+
+export interface MeetingTranscriptionSaveResult {
+  ok: true
+}
+
+export interface MeetingTranscriptionExportRequest {
+  session: import('./meeting-transcription').MeetingTranscriptionSession
+  format: 'md' | 'txt'
+}
+
+export interface MeetingTranscriptionExportResult {
+  canceled: boolean
+  filePath?: string
+}
 
 export interface SmokeTestNoteDraft {
   worked: string

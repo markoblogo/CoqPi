@@ -14,6 +14,10 @@ CoqPi is a local Electron app for three connected jobs:
 2. find and prepare job / partner / investor / accelerator targets before the call;
 3. accumulate private owner/context knowledge without sending raw source material into the assistant path.
 
+It also has a standalone `Transcribe` mode for plain meeting transcription:
+microphone -> realtime speech transcript -> local Markdown/TXT export, with no
+assistant analysis or reply suggestions.
+
 OpenAI Realtime is the primary live transcription path. OpenAI text analysis is primary for assistant replies. Ollama is available only as controlled text fallback.
 
 ## Current product status
@@ -66,6 +70,26 @@ Still not done:
 - live microphone / OpenAI Realtime validation remains human-gated and currently deferred, not silently passed;
 - no system-audio capture;
 - no offline/local realtime STT.
+
+### Meeting transcription utility
+
+Status: implemented for local testing.
+
+What works now:
+- `Transcribe` tab with microphone selector, language selector, Start/Stop,
+  Clear, Markdown/TXT export, status, elapsed time, live transcript area;
+- explicit transcription languages: Ukrainian (`uk`), Russian (`ru`),
+  English (`en`), French (`fr`);
+- finalized transcript segments are accumulated separately from realtime
+  interim events, so partial fragments are not duplicated in export;
+- autosave of finalized session transcript to local session storage;
+- startup restore for the autosaved meeting transcript;
+- no assistant request is made from Transcribe mode.
+
+Limits:
+- v1 uses selected microphone only; no system-audio routing;
+- no speaker diarization;
+- live microphone/OpenAI verification still requires a manual run on the Mac.
 
 ### 2) Finder: jobs / investors / accelerators / partners
 
@@ -237,6 +261,7 @@ Useful handoff scripts:
 ## Recommended test commands
 
 - `pnpm test:live-loop-ui`
+- `pnpm test:meeting-transcription`
 - `pnpm test:analyze-recent-transcript`
 - `pnpm test:assistant-output-quality`
 - `pnpm test:knowledge-retrieval`
@@ -279,6 +304,9 @@ The current recommended order:
 5. Save a smoke note only after the probe, not before.
 
 Detailed version: [docs/REALTIME_SMOKE_TEST.md](docs/REALTIME_SMOKE_TEST.md)
+
+Meeting transcription runbook:
+[docs/MEETING_TRANSCRIPTION_MODE.md](docs/MEETING_TRANSCRIPTION_MODE.md)
 
 For operator-facing execution docs and smoke/runbook steps, prefer an
 ADHD-shaped layout: next action first, numbered bounded steps, visible current

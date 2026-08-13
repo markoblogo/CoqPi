@@ -18,6 +18,9 @@ import type {
   FinderSearchJobStatus,
   FinderSearchStoreResult,
   KnowledgePackLifecycleDraft,
+  MeetingTranscriptionExportRequest,
+  MeetingTranscriptionExportResult,
+  MeetingTranscriptionSaveResult,
   OpenAIKeyStatus,
   PreparationContextResult,
   ProfileContextResult,
@@ -34,6 +37,7 @@ import type {
   SmokeTestNotesResult,
   SettingsPayload
 } from '@shared/app-types'
+import type { MeetingTranscriptionSession } from '@shared/meeting-transcription'
 
 declare global {
   interface Window {
@@ -180,6 +184,16 @@ declare global {
         createTranscriptionAnswer: (
           request: RealtimeTranscriptionStartRequest
         ) => Promise<RealtimeTranscriptionResponse>
+      }
+      meetingTranscription: {
+        getCurrent: () => Promise<MeetingTranscriptionSession | null>
+        saveCurrent: (
+          session: MeetingTranscriptionSession
+        ) => Promise<MeetingTranscriptionSaveResult>
+        clearCurrent: () => Promise<MeetingTranscriptionSaveResult>
+        exportSession: (
+          request: MeetingTranscriptionExportRequest
+        ) => Promise<MeetingTranscriptionExportResult>
       }
     }
   }

@@ -46,6 +46,17 @@ This path is on-demand only. It is read-only, does not use microphone/audio, and
 
 `selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> transcript state -> completed utterance -> local EN/FR auto-analysis guard -> 900 ms debounce -> assistant analysis -> cockpit panels`
 
+### Meeting transcription path
+
+`selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> meeting transcript session -> local autosave -> Markdown/TXT export`
+
+This path is separate from assistant analysis. It accepts explicit `uk`, `ru`,
+`en`, or `fr` transcription language, commits only finalized realtime
+transcription events, keeps interim text out of exports, and stores an
+autosaved JSON session locally for crash recovery. It does not translate,
+summarize, suggest answers, call Ollama, or call
+`assistant.analyzeRecentTranscript`.
+
 ### Assistant analysis path
 
 `completed utterance or manual analysis click -> recent transcript selector -> optional profile and session context -> backend assistant service -> structured result -> cockpit panels`

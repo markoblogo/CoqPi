@@ -36,6 +36,14 @@ const getTranscriptionPrompt = (
     return 'Transcribe spoken French only. Ignore other languages and background speech. Do not translate.'
   }
 
+  if (callLanguage === 'uk') {
+    return 'Transcribe spoken Ukrainian only. Do not translate, summarize, or rewrite.'
+  }
+
+  if (callLanguage === 'ru') {
+    return 'Transcribe spoken Russian only. Do not translate, summarize, or rewrite.'
+  }
+
   return 'Transcribe spoken English or French only. Ignore all other languages and background speech. Do not translate.'
 }
 
@@ -51,19 +59,24 @@ const getApiKey = async () => {
   return apiKey
 }
 
-const buildSessionConfig = (
+export const buildRealtimeTranscriptionSessionConfigForTests = (
   callLanguage: RealtimeTranscriptionStartRequest['callLanguage']
 ): RealtimeCallSessionConfig => {
   const transcriptionConfig: {
     model: string
-    language?: 'en' | 'fr'
+    language?: 'en' | 'fr' | 'uk' | 'ru'
     prompt: string
   } = {
     model: getRealtimeModel(),
     prompt: getTranscriptionPrompt(callLanguage)
   }
 
-  if (callLanguage === 'en' || callLanguage === 'fr') {
+  if (
+    callLanguage === 'en' ||
+    callLanguage === 'fr' ||
+    callLanguage === 'uk' ||
+    callLanguage === 'ru'
+  ) {
     transcriptionConfig.language = callLanguage
   }
 
@@ -107,7 +120,7 @@ export const createRealtimeTranscriptionAnswer = async (
 
   const formData = buildRealtimeCallFormData(
     offerSdp,
-    buildSessionConfig(request.callLanguage)
+    buildRealtimeTranscriptionSessionConfigForTests(request.callLanguage)
   )
 
   const response = await runGovernedProviderAction(

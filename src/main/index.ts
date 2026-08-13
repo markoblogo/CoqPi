@@ -23,6 +23,9 @@ import type {
   OpenAIKeyStatus,
   PreparationContextResult,
   RealtimeTranscriptionError,
+  MeetingTranscriptionExportRequest,
+  MeetingTranscriptionExportResult,
+  MeetingTranscriptionSaveResult,
   RealtimeTranscriptionResponse,
   RealtimeTranscriptionStartRequest,
   SaveOpenAIKeyResult,
@@ -41,6 +44,13 @@ import { isRetryableProviderError } from '../backend/services/assistant-service-
 import { getConfigStatus } from '../backend/services/config-service'
 import { getProfileContext } from '../backend/services/profile-service'
 import { createRealtimeTranscriptionAnswer } from '../backend/services/realtime-transcription-service'
+import {
+  clearCurrentMeetingTranscriptionSession,
+  getCurrentMeetingTranscriptionSession,
+  getMeetingTranscriptDefaultFilename,
+  saveCurrentMeetingTranscriptionSession,
+  writeMeetingTranscriptExport
+} from '../backend/services/meeting-transcription-service'
 import {
   deleteOpenAIKey,
   getOpenAIKeyStatus,
@@ -649,6 +659,50 @@ const registerIpcHandlers = () => {
           }
         }
       }
+    }
+  )
+
+  ipcMain.handle(
+    'coqpi:meeting-transcription:get-current',
+    async () => getCurrentMeetingTranscriptionSession()
+  )
+
+  ipcMain.handle(
+    'coqpi:meeting-transcription:save-current',
+    async (
+      _event,
+      session
+    ): Promise<MeetingTranscriptionSaveResult> =>
+      saveCurrentMeetingTranscriptionSession(session)
+  )
+
+  ipcMain.handle(
+    'coqpi:meeting-transcription:clear-current',
+    async (): Promise<MeetingTranscriptionSaveResult> =>
+      clearCurrentMeetingTranscriptionSession()
+  )
+
+  ipcMain.handle(
+    'coqpi:meeting-transcription:export',
+    async (
+      _event,
+      request: MeetingTranscriptionExportRequest
+    ): Promise<MeetingTranscriptionExportResult> => {
+      const result = await dialog.showSaveDialog({
+        title: 'Save meeting transcript',
+        defaultPath: getMeetingTranscriptDefaultFilename(request),
+        filters: [
+          request.format === 'txt'
+            ? { name: 'Plain text', extensions: ['txt'] }
+            : { name: 'Markdown', extensions: ['md'] }
+        ]
+      })
+
+      if (result.canceled || !result.filePath) {
+        return { canceled: true }
+      }
+
+      return writeMeetingTranscriptExport(request, result.filePath)
     }
   )
 }

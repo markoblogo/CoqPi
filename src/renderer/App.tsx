@@ -45,6 +45,15 @@ import {
   defaultControlState
 } from '@shared/app-types'
 import {
+  applyMeetingTranscriptionRealtimeEvent,
+  createMeetingTranscriptionSession,
+  formatMeetingDuration,
+  meetingTranscriptionLanguageLabels,
+  stopMeetingTranscriptionSession,
+  type MeetingTranscriptionLanguage,
+  type MeetingTranscriptionSession
+} from '@shared/meeting-transcription'
+import {
   AUTO_ANALYSIS_DEBOUNCE_MS,
   AssistantState,
   type AssistantStatusCode,
@@ -754,7 +763,7 @@ export const App = () => {
   }
 
   const [activeTab, setActiveTab] = useState<
-    'live' | 'prepare' | 'finder' | 'context' | 'settings'
+    'live' | 'transcribe' | 'prepare' | 'finder' | 'context' | 'settings'
   >('live')
   const [controls, setControls] = useState<ControlState>(defaultControlState)
   const [configStatus, setConfigStatus] =
@@ -1174,6 +1183,14 @@ export const App = () => {
   const [transcriptUtterances, setTranscriptUtterances] = useState<
     TranscriptUtterance[]
   >([])
+  const [meetingLanguage, setMeetingLanguage] =
+    useState<MeetingTranscriptionLanguage>('uk')
+  const [meetingSession, setMeetingSession] =
+    useState<MeetingTranscriptionSession | null>(null)
+  const [meetingError, setMeetingError] = useState<string | null>(null)
+  const [meetingNotice, setMeetingNotice] = useState<string | null>(null)
+  const [isExportingMeetingTranscript, setIsExportingMeetingTranscript] =
+    useState(false)
   const [includeProfileContext, setIncludeProfileContext] = useState(
     defaultSettings.includeProfileContextByDefault
   )
@@ -1260,7 +1277,8 @@ export const App = () => {
           settingsPayload,
           keyState,
           smokeNotePayload,
-          finderSearchPayload
+          finderSearchPayload,
+          meetingTranscriptionSession
         ] =
           await Promise.all([
             window.coqpi.config.getStatus(),
@@ -1270,7 +1288,8 @@ export const App = () => {
             window.coqpi.settings.get(),
             window.coqpi.secrets.getOpenAIKeyStatus(),
             window.coqpi.smokeNotes.get(),
-            window.coqpi.finderSearch.get()
+            window.coqpi.finderSearch.get(),
+            window.coqpi.meetingTranscription.getCurrent()
           ])
 
         const initialLoadState = buildInitialLoadState({
@@ -1310,6 +1329,11 @@ export const App = () => {
         setSettingsForm(initialLoadState.settingsForm)
         setSettingsMeta(initialLoadState.settingsMeta)
         setSmokeNotes(initialLoadState.smokeNotes)
+        if (meetingTranscriptionSession) {
+          setMeetingSession(meetingTranscriptionSession)
+          setMeetingLanguage(meetingTranscriptionSession.language)
+          setMeetingNotice('Restored autosaved meeting transcript.')
+        }
         applyFinderSearchStore(initialLoadState.finderSearchStore)
         setIncludeProfileContext(initialLoadState.includeProfileContext)
         setCostMode(initialLoadState.costMode)
@@ -1332,6 +1356,9 @@ export const App = () => {
         setCounterpartyPackDraftingId(null)
         setCounterpartyPackFinderPayload('')
         setSmokeNotes([])
+        setMeetingSession(null)
+        setMeetingNotice(null)
+        setMeetingError(null)
         applyFinderSearchStore({
           version: 1,
           jobs: [],
@@ -1808,6 +1835,99 @@ export const App = () => {
       const message = extractRealtimeErrorMessage(event)
       setRealtimeStatus('error')
       setRealtimeError(message)
+      setLastSanitizedRealtimeError(message)
+    }
+  }
+
+  const autosaveMeetingSession = (session: MeetingTranscriptionSession) => {
+    void window.coqpi.meetingTranscription
+      .saveCurrent(session)
+      .catch((error) => {
+        setMeetingError(
+          error instanceof Error
+            ? error.message
+            : 'Unable to autosave meeting transcript.'
+        )
+      })
+  }
+
+  const handleMeetingRealtimeEvent = (event: Record<string, unknown>) => {
+    setRealtimeEventCounters((current) => ({
+      ...current,
+      total: current.total + 1
+    }))
+
+    if (!hasReceivedFirstRealtimeEventRef.current) {
+      hasReceivedFirstRealtimeEventRef.current = true
+      pushRealtimeLifecycleLog('first server event received')
+    }
+
+    clearNoEventTimeout()
+
+    if (
+      event.type === 'conversation.item.input_audio_transcription.delta' ||
+      event.type === 'conversation.item.input_audio_transcription.completed'
+    ) {
+      armNoEventTimeout()
+    }
+
+    if (event.type === 'conversation.item.input_audio_transcription.delta') {
+      setRealtimeEventCounters((current) => ({
+        ...current,
+        delta: current.delta + 1
+      }))
+    }
+
+    if (
+      event.type === 'conversation.item.input_audio_transcription.completed'
+    ) {
+      setRealtimeEventCounters((current) => ({
+        ...current,
+        completed: current.completed + 1
+      }))
+    }
+
+    setMeetingSession((currentSession) => {
+      if (!currentSession) {
+        return currentSession
+      }
+
+      const result = applyMeetingTranscriptionRealtimeEvent({
+        session: currentSession,
+        event,
+        now: new Date().toISOString(),
+        createSegmentId: createTranscriptId
+      })
+
+      if (result.committed) {
+        autosaveMeetingSession(result.session)
+      }
+
+      return result.session
+    })
+
+    if (event.type === 'conversation.item.input_audio_transcription.failed') {
+      setRealtimeEventCounters((current) => ({
+        ...current,
+        failed: current.failed + 1
+      }))
+      const message = sanitizeRealtimeErrorValue(
+        (event as { error?: unknown }).error
+      )
+      setRealtimeStatus('error')
+      setMeetingError(`Transcription failed. ${message}`)
+      setLastSanitizedRealtimeError(message)
+      return
+    }
+
+    if (event.type === 'error') {
+      setRealtimeEventCounters((current) => ({
+        ...current,
+        genericError: current.genericError + 1
+      }))
+      const message = extractRealtimeErrorMessage(event)
+      setRealtimeStatus('error')
+      setMeetingError(message)
       setLastSanitizedRealtimeError(message)
     }
   }
@@ -4236,6 +4356,184 @@ export const App = () => {
     }
   }
 
+  const startMeetingTranscription = async () => {
+    if (!configStatus.effectiveKeyAvailable) {
+      const message =
+        'Missing OpenAI API key. Save a secure local key in Settings or set OPENAI_API_KEY in .env.'
+      setMeetingError(message)
+      setRealtimeStatus('error')
+      setActiveTab('settings')
+      return
+    }
+
+    if (audioPermissionStatus === 'denied') {
+      const message =
+        'Microphone permission was denied. Allow microphone access and try again.'
+      setMeetingError(message)
+      setRealtimeStatus('error')
+      return
+    }
+
+    if (meetingSession && meetingSession.segments.length > 0) {
+      setMeetingError(
+        'Current transcript is preserved. Export or Clear before starting a new meeting session.'
+      )
+      return
+    }
+
+    const now = new Date().toISOString()
+    const session = createMeetingTranscriptionSession({
+      id: createTranscriptId(),
+      language: meetingLanguage,
+      inputLabel: selectedDeviceLabel,
+      now
+    })
+
+    setMeetingSession(session)
+    setMeetingError(null)
+    setMeetingNotice('Meeting transcription started.')
+    autosaveMeetingSession(session)
+
+    setRealtimeError(null)
+    setRealtimeEventTypes([])
+    setRealtimeLifecycleLog([])
+    setRealtimeEventCounters({
+      total: 0,
+      delta: 0,
+      completed: 0,
+      failed: 0,
+      genericError: 0
+    })
+    hasReceivedFirstRealtimeEventRef.current = false
+    setLastSanitizedRealtimeError(null)
+    setPeerConnectionState('new')
+    setIceConnectionState('new')
+    setIceGatheringState('new')
+    setDataChannelState('closed')
+    pushRealtimeLifecycleLog('Start Meeting Transcription clicked')
+
+    try {
+      setRealtimeStartedAt(Date.now())
+      await realtimeClientRef.current?.start({
+        selectedAudioDeviceId,
+        callLanguage: meetingLanguage,
+        onStatusChange: (status) => setRealtimeStatus(status),
+        onDebugEventType: handleRealtimeEventType,
+        onLifecycleLog: pushRealtimeLifecycleLog,
+        onPeerConnectionStateChange: setPeerConnectionState,
+        onIceConnectionStateChange: setIceConnectionState,
+        onIceGatheringStateChange: setIceGatheringState,
+        onDataChannelStateChange: setDataChannelState,
+        onEvent: handleMeetingRealtimeEvent,
+        onError: (message) => {
+          setRealtimeStatus('error')
+          setMeetingError(message)
+          setLastSanitizedRealtimeError(message)
+        }
+      })
+      armNoEventTimeout()
+    } catch (error) {
+      setRealtimeStartedAt(null)
+      setRealtimeStatus('error')
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to start meeting transcription.'
+      setMeetingError(message)
+      setLastSanitizedRealtimeError(message)
+    }
+  }
+
+  const stopMeetingTranscription = async () => {
+    setRealtimeStatus('stopping')
+    setMeetingError(null)
+    clearNoEventTimeout()
+    pushRealtimeLifecycleLog('Stop Meeting Transcription clicked')
+
+    try {
+      await realtimeClientRef.current?.stop()
+      if (realtimeStartedAt !== null) {
+        setAccumulatedRealtimeMs(
+          (currentValue) => currentValue + (Date.now() - realtimeStartedAt)
+        )
+      }
+      setRealtimeStartedAt(null)
+      setRealtimeStatus('stopped')
+      setDataChannelState('closed')
+      setPeerConnectionState('closed')
+
+      setMeetingSession((currentSession) => {
+        if (!currentSession) {
+          return currentSession
+        }
+
+        const stopped = stopMeetingTranscriptionSession(
+          currentSession,
+          new Date().toISOString()
+        )
+        autosaveMeetingSession(stopped)
+        return stopped
+      })
+      setMeetingNotice('Meeting transcription stopped. Transcript is preserved.')
+    } catch (error) {
+      setRealtimeStartedAt(null)
+      setRealtimeStatus('error')
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Unable to stop meeting transcription cleanly.'
+      setMeetingError(message)
+      setLastSanitizedRealtimeError(message)
+    }
+  }
+
+  const clearMeetingTranscription = async () => {
+    if (
+      realtimeStatus === 'connecting' ||
+      realtimeStatus === 'connected' ||
+      realtimeStatus === 'listening'
+    ) {
+      await stopMeetingTranscription()
+    }
+
+    setMeetingSession(null)
+    setMeetingError(null)
+    setMeetingNotice('Meeting transcript cleared.')
+    await window.coqpi.meetingTranscription.clearCurrent()
+  }
+
+  const exportMeetingTranscription = async (format: 'md' | 'txt') => {
+    if (!meetingSession || meetingSession.segments.length === 0) {
+      setMeetingError('No finalized transcript segments to export.')
+      return
+    }
+
+    setIsExportingMeetingTranscript(true)
+    setMeetingError(null)
+    setMeetingNotice(null)
+
+    try {
+      const result = await window.coqpi.meetingTranscription.exportSession({
+        session: meetingSession,
+        format
+      })
+
+      if (result.canceled) {
+        setMeetingNotice('Export canceled.')
+      } else {
+        setMeetingNotice(`Transcript exported: ${result.filePath}`)
+      }
+    } catch (error) {
+      setMeetingError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to export meeting transcript.'
+      )
+    } finally {
+      setIsExportingMeetingTranscript(false)
+    }
+  }
+
   const saveCurrentSettings = async () => {
     setIsSavingSettings(true)
     setSettingsError(null)
@@ -4767,6 +5065,12 @@ export const App = () => {
     realtimeStatus === 'connected' ||
     realtimeStatus === 'listening' ||
     realtimeStatus === 'error'
+  const canStartMeetingTranscription =
+    canStartListening && !(meetingSession && meetingSession.segments.length > 0)
+  const canStopMeetingTranscription =
+    realtimeStatus === 'connecting' ||
+    realtimeStatus === 'connected' ||
+    realtimeStatus === 'listening'
   const hasTranscriptActivity = transcriptUtterances.length > 0
   const isRealtimeReady =
     audioPermissionStatus === 'granted' &&
@@ -4781,6 +5085,15 @@ export const App = () => {
   const selectedDeviceLabel =
     audioDevices.find((device) => device.deviceId === selectedAudioDeviceId)
       ?.label || 'System default (macOS)'
+  const meetingElapsedMs = meetingSession
+    ? new Date(meetingSession.stoppedAt ?? new Date(uiNow).toISOString()).getTime() -
+      new Date(meetingSession.startedAt).getTime()
+    : 0
+  const meetingInterimText = meetingSession
+    ? Object.values(meetingSession.interim)
+        .map((interim) => interim.text)
+        .join(' ')
+    : ''
   const autoAnalysisTranscriptText = getRecentTranscriptText(
     getAutoAnalysisTranscriptUtterances(
       transcriptUtterances,
@@ -6353,6 +6666,13 @@ export const App = () => {
             Live
           </button>
           <button
+            className={activeTab === 'transcribe' ? 'tab-active' : ''}
+            onClick={() => setActiveTab('transcribe')}
+            type="button"
+          >
+            Transcribe
+          </button>
+          <button
             className={activeTab === 'prepare' ? 'tab-active' : ''}
             onClick={() => setActiveTab('prepare')}
             type="button"
@@ -6382,6 +6702,150 @@ export const App = () => {
           </button>
         </nav>
       </header>
+
+      {activeTab === 'transcribe' ? (
+        <section className="transcribe-layout">
+          <section className="control-strip">
+            <div className="control-group live-primary-actions">
+              <button
+                className="primary-button"
+                disabled={!canStartMeetingTranscription}
+                onClick={() => void startMeetingTranscription()}
+                type="button"
+              >
+                Start Transcription
+              </button>
+              <button
+                disabled={!canStopMeetingTranscription}
+                onClick={() => void stopMeetingTranscription()}
+                type="button"
+              >
+                Stop
+              </button>
+              <button
+                disabled={!meetingSession}
+                onClick={() => void clearMeetingTranscription()}
+                type="button"
+              >
+                Clear
+              </button>
+            </div>
+            <div className="control-group live-selectors">
+              <label className="compact-field">
+                <span>Mic</span>
+                <select
+                  onChange={handleAudioDeviceChange}
+                  value={selectedAudioDeviceId}
+                >
+                  <option value="">System default (macOS)</option>
+                  {audioDevices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || 'Unnamed input'}{' '}
+                      {device.isDefault ? '(Default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="compact-field compact-field-short">
+                <span>Language</span>
+                <select
+                  disabled={meetingSession?.status === 'recording'}
+                  onChange={(event) =>
+                    setMeetingLanguage(
+                      event.target.value as MeetingTranscriptionLanguage
+                    )
+                  }
+                  value={meetingLanguage}
+                >
+                  <option value="uk">Ukrainian</option>
+                  <option value="ru">Russian</option>
+                  <option value="en">English</option>
+                  <option value="fr">French</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section className="transcribe-status-grid">
+            <div className="metric-card">
+              <strong>{realtimeStatus}</strong>
+              <span>Status</span>
+            </div>
+            <div className="metric-card">
+              <strong>{formatMeetingDuration(meetingElapsedMs)}</strong>
+              <span>Elapsed</span>
+            </div>
+            <div className="metric-card">
+              <strong>{meetingSession?.segments.length ?? 0}</strong>
+              <span>Final segments</span>
+            </div>
+            <div className="metric-card">
+              <strong>{meetingTranscriptionLanguageLabels[meetingLanguage]}</strong>
+              <span>Language</span>
+            </div>
+          </section>
+
+          {meetingError ? <div className="error-box">{meetingError}</div> : null}
+          {meetingNotice ? <div className="info-box">{meetingNotice}</div> : null}
+
+          <section className="transcribe-main">
+            <article className="panel-card transcribe-transcript-card">
+              <div className="panel-header">
+                <div>
+                  <h2>Meeting transcript</h2>
+                </div>
+                <div className="button-row">
+                  <button
+                    className="secondary-button"
+                    disabled={
+                      isExportingMeetingTranscript ||
+                      !meetingSession ||
+                      meetingSession.segments.length === 0
+                    }
+                    onClick={() => void exportMeetingTranscription('md')}
+                    type="button"
+                  >
+                    Save Markdown
+                  </button>
+                  <button
+                    className="secondary-button"
+                    disabled={
+                      isExportingMeetingTranscript ||
+                      !meetingSession ||
+                      meetingSession.segments.length === 0
+                    }
+                    onClick={() => void exportMeetingTranscription('txt')}
+                    type="button"
+                  >
+                    Save TXT
+                  </button>
+                </div>
+              </div>
+              {!meetingSession || meetingSession.segments.length === 0 ? (
+                <div className="empty-state">No finalized transcript yet.</div>
+              ) : (
+                <div className="meeting-transcript-list">
+                  {meetingSession.segments.map((segment) => (
+                    <article className="transcript-item" key={segment.id}>
+                      <div className="transcript-item-meta">
+                        <span>{formatTranscriptTime(segment.startTime)}</span>
+                        <span>Final</span>
+                      </div>
+                      <p className="transcript-item-text">{segment.text}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {meetingInterimText ? (
+                <div className="meeting-interim">
+                  <span>Live interim</span>
+                  <p>{meetingInterimText}</p>
+                </div>
+              ) : null}
+            </article>
+          </section>
+        </section>
+      ) : null}
 
       {activeTab === 'live' ? (
         <section className="live-layout">
