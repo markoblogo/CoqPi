@@ -40,11 +40,33 @@ donor runtimes are not installed and do not become part of the call loop.
   until there is a real non-Gmail account requirement and must use CoqPi's
   existing local store, approval, receipt, and privacy boundaries.
 
+- **Local micro-router / extraction gate**: `cactus-compute/needle`
+  (https://github.com/cactus-compute/needle) is recorded as the donor reference
+  for a future optional local routing and structured-extraction layer. CoqPi
+  should consider it only after the Gmail path and provider abstraction are
+  stable. Useful patterns:
+  - local action routing for short commands and states such as search, mail,
+    calendar, call preparation, noise, or no-op;
+  - fast structured extraction from short texts such as job snippets, fund
+    snippets, Gmail replies, and candidate notes before an external LLM call;
+  - a local safety gate before external writes, including approval-needed,
+    missing-recipient, missing-subject, missing-context, or blocked decisions;
+  - offline queue assistance for candidate classification, draft readiness,
+    `weak / usable / ready` decisions, and contact/follow-up state.
+
+  Needle must not replace OpenAI for live EN/FR/RU conversation help in v1, must
+  not sit in the realtime audio hot path, and must not perform external writes.
+  If adopted later, it should be behind `localToolRouterProvider:
+  legacy | needle_optional`, with confidence thresholds and escalation to manual
+  review or the primary assistant provider when confidence is low.
+
 ## Deliberate boundaries
 
 - No CrewAI, AutoGen, Whisper agent, or TrustBoost dependency is added.
 - No `mcp-email-server` dependency or second mail database/credential authority
   is added in the current Gmail-first path.
+- No Needle dependency or local micro-router runtime is added in the current
+  Gmail-first / live-call path.
 - No raw file contents are copied into telemetry or persisted by these
   contracts.
 - The privacy gate is for the external assistant prompt boundary; local STT

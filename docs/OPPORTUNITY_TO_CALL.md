@@ -52,6 +52,26 @@ The current mail runtime is Gmail-first. The next accepted order is:
 `mcp-email-server` is not a planned runtime dependency for v1. It is a reference
 for provider-neutral mail contracts and safety behavior.
 
+## Local micro-router roadmap
+
+After the real Gmail smoke and `MailProvider` abstraction, CoqPi may add an
+optional local micro-router / extraction gate. `cactus-compute/needle` is the
+recorded donor reference because it is built for small offline tool-calling and
+structured extraction.
+
+Planned use is narrow:
+
+1. Classify local actions and UI states: search, mail, calendar, call prep,
+   noise, or no-op.
+2. Extract compact JSON fields from short snippets before calling OpenAI.
+3. Gate external side effects with local decisions such as allow, deny,
+   require approval, missing recipient, or missing context.
+4. Keep Finder/queue useful offline by classifying candidates, draft readiness,
+   and `weak / usable / ready` states.
+
+It is not a replacement for live translation or answer generation. Low
+confidence must escalate to manual review or the primary assistant provider.
+
 ## Replies and calls
 
 1. Check linked replies. CoqPi requests only stored Gmail thread IDs; it does not scan the inbox.
