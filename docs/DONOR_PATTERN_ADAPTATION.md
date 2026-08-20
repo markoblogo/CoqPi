@@ -21,9 +21,30 @@ donor runtimes are not installed and do not become part of the call loop.
   URLs are redacted. Secret-like values such as API keys and bearer tokens fail
   closed and block the request.
 
+## Planned donor references
+
+- **Provider-neutral mail layer**: `Wh1isper/mcp-email-server`
+  (https://github.com/Wh1isper/mcp-email-server) is recorded as the donor
+  reference for a future `MailProvider` abstraction after the current Gmail
+  path passes a real send-to-self and linked-reply test. CoqPi should borrow
+  the narrow safety and interoperability patterns, not install or wrap the MCP
+  runtime:
+  - explicit account capabilities such as receive/send availability;
+  - recipient and sender allowlists before any outbound provider call;
+  - provider-neutral RFC threading fields (`Message-ID`, `In-Reply-To`,
+    `References`) for future non-Gmail providers;
+  - unknown delivery outcomes that require owner review instead of silent retry;
+  - metadata-first linked-thread sync and redacted provider diagnostics.
+
+  Gmail remains the primary v1 implementation. Optional IMAP/SMTP is deferred
+  until there is a real non-Gmail account requirement and must use CoqPi's
+  existing local store, approval, receipt, and privacy boundaries.
+
 ## Deliberate boundaries
 
 - No CrewAI, AutoGen, Whisper agent, or TrustBoost dependency is added.
+- No `mcp-email-server` dependency or second mail database/credential authority
+  is added in the current Gmail-first path.
 - No raw file contents are copied into telemetry or persisted by these
   contracts.
 - The privacy gate is for the external assistant prompt boundary; local STT

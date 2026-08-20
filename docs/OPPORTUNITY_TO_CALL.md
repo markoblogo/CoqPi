@@ -36,6 +36,22 @@ Daily jobs run only while CoqPi is open. Startup performs at most one catch-up p
 
 First manual test should be one draft sent to the owner's own address. Real 2-3 recipient batches come only after that succeeds.
 
+## Mail provider roadmap
+
+The current mail runtime is Gmail-first. The next accepted order is:
+
+1. Run the real Gmail smoke: search -> draft/send to self -> reply -> linked
+   reply appears in CoqPi.
+2. Add a `MailProvider` abstraction without changing Gmail behavior.
+3. Transfer safety patterns from `Wh1isper/mcp-email-server` as donor ideas:
+   capabilities, recipient/sender allowlists, unknown delivery states, and
+   provider-neutral RFC threading.
+4. Add an optional IMAP/SMTP adapter only when a real non-Gmail account is
+   needed.
+
+`mcp-email-server` is not a planned runtime dependency for v1. It is a reference
+for provider-neutral mail contracts and safety behavior.
+
 ## Replies and calls
 
 1. Check linked replies. CoqPi requests only stored Gmail thread IDs; it does not scan the inbox.

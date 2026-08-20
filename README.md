@@ -372,6 +372,8 @@ the scoped path.
 - [docs/SESSION_MEMORY_BOUNDARY.md](docs/SESSION_MEMORY_BOUNDARY.md)
 - [docs/SESSION_MEMORY_VERSIONING_NOTE.md](docs/SESSION_MEMORY_VERSIONING_NOTE.md)
 - [docs/CONTINUOUS_REVIEW_BOUNDARY.md](docs/CONTINUOUS_REVIEW_BOUNDARY.md)
+- [docs/DONOR_PATTERN_ADAPTATION.md](docs/DONOR_PATTERN_ADAPTATION.md)
+- [docs/OPPORTUNITY_TO_CALL.md](docs/OPPORTUNITY_TO_CALL.md)
 
 Also note the local Cortex bridge endpoint (for strict selected-pack handoff):
 
@@ -400,3 +402,4 @@ npx codex-security scan .
 - broad RAG appliance or separate vector infrastructure.
 
 Opportunity setup and operator flow: [docs/OPPORTUNITY_TO_CALL.md](docs/OPPORTUNITY_TO_CALL.md).
+Mail provider donor note: [docs/DONOR_PATTERN_ADAPTATION.md](docs/DONOR_PATTERN_ADAPTATION.md).
