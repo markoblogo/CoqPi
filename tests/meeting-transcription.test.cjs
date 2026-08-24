@@ -95,6 +95,23 @@ test('stop preserves transcript and clear can remove current transcript', () => 
   assert.equal(cleared, null)
 })
 
+test('stopped sessions retain an unfinalized interim segment for recovery', () => {
+  let session = makeSession('fr')
+  session = apply(session, {
+    type: 'conversation.item.input_audio_transcription.delta',
+    item_id: 'partial',
+    delta: 'Bonjour, je voulais'
+  })
+
+  const stopped = stopMeetingTranscriptionSession(
+    session,
+    '2026-08-13T10:02:00.000Z'
+  )
+
+  assert.equal(stopped.interim.partial.text, 'Bonjour, je voulais')
+  assert.match(exportMeetingTranscriptMarkdown(stopped), /Unfinalized audio/)
+})
+
 test('exports valid UTF-8 text for Ukrainian Russian French and English', () => {
   const samples = [
     ['uk', 'Доброго дня, перевірка української.'],

@@ -83,8 +83,18 @@ What works now:
   English (`en`), French (`fr`);
 - finalized transcript segments are accumulated separately from realtime
   interim events, so partial fragments are not duplicated in export;
+- every segment and safe interim checkpoint is persisted incrementally to an
+  atomic local snapshot plus an append-only NDJSON journal;
+- Recorder and Live Copilot both create a durable session with explicit
+  `recorder` or `copilot` mode;
+- a damaged snapshot can be recovered from the local journal, and pending
+  writes are flushed on Stop, window close, application quit, and reload;
+- each saved session records language, timestamps, scenario when supplied,
+  source/speaker when known, original text, and optional translation/confidence
+  fields;
 - the transcript view follows the latest finalized/interim text during a call;
-- autosave of finalized session transcript to local session storage;
+- autosave of finalized and interim session checkpoints to local session
+  storage;
 - startup restore for the autosaved meeting transcript;
 - `RT:error` in transcription mode is treated as an interrupted session with
   finalized transcript preserved and visible recovery actions;
@@ -94,7 +104,8 @@ What works now:
 
 Limits:
 - v1 uses selected microphone only; no system-audio routing;
-- no speaker diarization;
+- no voice biometrics or sophisticated speaker diarization; unknown source is
+  preserved as `UNKNOWN`;
 - call quality still depends on the selected mic hearing both sides of the call.
 
 ### 2) Finder and opportunity workflow
@@ -247,6 +258,8 @@ Useful env vars:
 ```env
 OPENAI_API_KEY=
 OPENAI_ASSISTANT_MODEL=gpt-4o-mini
+FAST_RESPONSE_MODEL=gpt-5.6-luna
+OPENAI_SIMPLE_ASSISTANT_MODEL=gpt-5.6-luna
 OPENAI_REALTIME_TRANSCRIPTION_MODEL=gpt-realtime-whisper
 OPENAI_REALTIME_TRANSCRIPTION_DELAY=low
 COQPI_ASSISTANT_PROVIDER_PROFILE=openai:0,ollama:50

@@ -29,7 +29,9 @@ import {
 } from './local-memory-core-service'
 import {
   DEFAULT_OPENAI_ASSISTANT_MODEL,
-  interviewAssistantSystemPrompt
+  DEFAULT_OPENAI_SIMPLE_ASSISTANT_MODEL,
+  interviewAssistantSystemPrompt,
+  simpleAssistantSystemPrompt
 } from '../prompts/interview-assistant-prompt'
 import {
   getOrderedEnabledProviderProfiles,
@@ -50,6 +52,8 @@ import {
 import { processTranscriptForAssistant } from '../../shared/transcript-processing'
 import { sanitizeForExternalAssistant } from '../../shared/privacy-sanitizer'
 import { buildPreCallPreparationPacket } from '../../shared/meeting-workflow'
+import { buildSimpleAssistantPrompt } from '../../shared/simple-assistant'
+import { getSimpleAssistantContext } from './simple-assistant-context-service'
 
 const DEFAULT_ANALYSIS_REQUEST_TIMEOUT_MS = 10000
 const DEFAULT_ANALYSIS_BUDGET_MS = 25000
@@ -94,6 +98,8 @@ const withTimeout = async <T>(
 type AssistantTextResponse = {
   outputText: string
   tokenCount?: number
+  model?: string
+  provider?: string
 }
 
 const ANALYSIS_SCHEMA = {
@@ -164,6 +170,12 @@ const getAssistantModel = (costMode: AssistantCostMode, providerModel?: string) 
   )
 }
 
+const getSimpleAssistantModel = () =>
+  process.env.FAST_RESPONSE_MODEL?.trim() ||
+  process.env.OPENAI_SIMPLE_ASSISTANT_MODEL?.trim() ||
+  process.env.OPENAI_ASSISTANT_MODEL_SIMPLE?.trim() ||
+  DEFAULT_OPENAI_SIMPLE_ASSISTANT_MODEL
+
 const getOpenAIClient = async () => {
   const apiKey = await resolveOpenAIApiKey()
 
@@ -178,12 +190,13 @@ const getOpenAIClient = async () => {
 
 const callOpenAI = async (
   input: string,
-  model: string
+  model: string,
+  systemPrompt: string
 ): Promise<AssistantTextResponse> => {
   const client = await getOpenAIClient()
   const response = await client.responses.create({
     model,
-    instructions: interviewAssistantSystemPrompt,
+    instructions: systemPrompt,
     input,
     text: {
       format: {
@@ -212,7 +225,8 @@ const callOpenAI = async (
 const callOllama = async (
   input: string,
   model: string,
-  baseUrl: string | undefined
+  baseUrl: string | undefined,
+  systemPrompt: string
 ): Promise<AssistantTextResponse> => {
   const endpoint = `${(baseUrl || 'http://127.0.0.1:11434').replace(/\/+$/, '')}/api/chat`
   const response = await fetch(endpoint, {
@@ -225,7 +239,7 @@ const callOllama = async (
       messages: [
         {
           role: 'system',
-          content: interviewAssistantSystemPrompt
+          content: systemPrompt
         },
         {
           role: 'user',
@@ -300,17 +314,32 @@ const analyzeWithProviderFailureAware = async (
   const model =
     profile.provider === PatterLikeProviderKind.Ollama
       ? profile.model
+      : request.assistantContextMode === 'simple'
+        ? getSimpleAssistantModel()
       : getAssistantModel(request.costMode, profile.model)
 
   const executeCall = () =>
     profile.provider === PatterLikeProviderKind.Ollama
-      ? callOllama(input, model, profile.baseUrl)
-      : callOpenAI(input, model)
+      ? callOllama(
+          input,
+          model,
+          profile.baseUrl,
+          request.assistantContextMode === 'simple'
+            ? simpleAssistantSystemPrompt
+            : interviewAssistantSystemPrompt
+        )
+      : callOpenAI(
+          input,
+          model,
+          request.assistantContextMode === 'simple'
+            ? simpleAssistantSystemPrompt
+            : interviewAssistantSystemPrompt
+        )
 
   const wrappedExecute = () =>
     withTimeout(executeCall, route.timeoutMs, `assistant analysis ${route.routeLabel}`)
 
-  return runGovernedProviderAction(
+  const result = await runGovernedProviderAction(
     {
       kind: 'assistant_analysis',
       provider: profile.provider,
@@ -329,6 +358,12 @@ const analyzeWithProviderFailureAware = async (
       return tokenCount === undefined ? undefined : { tokenCount }
     }
   )
+
+  return {
+    ...result,
+    model,
+    provider: profile.provider
+  }
 }
 
 const compactProfileContext = (
@@ -497,6 +532,33 @@ const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
     request.transcriptText,
     request.callLanguage
   )
+
+  if (request.assistantContextMode === 'simple') {
+    const simpleContext = await getSimpleAssistantContext(
+      request.scenarioId ?? 'free-mode'
+    )
+    const sanitized = sanitizeForExternalAssistant(
+      buildSimpleAssistantPrompt({
+        transcriptText: processedTranscript.text,
+        profileMarkdown: simpleContext.profileMarkdown,
+        scenarioMarkdown: simpleContext.scenarioMarkdown,
+        scenarioId: simpleContext.scenarioId,
+        callLanguage: request.callLanguage,
+        answerLanguage: request.answerLanguage,
+        mode: request.mode,
+        recentWindowLabel: request.recentWindowLabel
+      })
+    )
+
+    if (sanitized.blocked) {
+      throw new Error(
+        `Assistant prompt blocked by privacy gate: ${sanitized.reason ?? 'unsafe material detected'}`
+      )
+    }
+
+    return sanitized.safeText
+  }
+
   const sections = [
     `Cost mode: ${request.costMode}`,
     `Mode: ${request.mode}`,
@@ -718,18 +780,26 @@ const attachAssistantFailureSource = (
 export const analyzeRecentTranscript = async (
   request: AssistantAnalysisRequest
 ): Promise<AssistantAnalysisResult> => {
+  const analysisStartedAt = performance.now()
+  const requestStartedAt = new Date().toISOString()
+
   if (!request.transcriptText.trim()) {
     throw new Error(
       'Transcript is empty. Add transcript lines before requesting analysis.'
     )
   }
 
-  const fallbackSessionContext = (await getSessionContext()).context
+  const fallbackSessionContext =
+    request.assistantContextMode === 'simple'
+      ? undefined
+      : (await getSessionContext()).context
   const selectedCounterpartyPackIds =
-    await resolveSessionSelectedCounterpartyPackIds(
-      request.selectedCounterpartyPackIds ??
-        fallbackSessionContext.selectedCounterpartyPackIds
-    )
+    request.assistantContextMode === 'simple'
+      ? []
+      : await resolveSessionSelectedCounterpartyPackIds(
+          request.selectedCounterpartyPackIds ??
+            fallbackSessionContext?.selectedCounterpartyPackIds
+        )
 
   const resolvedRequest: AssistantAnalysisRequest = {
     ...request,
@@ -769,7 +839,25 @@ export const analyzeRecentTranscript = async (
           budgetMs: remainingBudgetMs
         }
       )
-      return parseStructuredResponse(result.outputText)
+      const parsed = parseStructuredResponse(result.outputText)
+      const responseCompletedAt = new Date().toISOString()
+
+      return {
+        ...parsed,
+        suggestedAnswers:
+          resolvedRequest.assistantContextMode === 'simple'
+            ? parsed.suggestedAnswers.slice(0, 1)
+            : parsed.suggestedAnswers,
+        latencyMs: Math.round(performance.now() - analysisStartedAt),
+        model: result.model,
+        provider: result.provider,
+        promptVersion:
+          resolvedRequest.assistantContextMode === 'simple'
+            ? 'simple-v1'
+            : 'legacy-v1',
+        requestStartedAt,
+        responseCompletedAt
+      }
     } catch (error) {
       remainingBudgetMs -= Math.round(performance.now() - attemptStartMs)
       lastError = attachAssistantFailureSource(

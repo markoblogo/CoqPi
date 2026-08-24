@@ -67,3 +67,30 @@ export const getAppInfo = (): AppInfo => {
 export const getProfileContextPath = () => {
   return path.join(getAppInfo().profileDirectory, 'profile_context.md')
 }
+
+export const getSimpleAssistantDirectory = () => {
+  return path.join(getDefaultDataDirectory(), 'simple-assistant')
+}
+
+export const getSimpleAssistantProfilePath = () => {
+  return path.join(
+    getSimpleAssistantDirectory(),
+    'profile',
+    'core-profile.md'
+  )
+}
+
+export const getSimpleAssistantScenariosDirectory = () => {
+  return path.join(getSimpleAssistantDirectory(), 'scenarios')
+}
+
+export const getSimpleAssistantFranceInterviewPath = () => {
+  return path.join(
+    getSimpleAssistantScenariosDirectory(),
+    'france-interview.md'
+  )
+}
+
+export const getSimpleAssistantTrainingDirectory = () => {
+  return path.join(getSimpleAssistantDirectory(), 'training')
+}

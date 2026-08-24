@@ -239,6 +239,7 @@ import {
   type MockTranscriptScenarioId
 } from '@renderer/mock/mock-transcript-lines'
 import { RealtimeTranscriptionClient } from '@renderer/realtime/realtime-transcription-client'
+import { TrainingPanel } from './TrainingPanel'
 
 const missingConfigStatus: ConfigStatus = {
   hasEnvFile: false,
@@ -781,7 +782,13 @@ export const App = () => {
   }
 
   const [activeTab, setActiveTab] = useState<
-    'live' | 'transcribe' | 'prepare' | 'finder' | 'context' | 'settings'
+    | 'live'
+    | 'training'
+    | 'transcribe'
+    | 'prepare'
+    | 'finder'
+    | 'context'
+    | 'settings'
   >('live')
   const [controls, setControls] = useState<ControlState>(defaultControlState)
   const [configStatus, setConfigStatus] =
@@ -1298,6 +1305,16 @@ export const App = () => {
   }, [interfaceDensity])
 
   useEffect(() => {
+    const flushMeetingTranscript = () => {
+      void window.coqpi.meetingTranscription.flush()
+    }
+
+    window.addEventListener('beforeunload', flushMeetingTranscript)
+    return () =>
+      window.removeEventListener('beforeunload', flushMeetingTranscript)
+  }, [])
+
+  useEffect(() => {
     const loadInitialState = async () => {
       try {
         const [
@@ -1722,6 +1739,7 @@ export const App = () => {
   const currentTranscriptLanguage = toTranscriptLanguage(controls.callLanguage)
 
   const handleRealtimeEvent = (event: Record<string, unknown>) => {
+    persistMeetingRealtimeEvent(event)
     setRealtimeEventCounters((current) => ({
       ...current,
       total: current.total + 1
@@ -1868,6 +1886,7 @@ export const App = () => {
       const message = extractRealtimeErrorMessage(event)
       setRealtimeStatus('error')
       setRealtimeError(message)
+      markMeetingSessionInterrupted(message)
       setLastSanitizedRealtimeError(message)
     }
   }
@@ -1882,6 +1901,28 @@ export const App = () => {
             : 'Unable to autosave meeting transcript.'
         )
       })
+  }
+
+  const persistMeetingRealtimeEvent = (event: Record<string, unknown>) => {
+    setMeetingSession((currentSession) => {
+      if (!currentSession) return currentSession
+
+      const result = applyMeetingTranscriptionRealtimeEvent({
+        session: currentSession,
+        event,
+        now: new Date().toISOString(),
+        createSegmentId: createTranscriptId
+      })
+
+      if (
+        result.committed ||
+        event.type === 'conversation.item.input_audio_transcription.delta'
+      ) {
+        autosaveMeetingSession(result.session)
+      }
+
+      return result.session
+    })
   }
 
   const markMeetingSessionInterrupted = (message: string) => {
@@ -1901,7 +1942,8 @@ export const App = () => {
         ...currentSession,
         status: 'error',
         stoppedAt: currentSession.stoppedAt ?? new Date().toISOString(),
-        interim: {}
+        endedAt: currentSession.endedAt ?? new Date().toISOString(),
+        interim: currentSession.interim
       }
       autosaveMeetingSession(interrupted)
       return interrupted
@@ -1948,24 +1990,7 @@ export const App = () => {
       }))
     }
 
-    setMeetingSession((currentSession) => {
-      if (!currentSession) {
-        return currentSession
-      }
-
-      const result = applyMeetingTranscriptionRealtimeEvent({
-        session: currentSession,
-        event,
-        now: new Date().toISOString(),
-        createSegmentId: createTranscriptId
-      })
-
-      if (result.committed) {
-        autosaveMeetingSession(result.session)
-      }
-
-      return result.session
-    })
+    persistMeetingRealtimeEvent(event)
 
     if (event.type === 'conversation.item.input_audio_transcription.failed') {
       setRealtimeEventCounters((current) => ({
@@ -4336,6 +4361,30 @@ export const App = () => {
       )
     }
 
+    if (meetingSession && meetingSession.segments.length > 0) {
+      setMeetingError(
+        'Current transcript is preserved. Export or Clear before starting a new recording.'
+      )
+      setActiveTab('transcribe')
+      return
+    }
+
+    const copilotSession = createMeetingTranscriptionSession({
+      id: createTranscriptId(),
+      language:
+        controls.callLanguage === 'English'
+          ? 'en'
+          : controls.callLanguage === 'French'
+            ? 'fr'
+            : meetingLanguage,
+      inputLabel: selectedDeviceLabel,
+      mode: 'copilot',
+      now: new Date().toISOString()
+    })
+    setMeetingSession(copilotSession)
+    autosaveMeetingSession(copilotSession)
+    setHasExportedMeetingTranscript(false)
+
     setRealtimeError(null)
     setRealtimeEventTypes([])
     setRealtimeLifecycleLog([])
@@ -4370,6 +4419,7 @@ export const App = () => {
         onError: (message) => {
           setRealtimeStatus('error')
           setRealtimeError(message)
+          markMeetingSessionInterrupted(message)
           setLastSanitizedRealtimeError(message)
         }
       })
@@ -4382,6 +4432,7 @@ export const App = () => {
           ? error.message
           : 'Unable to start realtime transcription.'
       setRealtimeError(message)
+      markMeetingSessionInterrupted(message)
       setLastSanitizedRealtimeError(message)
     }
   }
@@ -4403,6 +4454,18 @@ export const App = () => {
       setRealtimeStatus('stopped')
       setDataChannelState('closed')
       setPeerConnectionState('closed')
+      setMeetingSession((currentSession) => {
+        if (!currentSession || currentSession.mode !== 'copilot') {
+          return currentSession
+        }
+
+        const stopped = stopMeetingTranscriptionSession(
+          currentSession,
+          new Date().toISOString()
+        )
+        autosaveMeetingSession(stopped)
+        return stopped
+      })
       pushRealtimeLifecycleLog('media tracks stopped')
       pushRealtimeLifecycleLog('peer connection closed')
     } catch (error) {
@@ -4413,6 +4476,7 @@ export const App = () => {
           ? error.message
           : 'Unable to stop realtime transcription cleanly.'
       setRealtimeError(message)
+      markMeetingSessionInterrupted(message)
       setLastSanitizedRealtimeError(message)
     }
   }
@@ -4447,6 +4511,7 @@ export const App = () => {
       id: createTranscriptId(),
       language: meetingLanguage,
       inputLabel: selectedDeviceLabel,
+      mode: 'recorder',
       now
     })
 
@@ -6813,6 +6878,15 @@ export const App = () => {
             <span className="nav-label">Live</span>
           </button>
           <button
+            className={activeTab === 'training' ? 'tab-active' : ''}
+            onClick={() => setActiveTab('training')}
+            title="Practice interview answers"
+            type="button"
+          >
+            <Sparkles aria-hidden="true" size={15} />
+            <span className="nav-label">Training</span>
+          </button>
+          <button
             className={activeTab === 'transcribe' ? 'tab-active' : ''}
             onClick={() => setActiveTab('transcribe')}
             title="Meeting transcription"
@@ -6880,6 +6954,8 @@ export const App = () => {
           )}
         </button>
       </header>
+
+      {activeTab === 'training' ? <TrainingPanel /> : null}
 
       {activeTab === 'transcribe' ? (
         <section className="transcribe-layout">
@@ -7024,6 +7100,7 @@ export const App = () => {
                     <article className="transcript-item" key={segment.id}>
                       <div className="transcript-item-meta">
                         <span>{formatTranscriptTime(segment.startTime)}</span>
+                        <span>{segment.speaker ?? segment.source?.toUpperCase() ?? 'UNKNOWN'}</span>
                         <span>Final</span>
                       </div>
                       <p className="transcript-item-text">{segment.text}</p>

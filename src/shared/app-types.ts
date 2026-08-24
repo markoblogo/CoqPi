@@ -872,6 +872,22 @@ export type AssistantRecentWindowLabel = '30s' | '2m' | 'full'
 
 export type AssistantCostMode = 'economy' | 'balanced' | 'quality'
 
+export type AssistantContextMode = 'legacy' | 'simple'
+
+export const simpleAssistantScenarioIds = [
+  'free-mode',
+  'france-job-interview',
+  'international-job-interview',
+  'ai-product-role',
+  'agro-business',
+  'client-consulting',
+  'networking',
+  'art'
+] as const
+
+export type SimpleAssistantScenarioId =
+  (typeof simpleAssistantScenarioIds)[number]
+
 export interface AssistantAnalysisRequest {
   transcriptText: string
   callLanguage: AssistantCallLanguage
@@ -885,6 +901,8 @@ export interface AssistantAnalysisRequest {
   selectedCounterpartyPackIds?: string[]
   recentWindowLabel: AssistantRecentWindowLabel
   costMode: AssistantCostMode
+  assistantContextMode?: AssistantContextMode
+  scenarioId?: SimpleAssistantScenarioId
 }
 
 export interface AssistantAnalysisResult {
@@ -895,6 +913,12 @@ export interface AssistantAnalysisResult {
   suggestedAnswers: SuggestedAnswer[]
   keywordsToRemember: string[]
   openingPhrase?: string
+  latencyMs?: number
+  model?: string
+  provider?: string
+  promptVersion?: string
+  requestStartedAt?: string
+  responseCompletedAt?: string
 }
 
 export interface AssistantAnalysisError {
@@ -1028,6 +1052,31 @@ export interface SessionSummary extends SessionSummaryDraft {
 
 export interface SessionSummariesResult {
   summaries: SessionSummary[]
+}
+
+export interface TrainingSessionEntry {
+  id: string
+  sessionId?: string
+  createdAt: string
+  scenarioId: SimpleAssistantScenarioId
+  language?: AssistantAnswerLanguage
+  transcriptText: string
+  source?: 'manual' | 'realtime' | 'mock'
+  speaker?: 'other' | 'me' | 'unknown'
+  answerText: string
+  answerMeaningRu: string
+  feedback: 'true' | 'false' | null
+  mode: AssistantContextMode
+  manualCorrectedAnswer?: string
+  latencyMs?: number
+  model?: string
+  promptVersion?: string
+  requestStartedAt?: string
+  responseCompletedAt?: string
+}
+
+export interface TrainingSessionResult {
+  sessions: TrainingSessionEntry[]
 }
 
 export interface SmokeFixQueueItem {

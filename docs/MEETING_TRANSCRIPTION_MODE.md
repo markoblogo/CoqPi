@@ -6,18 +6,23 @@ Path:
 
 `Open CoqPi -> Transcribe -> choose language -> Start -> meeting -> Stop -> Save Markdown or Copy Markdown`
 
-Current status: manually checked on the local Mac. The app can transcribe from
-the selected microphone, stop without clearing the transcript, and export a
-UTF-8 Markdown transcript.
+Current status: local incremental persistence is implemented. The app can
+transcribe from the selected microphone, preserve checkpoints during an
+interruption, restore a damaged snapshot from its journal, and export a UTF-8
+Markdown transcript.
 
 ## What It Does
 
 - listens to the selected microphone;
 - sends audio only to the realtime transcription provider;
 - displays interim text live;
-- commits only finalized transcript segments;
+- commits finalized transcript segments and safe interim checkpoints;
 - scrolls the transcript view toward the latest text;
-- autosaves the current meeting transcript locally;
+- autosaves the current meeting transcript to an atomic snapshot and an
+  append-only NDJSON journal after realtime events;
+- uses the same recording path when Live Copilot is enabled, while keeping
+  assistant failures separate from transcript persistence;
+- flushes pending local writes on Stop, window close, app quit, and reload;
 - exports Markdown or TXT as UTF-8;
 - can copy the Markdown transcript directly to clipboard if the save dialog is
   inconvenient during a call;
@@ -29,7 +34,8 @@ UTF-8 Markdown transcript.
 - no assistant answers;
 - no reply suggestions;
 - no summary during the call;
-- no speaker labels in v1;
+- no reliable speaker labels unless the audio route provides them; otherwise
+  exports use `UNKNOWN`;
 - no system-audio routing.
 
 ## Manual Check
@@ -66,9 +72,10 @@ Use this when the call is in Google Meet or another app on the same Mac:
 8. Export Markdown, or use `Copy Markdown` if the file dialog is not convenient.
 
 If status becomes `interrupted - transcript preserved`, realtime transcription
-failed but finalized text remains in the local session. Use `Stop`, then
-`Save Markdown` or `Copy Markdown`. `Clear` asks for confirmation when the
-current transcript has not been exported/copied yet.
+failed but the finalized text and any saved interim checkpoint remain in the
+local session. Use `Stop`, then `Save Markdown` or `Copy Markdown`. `Clear`
+asks for confirmation when the current transcript has not been
+exported/copied yet.
 
 If headphones are used, CoqPi will usually capture only your own voice unless
 the headset leaks enough audio into the microphone. System-audio routing is not
@@ -100,8 +107,23 @@ pnpm test:meeting-transcription
 
 This covers final/interim handling, stop/clear behavior, UTF-8 export,
 filename generation, explicit language config, reconnect-style duplicate final
-events, local autosave/restore/export, and the no-assistant boundary for the
-transcription event model.
+events, append-only journal recovery after a broken snapshot, serialized
+atomic local writes, local autosave/restore/export, and the no-assistant
+boundary for the transcription event model.
+
+## Persistence format
+
+Session data is stored under the app sessions directory (development:
+`./data/sessions`; packaged app: the CoqPi data directory):
+
+- `meeting-transcription-current.json` is the latest atomic snapshot;
+- `meeting-transcription-journal.ndjson` is an append-only sequence of safe
+  session checkpoints used for recovery;
+- `Clear` removes the current snapshot and journal after explicit confirmation
+  when needed.
+
+The journal contains only transcript session fields. It does not contain API
+keys, system prompts, unrelated settings, or assistant hidden reasoning.
 
 Live microphone and OpenAI credential behavior should be rechecked after major
 realtime/audio changes.

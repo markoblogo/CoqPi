@@ -10,12 +10,25 @@ import {
   exportMeetingTranscriptText,
   generateMeetingTranscriptFilename,
   type MeetingTranscriptionLanguage,
+  type MeetingTranscriptionMode,
+  type MeetingTranscriptionSource,
   type MeetingTranscriptionSession
 } from '../../shared/meeting-transcription'
 import { getAppInfo } from './app-state'
 
 const getCurrentMeetingTranscriptionPath = () =>
   path.join(getAppInfo().sessionsDirectory, 'meeting-transcription-current.json')
+
+const getMeetingTranscriptionJournalPath = () =>
+  path.join(getAppInfo().sessionsDirectory, 'meeting-transcription-journal.ndjson')
+
+let saveQueue = Promise.resolve()
+
+const writeAtomic = async (filePath: string, content: string) => {
+  const temporaryPath = `${filePath}.tmp`
+  await fs.writeFile(temporaryPath, content, 'utf8')
+  await fs.rename(temporaryPath, filePath)
+}
 
 const sanitizeLanguage = (value: unknown): MeetingTranscriptionLanguage => {
   return value === 'ru' || value === 'en' || value === 'fr' ? value : 'uk'
@@ -24,6 +37,9 @@ const sanitizeLanguage = (value: unknown): MeetingTranscriptionLanguage => {
 const sanitizeText = (value: unknown) =>
   typeof value === 'string' ? value.trim() : ''
 
+const sanitizeSource = (value: unknown): MeetingTranscriptionSource =>
+  value === 'microphone' || value === 'system' ? value : 'unknown'
+
 const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => {
   if (!value || typeof value !== 'object') {
     return null
@@ -31,6 +47,7 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
 
   const candidate = value as Partial<MeetingTranscriptionSession>
   const segments: MeetingTranscriptionSession['segments'] = []
+  const interim: MeetingTranscriptionSession['interim'] = {}
 
   if (Array.isArray(candidate.segments)) {
     for (const segment of candidate.segments) {
@@ -53,10 +70,29 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
         startTime,
         endTime: sanitizeText(entry.endTime) || undefined,
         text,
+        source: sanitizeSource(entry.source),
+        translatedText: sanitizeText(entry.translatedText) || undefined,
+        confidence:
+          typeof entry.confidence === 'number' &&
+          Number.isFinite(entry.confidence)
+            ? Math.max(0, Math.min(1, entry.confidence))
+            : undefined,
         speaker: sanitizeText(entry.speaker) || undefined,
         isFinal: true as const,
         sourceItemId: sanitizeText(entry.sourceItemId) || undefined
       })
+    }
+  }
+
+  if (candidate.interim && typeof candidate.interim === 'object') {
+    for (const [itemId, value] of Object.entries(candidate.interim)) {
+      if (!value || typeof value !== 'object') continue
+      const entry = value as Partial<MeetingTranscriptionSession['interim'][string]>
+      const text = sanitizeText(entry.text)
+      const startTime = sanitizeText(entry.startTime)
+      const updatedAt = sanitizeText(entry.updatedAt)
+      if (!text || !startTime || !updatedAt) continue
+      interim[itemId] = { itemId, text, startTime, updatedAt }
     }
   }
 
@@ -71,8 +107,14 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
     id,
     language: sanitizeLanguage(candidate.language),
     inputLabel: sanitizeText(candidate.inputLabel),
+    mode:
+      candidate.mode === 'copilot' || candidate.mode === 'recorder'
+        ? (candidate.mode as MeetingTranscriptionMode)
+        : 'recorder',
+    scenario: sanitizeText(candidate.scenario) || undefined,
     startedAt,
     stoppedAt: sanitizeText(candidate.stoppedAt) || undefined,
+    endedAt: sanitizeText(candidate.endedAt) || undefined,
     status:
       candidate.status === 'recording' ||
       candidate.status === 'stopped' ||
@@ -80,7 +122,7 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
         ? candidate.status
         : 'idle',
     segments,
-    interim: {}
+    interim
   }
 }
 
@@ -90,6 +132,23 @@ export const getCurrentMeetingTranscriptionSession =
       const raw = await fs.readFile(getCurrentMeetingTranscriptionPath(), 'utf8')
       return sanitizeSession(JSON.parse(raw))
     } catch {
+      try {
+        const journal = await fs.readFile(
+          getMeetingTranscriptionJournalPath(),
+          'utf8'
+        )
+        const entries = journal.trim().split('\n').reverse()
+        for (const entry of entries) {
+          try {
+            const session = sanitizeSession(JSON.parse(entry).session)
+            if (session) return session
+          } catch {
+            // Ignore a truncated final journal record and try the previous one.
+          }
+        }
+      } catch {
+        // No recoverable local transcript exists.
+      }
       return null
     }
   }
@@ -104,17 +163,36 @@ export const saveCurrentMeetingTranscriptionSession = async (
   }
 
   const filePath = getCurrentMeetingTranscriptionPath()
-  await fs.mkdir(path.dirname(filePath), { recursive: true })
-  await fs.writeFile(filePath, JSON.stringify(sanitized, null, 2), 'utf8')
+  const journalPath = getMeetingTranscriptionJournalPath()
+  const serialized = JSON.stringify(sanitized, null, 2)
+  const journalEntry = `${JSON.stringify({
+    savedAt: new Date().toISOString(),
+    session: sanitized
+  })}\n`
+
+  saveQueue = saveQueue.then(async () => {
+    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    await fs.appendFile(journalPath, journalEntry, 'utf8')
+    await writeAtomic(filePath, serialized)
+  })
+  await saveQueue
 
   return { ok: true }
 }
 
 export const clearCurrentMeetingTranscriptionSession =
   async (): Promise<MeetingTranscriptionSaveResult> => {
-    await fs.rm(getCurrentMeetingTranscriptionPath(), { force: true })
+    saveQueue = saveQueue.then(async () => {
+      await fs.rm(getCurrentMeetingTranscriptionPath(), { force: true })
+      await fs.rm(getMeetingTranscriptionJournalPath(), { force: true })
+    })
+    await saveQueue
     return { ok: true }
   }
+
+export const flushMeetingTranscriptionWrites = async () => {
+  await saveQueue
+}
 
 export const writeMeetingTranscriptExport = async (
   request: MeetingTranscriptionExportRequest,

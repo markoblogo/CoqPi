@@ -18,7 +18,8 @@ import type {
   RealtimeTranscriptionStartRequest,
   SessionContext,
   SessionSummaryDraft,
-  SmokeTestNoteDraft
+  SmokeTestNoteDraft,
+  TrainingSessionEntry
 } from '../shared/app-types'
 import type { MeetingTranscriptionSession } from '../shared/meeting-transcription'
 import type {
@@ -51,6 +52,11 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:session-summaries:get', sourceId),
     save: (draft: SessionSummaryDraft) =>
       ipcRenderer.invoke('coqpi:session-summaries:save', draft)
+  },
+  trainingSessions: {
+    get: () => ipcRenderer.invoke('coqpi:training-sessions:get'),
+    save: (entry: TrainingSessionEntry) =>
+      ipcRenderer.invoke('coqpi:training-sessions:save', entry)
   },
   finderSearch: {
     get: () => ipcRenderer.invoke('coqpi:finder-search:get'),
@@ -289,6 +295,7 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:meeting-transcription:save-current', session),
     clearCurrent: () =>
       ipcRenderer.invoke('coqpi:meeting-transcription:clear-current'),
+    flush: () => ipcRenderer.invoke('coqpi:meeting-transcription:flush'),
     exportSession: (request: MeetingTranscriptionExportRequest) =>
       ipcRenderer.invoke('coqpi:meeting-transcription:export', request)
   }

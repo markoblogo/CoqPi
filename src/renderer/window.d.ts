@@ -35,7 +35,9 @@ import type {
   SmokeTestNote,
   SmokeTestNoteDraft,
   SmokeTestNotesResult,
-  SettingsPayload
+  SettingsPayload,
+  TrainingSessionEntry,
+  TrainingSessionResult
 } from '@shared/app-types'
 import type { MeetingTranscriptionSession } from '@shared/meeting-transcription'
 import type {
@@ -72,6 +74,10 @@ declare global {
       sessionSummaries: {
         get: (sourceId?: string) => Promise<SessionSummariesResult>
         save: (draft: SessionSummaryDraft) => Promise<SessionSummary>
+      }
+      trainingSessions: {
+        get: () => Promise<TrainingSessionResult>
+        save: (entry: TrainingSessionEntry) => Promise<TrainingSessionResult>
       }
       finderSearch: {
         get: () => Promise<FinderSearchStoreResult>
@@ -264,6 +270,7 @@ declare global {
           session: MeetingTranscriptionSession
         ) => Promise<MeetingTranscriptionSaveResult>
         clearCurrent: () => Promise<MeetingTranscriptionSaveResult>
+        flush: () => Promise<void>
         exportSession: (
           request: MeetingTranscriptionExportRequest
         ) => Promise<MeetingTranscriptionExportResult>

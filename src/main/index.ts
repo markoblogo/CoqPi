@@ -35,6 +35,8 @@ import type {
   SessionSummariesResult,
   SessionSummary,
   SessionSummaryDraft,
+  TrainingSessionEntry,
+  TrainingSessionResult,
   SmokeTestNote,
   SmokeTestNoteDraft,
   SmokeTestNotesResult,
@@ -47,6 +49,7 @@ import { getProfileContext } from '../backend/services/profile-service'
 import { createRealtimeTranscriptionAnswer } from '../backend/services/realtime-transcription-service'
 import {
   clearCurrentMeetingTranscriptionSession,
+  flushMeetingTranscriptionWrites,
   getCurrentMeetingTranscriptionSession,
   getMeetingTranscriptDefaultFilename,
   saveCurrentMeetingTranscriptionSession,
@@ -74,6 +77,10 @@ import {
   getSessionSummaries,
   saveSessionSummary
 } from '../backend/services/session-summary-service'
+import {
+  getTrainingSessions,
+  saveTrainingSession
+} from '../backend/services/training-session-service'
 import {
   addFinderCandidateResult,
   addFinderSearchJob,
@@ -187,6 +194,10 @@ const createMainWindow = async () => {
       }
     }
   )
+
+  window.on('close', () => {
+    void flushMeetingTranscriptionWrites()
+  })
 
   window.webContents.on(
     'did-fail-load',
@@ -403,6 +414,20 @@ const registerIpcHandlers = () => {
       _event,
       draft: SessionSummaryDraft
     ): Promise<SessionSummary> => saveSessionSummary(draft)
+  )
+
+  ipcMain.handle(
+    'coqpi:training-sessions:get',
+    async (): Promise<TrainingSessionResult> => getTrainingSessions()
+  )
+
+  ipcMain.handle(
+    'coqpi:training-sessions:save',
+    async (
+      _event,
+      entry: TrainingSessionEntry
+    ): Promise<TrainingSessionResult> =>
+      saveTrainingSession(entry)
   )
 
   ipcMain.handle(
@@ -798,6 +823,11 @@ const registerIpcHandlers = () => {
   )
 
   ipcMain.handle(
+    'coqpi:meeting-transcription:flush',
+    async (): Promise<void> => flushMeetingTranscriptionWrites()
+  )
+
+  ipcMain.handle(
     'coqpi:meeting-transcription:export',
     async (
       _event,
@@ -822,6 +852,15 @@ const registerIpcHandlers = () => {
   )
 }
 
+let isQuitting = false
+
+app.on('before-quit', (event) => {
+  if (isQuitting) return
+  event.preventDefault()
+  isQuitting = true
+  void flushMeetingTranscriptionWrites().finally(() => app.exit(0))
+})
+
 app.whenReady().then(async () => {
   app.setName('CoqPi')
   registerIpcHandlers()
@@ -844,7 +883,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  void flushMeetingTranscriptionWrites().finally(() => {
+    if (process.platform !== 'darwin') app.quit()
+  })
 })

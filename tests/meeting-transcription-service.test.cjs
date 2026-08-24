@@ -83,3 +83,71 @@ test('meeting transcription service autosaves restores exports and clears sessio
     assert.equal(await service.getCurrentMeetingTranscriptionSession(), null)
   })
 })
+
+test('meeting transcription journal preserves interim text and recovers from a broken snapshot', async () => {
+  await withMeetingWorkspace(async ({ service, shared, directory }) => {
+    let session = shared.createMeetingTranscriptionSession({
+      id: 'meeting-recovery',
+      language: 'en',
+      inputLabel: 'MacBook Microphone',
+      mode: 'copilot',
+      scenario: 'interview',
+      now: '2026-08-13T11:00:00.000Z'
+    })
+    session = shared.applyMeetingTranscriptionRealtimeEvent({
+      session,
+      event: {
+        type: 'conversation.item.input_audio_transcription.delta',
+        item_id: 'partial',
+        delta: 'I have worked in product'
+      },
+      now: '2026-08-13T11:00:03.000Z',
+      createSegmentId: () => 'segment-1'
+    }).session
+
+    await service.saveCurrentMeetingTranscriptionSession(session)
+    const journalPath = path.join(
+      directory,
+      'sessions',
+      'meeting-transcription-journal.ndjson'
+    )
+    assert.equal((await fs.readFile(journalPath, 'utf8')).trim().split('\n').length, 1)
+
+    const currentPath = path.join(
+      directory,
+      'sessions',
+      'meeting-transcription-current.json'
+    )
+    await fs.writeFile(currentPath, '{broken', 'utf8')
+    const recovered = await service.getCurrentMeetingTranscriptionSession()
+
+    assert.equal(recovered.mode, 'copilot')
+    assert.equal(recovered.scenario, 'interview')
+    assert.equal(recovered.interim.partial.text, 'I have worked in product')
+
+    const completed = shared.applyMeetingTranscriptionRealtimeEvent({
+      session: recovered,
+      event: {
+        type: 'conversation.item.input_audio_transcription.completed',
+        item_id: 'partial',
+        transcript: 'I have worked in product management.'
+      },
+      now: '2026-08-13T11:00:05.000Z',
+      createSegmentId: () => 'segment-1'
+    }).session
+    await Promise.all([
+      service.saveCurrentMeetingTranscriptionSession(completed),
+      service.saveCurrentMeetingTranscriptionSession({
+        ...completed,
+        endedAt: '2026-08-13T11:00:06.000Z'
+      })
+    ])
+
+    const final = await service.getCurrentMeetingTranscriptionSession()
+    assert.equal(final.segments[0].text, 'I have worked in product management.')
+    assert.equal(final.endedAt, '2026-08-13T11:00:06.000Z')
+
+    await service.clearCurrentMeetingTranscriptionSession()
+    assert.equal(await service.getCurrentMeetingTranscriptionSession(), null)
+  })
+})

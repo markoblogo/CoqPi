@@ -6,12 +6,19 @@ export type MeetingTranscriptionStatus =
   | 'stopped'
   | 'error'
 
+export type MeetingTranscriptionMode = 'recorder' | 'copilot'
+
+export type MeetingTranscriptionSource = 'microphone' | 'system' | 'unknown'
+
 export interface MeetingTranscriptionSegment {
   id: string
   startTime: string
   endTime?: string
   text: string
   speaker?: string
+  source?: MeetingTranscriptionSource
+  translatedText?: string
+  confidence?: number
   isFinal: true
   sourceItemId?: string
 }
@@ -27,8 +34,11 @@ export interface MeetingTranscriptionSession {
   id: string
   language: MeetingTranscriptionLanguage
   inputLabel: string
+  mode: MeetingTranscriptionMode
+  scenario?: string
   startedAt: string
   stoppedAt?: string
+  endedAt?: string
   status: MeetingTranscriptionStatus
   segments: MeetingTranscriptionSegment[]
   interim: Record<string, MeetingTranscriptionInterim>
@@ -91,16 +101,22 @@ export const createMeetingTranscriptionSession = ({
   id,
   language,
   inputLabel,
-  now
+  now,
+  mode,
+  scenario
 }: {
   id: string
   language: MeetingTranscriptionLanguage
   inputLabel: string
   now: string
+  mode?: MeetingTranscriptionMode
+  scenario?: string
 }): MeetingTranscriptionSession => ({
   id,
   language,
   inputLabel,
+  mode: mode ?? 'recorder',
+  scenario,
   startedAt: now,
   status: 'recording',
   segments: [],
@@ -204,6 +220,7 @@ export const applyMeetingTranscriptionRealtimeEvent = ({
           startTime: interim?.startTime ?? now,
           endTime: now,
           text,
+          source: 'unknown',
           isFinal: true,
           sourceItemId: itemId
         }
@@ -221,7 +238,8 @@ export const stopMeetingTranscriptionSession = (
   ...session,
   status: 'stopped',
   stoppedAt: now,
-  interim: {}
+  endedAt: now,
+  interim: session.interim
 })
 
 export const generateMeetingTranscriptFilename = (
@@ -254,6 +272,8 @@ export const exportMeetingTranscriptMarkdown = (
     `Date: ${formatDate(session.startedAt)}`,
     `Language: ${meetingTranscriptionLanguageLabels[session.language]}`,
     `Duration: ${duration}`,
+    `Mode: ${session.mode}`,
+    ...(session.scenario ? [`Scenario: ${session.scenario}`] : []),
     `Input: ${session.inputLabel || 'Unknown microphone'}`,
     '',
     '## Transcript',
@@ -261,7 +281,22 @@ export const exportMeetingTranscriptMarkdown = (
   ]
 
   for (const segment of session.segments) {
-    lines.push(`[${formatSegmentOffset(session, segment.startTime)}] ${segment.text}`)
+    const source = segment.speaker ?? segment.source?.toUpperCase() ?? 'UNKNOWN'
+    lines.push(
+      `[${formatSegmentOffset(session, segment.startTime)}] ${source}`,
+      segment.text
+    )
+  }
+
+  const interimEntries = Object.values(session.interim)
+  if (interimEntries.length > 0) {
+    lines.push('', '## Unfinalized audio', '')
+    for (const interim of interimEntries) {
+      lines.push(
+        `[${formatSegmentOffset(session, interim.startTime)}] UNKNOWN (interim)`,
+        interim.text
+      )
+    }
   }
 
   return `${lines.join('\n')}\n`
@@ -274,6 +309,7 @@ export const exportMeetingTranscriptText = (
     'Meeting Transcript',
     `Date: ${formatDate(session.startedAt)}`,
     `Language: ${meetingTranscriptionLanguageLabels[session.language]}`,
+    `Mode: ${session.mode}`,
     `Input: ${session.inputLabel || 'Unknown microphone'}`,
     ''
   ]
@@ -282,7 +318,13 @@ export const exportMeetingTranscriptText = (
     ...header,
     ...session.segments.map(
       (segment) =>
-        `[${formatSegmentOffset(session, segment.startTime)}] ${segment.text}`
+        `[${formatSegmentOffset(session, segment.startTime)}] ${
+          segment.speaker ?? segment.source?.toUpperCase() ?? 'UNKNOWN'
+        }\n${segment.text}`
+    ),
+    ...Object.values(session.interim).map(
+      (interim) =>
+        `[${formatSegmentOffset(session, interim.startTime)}] UNKNOWN (interim)\n${interim.text}`
     )
   ].join('\n')}\n`
 }

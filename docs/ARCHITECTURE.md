@@ -61,12 +61,13 @@ This path is on-demand only. It is read-only, does not use microphone/audio, and
 
 ### Meeting transcription path
 
-`selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> meeting transcript session -> local autosave -> Markdown/TXT export`
+`selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> meeting transcript session -> atomic snapshot + append-only local journal -> Markdown/TXT export`
 
 This path is separate from assistant analysis. It accepts explicit `uk`, `ru`,
-`en`, or `fr` transcription language, commits only finalized realtime
-transcription events, keeps interim text out of exports, and stores an
-autosaved JSON session locally for crash recovery. It does not translate,
+`en`, or `fr` transcription language, persists finalized events and safe
+interim checkpoints, keeps incomplete text visibly marked in exports, and
+stores an atomic JSON snapshot plus append-only journal locally for crash
+recovery. It does not translate,
 summarize, suggest answers, call Ollama, or call
 `assistant.analyzeRecentTranscript`.
 
@@ -136,7 +137,9 @@ Shared cost constants live in:
 - **Stored encrypted API key**: file under `app.getPath("userData")/secrets/`
 - **Governance receipts**: `data/governance/receipts.jsonl`
 
-Transcript persistence is still not enabled by default.
+Transcript persistence is enabled for the standalone Transcribe path and for
+Live sessions. It remains local-only and is cleared only by an explicit user
+action.
 
 ## Cortex Context Boundary
 
