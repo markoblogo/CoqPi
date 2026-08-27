@@ -1,0 +1,10 @@
+{
+  "request_id": "coqpi-local-smoke-001",
+  "question": "What communication style should I use?",
+  "context": [
+    {
+      "id": "simple-assistant-profile",
+      "text": "Use calm, senior, natural English or French. Prefer short phrases that are easy to say under stress."
+    }
+  ]
+}

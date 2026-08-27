@@ -40,7 +40,8 @@
     "handoff:signed": "pnpm dump-manifest -- --handoff --sign",
     "handoff:with-dates": "node scripts/handoff-with-dates.cjs",
     "handoff:with-dates:signed": "pnpm handoff:with-dates -- --sign",
-    "handoff:with-dates:reject-partial": "pnpm handoff:with-dates -- --reject-partial"
+    "handoff:with-dates:reject-partial": "pnpm handoff:with-dates -- --reject-partial",
+    "local-model:smoke": "node scripts/local-model-context-smoke.cjs"
   },
   "build": {
     "appId": "local.coqpi.app",

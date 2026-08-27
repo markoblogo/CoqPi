@@ -82,3 +82,18 @@ This is intended for:
 - no inclusion of unselected packs;
 - no automatic promotion of session state into durable memory;
 - no external provider, outreach, or call authority from retrieval success.
+
+## Optional local model worker
+
+CoqPi can exercise the local MPS worker without changing the production
+provider route:
+
+```sh
+pnpm local-model:smoke
+```
+
+The worker receives only the selected fixture/context supplied by the caller,
+returns a read-only receipt, and does not promote answers into memory. Start
+it from the shared local-models checkout with `python3 local_model_worker.py`.
+The local route is experimental and is not a replacement for the existing
+OpenAI/Ollama governance path until separately evaluated.
