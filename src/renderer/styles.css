@@ -3809,3 +3809,55 @@ button.opportunity-thread {
   .opportunity-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .opportunity-workflow-grid { grid-template-columns: 1fr; }
 }
+
+/* Live cockpit: chronology first, assistant actions second, diagnostics last. */
+.live-main {
+  grid-template-columns: minmax(460px, 1.55fr) minmax(300px, 0.75fr);
+  min-height: clamp(430px, 62vh, 760px);
+  order: 1;
+}
+
+.transcript-card {
+  grid-column: 1;
+  grid-row: 1;
+  border-color: rgba(98, 201, 142, 0.26);
+  background: rgba(13, 20, 22, 0.96);
+}
+
+.live-side {
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.live-status-surface,
+.payload-audit-details {
+  order: 2;
+}
+
+.transcript-card .panel-header {
+  border-bottom: 1px solid rgba(98, 201, 142, 0.14);
+  padding-bottom: 7px;
+}
+
+@media (max-width: 780px) {
+  .live-main {
+    grid-template-columns: minmax(360px, 1.25fr) minmax(250px, 0.75fr);
+  }
+}
+
+@media (max-width: 660px) {
+  .live-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(360px, 1fr) auto;
+    overflow: visible;
+  }
+
+  .transcript-card,
+  .live-side {
+    grid-column: 1;
+  }
+
+  .transcript-card { grid-row: 1; }
+  .live-side { grid-row: 2; }
+}
