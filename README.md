@@ -22,8 +22,12 @@ OpenAI Realtime is the primary live transcription path. OpenAI text analysis is 
 
 ## Current product status
 
+Latest release: [v0.2.0](https://github.com/markoblogo/CoqPi/releases/tag/v0.2.0).
+See [release notes and installation limits](docs/releases/v0.2.0.md).
+
 ### Conversation-first update
 
+- Live supports manual speaker marking: your speech is saved as `ME`, but does not trigger translation or answer suggestions. The incoming question and suggested answer remain available to read.
 - Live opens with one large suggested answer and smaller incoming meaning. Recording status and Stop stay visible; context and diagnostics expand on demand.
 - Language follows each finalized utterance, including switches during a call. Short ambiguous replies retain the previous language. Detection is a local text heuristic, not guaranteed acoustic language identification.
 - Recorder and Copilot save original text independently of assistant success. Safe interim checkpoints, recoverable write queues, bounded STT reconnects and archived sessions protect already received text.
@@ -31,6 +35,16 @@ OpenAI Realtime is the primary live transcription path. OpenAI text analysis is 
 - Automated checks cover language switches, storage failures and the actual Electron UI with simulated providers. Real microphone quality, mixed-speaker attribution and long noisy calls still need human validation. No raw audio backup or system-audio capture is claimed.
 
 See [delivery priorities, verification and remaining work](docs/CONVERSATION_DELIVERY_PLAN.md).
+
+### Speaking Without Triggering Copilot
+
+1. In Live, hold **Space before speaking** while CoqPi is focused; release when finished.
+2. For a long answer or when switching to Meet/Zoom, toggle **Говорю я** instead; toggle it off when the other person resumes.
+3. Stop and open Saved conversations to review/export the original transcript with `ME`/`OTHER` labels.
+
+Space is not a system-wide shortcut and does not intercept typing in editable
+fields. Manual marking does not mute recording or identify voices automatically.
+See [speaker controls, delayed transcript behavior and limitations](docs/MANUAL_SPEAKER_MODE.md).
 
 Read first for a fresh coding session:
 

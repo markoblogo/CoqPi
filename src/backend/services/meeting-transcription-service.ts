@@ -110,7 +110,7 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
       const startTime = sanitizeText(entry.startTime)
       const updatedAt = sanitizeText(entry.updatedAt)
       if (!text || !startTime || !updatedAt) continue
-      interim[itemId] = { itemId, text, startTime, updatedAt }
+      interim[itemId] = { itemId, text, startTime, updatedAt, speaker: sanitizeText(entry.speaker) || undefined }
     }
   }
 

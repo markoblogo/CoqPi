@@ -27,6 +27,7 @@ export interface MeetingTranscriptionSegment {
 }
 
 export interface MeetingTranscriptionInterim {
+  speaker?: string
   itemId: string
   text: string
   startTime: string
@@ -49,6 +50,7 @@ export interface MeetingTranscriptionSession {
 }
 
 export interface MeetingRealtimeEvent {
+  speaker?: 'ME' | 'OTHER'
   type?: string
   item_id?: string
   delta?: string
@@ -163,7 +165,8 @@ export const applyMeetingTranscriptionRealtimeEvent = ({
       itemId,
       text: current ? `${current.text}${delta}` : delta,
       startTime: current?.startTime ?? now,
-      updatedAt: now
+      updatedAt: now,
+      speaker: event.speaker ?? current?.speaker
     }
 
     return {
@@ -201,6 +204,7 @@ export const applyMeetingTranscriptionRealtimeEvent = ({
     nextSegments[existingIndex] = {
       ...nextSegments[existingIndex],
       text,
+      speaker: event.speaker ?? nextSegments[existingIndex].speaker,
       endTime: now
     }
 
@@ -226,6 +230,7 @@ export const applyMeetingTranscriptionRealtimeEvent = ({
           text,
           language: detectConversationLanguage(text, session.segments.at(-1)?.language ?? session.language),
           source: 'unknown',
+          speaker: event.speaker ?? interim?.speaker,
           isFinal: true,
           sourceItemId: itemId
         }
@@ -298,7 +303,7 @@ export const exportMeetingTranscriptMarkdown = (
     lines.push('', '## Unfinalized audio', '')
     for (const interim of interimEntries) {
       lines.push(
-        `[${formatSegmentOffset(session, interim.startTime)}] UNKNOWN (interim)`,
+        `[${formatSegmentOffset(session, interim.startTime)}] ${interim.speaker ?? 'UNKNOWN'} (interim)`,
         interim.text
       )
     }
@@ -329,7 +334,7 @@ export const exportMeetingTranscriptText = (
     ),
     ...Object.values(session.interim).map(
       (interim) =>
-        `[${formatSegmentOffset(session, interim.startTime)}] UNKNOWN (interim)\n${interim.text}`
+        `[${formatSegmentOffset(session, interim.startTime)}] ${interim.speaker ?? 'UNKNOWN'} (interim)\n${interim.text}`
     )
   ].join('\n')}\n`
 }

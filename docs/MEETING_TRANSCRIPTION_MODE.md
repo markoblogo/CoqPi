@@ -41,6 +41,11 @@ Markdown transcript.
   exports use `UNKNOWN`;
 - no system-audio routing.
 
+When recording through Live, [manual speaker marking](MANUAL_SPEAKER_MODE.md)
+preserves `ME`/`OTHER` labels without stopping transcription. This is a user
+annotation, not diarization or separate system-audio capture. Recorder-only
+sessions continue to use `UNKNOWN` when the source is unavailable.
+
 ## Manual Check
 
 1. Open `Transcribe`.

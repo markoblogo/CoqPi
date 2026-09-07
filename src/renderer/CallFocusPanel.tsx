@@ -1,7 +1,9 @@
-import { Copy, Play, Square, Settings2, RefreshCw } from 'lucide-react'
+import { Copy, Play, Square, Settings2, RefreshCw, UserRound, Ear } from 'lucide-react'
 import type { AssistantAnalysisResult, CallLanguage, RealtimeConnectionStatus } from '@shared/app-types'
 
 interface Props {
+  speaking: boolean
+  onToggleSpeaking: () => void
   result: AssistantAnalysisResult | null
   heard: string
   stale: boolean
@@ -31,6 +33,10 @@ export const CallFocusPanel = (props: Props) => {
       <button aria-label="Start listening" title="Start listening" disabled={!props.canStart} onClick={props.onStart}><Play size={18} fill="currentColor" /></button>
       <button aria-label="Stop listening" title="Stop and save" disabled={!props.canStop} onClick={props.onStop}><Square size={15} fill="currentColor" /></button>
       <span role="status">{props.status === 'listening' ? 'Listening' : props.status}</span>
+      <button className="call-speaker-toggle" aria-label="I am speaking" aria-pressed={props.speaking} disabled={!['connecting','connected','listening'].includes(props.status)} title="I'm speaking: record only. Hold Space with CoqPi focused, or click to keep this mode on." onClick={props.onToggleSpeaking}>
+        {props.speaking ? <UserRound size={16} /> : <Ear size={16} />}
+        <span>{props.speaking ? 'Говорю я' : 'Собеседник'}</span>
+      </button>
       <select aria-label="Conversation language" value={props.language} disabled={props.canStop} onChange={event => props.onLanguage(event.target.value as CallLanguage)}>
         {['Auto', 'English', 'French', 'Russian', 'Ukrainian'].map(language => <option key={language}>{language}</option>)}
       </select>

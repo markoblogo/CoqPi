@@ -244,6 +244,7 @@ import { RealtimeTranscriptionClient } from '@renderer/realtime/realtime-transcr
 const TrainingPanel = lazy(() => import('./TrainingPanel').then(module => ({ default: module.TrainingPanel })))
 import { detectConversationLanguage, type ConversationLanguage } from '@shared/conversation-language'
 import { CallFocusPanel } from './CallFocusPanel'
+import { useManualSpeaker } from './useManualSpeaker'
 const RecordingHistory = lazy(() => import('./RecordingHistory').then(module => ({ default: module.RecordingHistory })))
 const MeetingPreparationBrief = lazy(() => import('./MeetingPreparationBrief').then(module => ({ default: module.MeetingPreparationBrief })))
 
@@ -1775,9 +1776,21 @@ export const App = () => {
   }
 
   const currentTranscriptLanguage = controls.callLanguage === 'Auto' ? detectedLanguage : toTranscriptLanguage(controls.callLanguage)
+  const manualSpeaker = useManualSpeaker(activeTab === 'live' && ['connecting', 'connected', 'listening'].includes(realtimeStatus), ids => {
+    setTranscriptUtterances(current => current.map(item => item.sourceItemId && ids.includes(item.sourceItemId) ? { ...item, speaker: 'me' } : item))
+    setMeetingSession(current => {
+      if (!current) return current
+      const interim = { ...current.interim }
+      for (const id of ids) if (interim[id]) interim[id] = { ...interim[id], speaker: 'ME' }
+      const next = { ...current, interim, segments: current.segments.map(segment => segment.sourceItemId && ids.includes(segment.sourceItemId) ? { ...segment, speaker: 'ME' } : segment) }
+      autosaveMeetingSession(next)
+      return next
+    })
+  })
 
   const handleRealtimeEvent = (event: Record<string, unknown>) => {
-    persistMeetingRealtimeEvent(event)
+    const speaker = manualSpeaker.tracker.current.observe(event) === 'self' ? 'me' : 'other'
+    persistMeetingRealtimeEvent({ ...event, speaker: speaker === 'me' ? 'ME' : 'OTHER' })
     setRealtimeEventCounters((current) => ({
       ...current,
       total: current.total + 1
@@ -1819,7 +1832,7 @@ export const App = () => {
         if (existingIndex === -1) {
           return appendUtterance(currentUtterances, {
             id: createTranscriptId(),
-            speaker: 'other',
+            speaker,
             text: delta,
             language: currentTranscriptLanguage,
             isFinal: false,
@@ -1861,8 +1874,10 @@ export const App = () => {
       }
 
       const language = detectConversationLanguage(transcript, detectedLanguageRef.current)
-      detectedLanguageRef.current = language
-      setDetectedLanguage(language)
+      if (speaker === 'other') {
+        detectedLanguageRef.current = language
+        setDetectedLanguage(language)
+      }
 
       setTranscriptUtterances((currentUtterances) => {
         const existingIndex = currentUtterances.findIndex(
@@ -1873,7 +1888,7 @@ export const App = () => {
         if (existingIndex === -1) {
           return appendUtterance(currentUtterances, {
             id: createTranscriptId(),
-            speaker: 'other',
+            speaker,
             text: transcript,
             language,
             isFinal: true,
@@ -1889,6 +1904,7 @@ export const App = () => {
 
         nextUtterances[existingIndex] = {
           ...existingUtterance,
+          speaker,
           text: transcript,
           language,
           isFinal: true,
@@ -4401,6 +4417,7 @@ export const App = () => {
   }
 
   const startRealtimeListening = async () => {
+    manualSpeaker.reset()
     if (!configStatus.effectiveKeyAvailable) {
       const message =
         'Missing OpenAI API key. Save a secure local key in Settings or set OPENAI_API_KEY in .env.'
@@ -4925,7 +4942,7 @@ export const App = () => {
       setAssistantErrorSource(source)
     }
 
-    if (assistantState === 'analyzing') {
+    if (manualSpeaker.isSpeaking() || assistantState === 'analyzing') {
       return false
     }
 
@@ -4943,7 +4960,7 @@ export const App = () => {
             transcriptUtterances,
             assistantCallLanguage
           )
-        : transcriptUtterances
+        : transcriptUtterances.filter(utterance => utterance.speaker === 'other')
     const recentTranscript = getRecentTranscriptText(
       transcriptWindowUtterances,
       seconds
@@ -5121,6 +5138,7 @@ export const App = () => {
   runAssistantAnalysisRef.current = runAssistantAnalysis
 
   useEffect(() => {
+    if (manualSpeaker.speaking) return
     const assistantCallLanguage = detectedLanguage
     const latestFinalUtterance = getLatestAutoAnalysisUtterance(
       transcriptUtterances,
@@ -5131,7 +5149,7 @@ export const App = () => {
       return
     }
 
-    const analysisText = getRecentTranscriptText(transcriptUtterances, 30)
+    const analysisText = getRecentTranscriptText(transcriptUtterances.filter(utterance => utterance.speaker === 'other'), 30)
     const normalizedForAnalysis = getSessionContextWithCounterpartyPacks(
       sessionContext,
       counterpartyPacks
@@ -5205,6 +5223,7 @@ export const App = () => {
     assistantState,
     controls.callLanguage,
     detectedLanguage,
+    manualSpeaker.speaking,
     transcriptUtterances,
     sessionContext,
     counterpartyPacks,
@@ -5226,6 +5245,7 @@ export const App = () => {
     costMode
   )
   const lastUtterance = getLastUtterance(transcriptUtterances)
+  const lastOtherUtterance = getLastUtterance(transcriptUtterances.filter(utterance => utterance.speaker === 'other'))
   const assistantCallLanguage = detectedLanguage
   const assistantRelevantLastUtterance = getLatestAutoAnalysisUtterance(
     transcriptUtterances,
@@ -7179,8 +7199,8 @@ export const App = () => {
         <section className={`live-layout ${liveExpanded ? '' : 'live-focused'}`}>
           <CallFocusPanel
             result={assistantResult}
-            heard={getLastUtterance(transcriptUtterances)?.text ?? ''}
-            stale={isAssistantResultStale || Boolean(assistantResult && lastAnalyzeTranscriptText && getLastUtterance(transcriptUtterances)?.text && !lastAnalyzeTranscriptText.includes(getLastUtterance(transcriptUtterances)!.text))}
+            heard={lastOtherUtterance?.text ?? ''}
+            stale={isAssistantResultStale || Boolean(assistantResult && lastAnalyzeTranscriptText && lastOtherUtterance?.text && !lastAnalyzeTranscriptText.includes(lastOtherUtterance.text))}
             analyzing={assistantState === 'analyzing'}
             status={realtimeStatus}
             language={controls.callLanguage}
@@ -7199,6 +7219,8 @@ export const App = () => {
               const hint = toAssistantCallLanguage(language)
               if (hint !== 'auto') { detectedLanguageRef.current = hint; setDetectedLanguage(hint) }
             }}
+            speaking={manualSpeaker.speaking}
+            onToggleSpeaking={manualSpeaker.toggle}
           />
           <section className="live-toolbar-panel">
             <div className="control-group live-primary-actions">
