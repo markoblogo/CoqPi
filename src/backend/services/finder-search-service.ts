@@ -3,7 +3,6 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import dns from 'node:dns/promises'
-import { CheerioCrawler, LogLevel } from '@crawlee/cheerio'
 import type {
   CounterpartyContextPack,
   FinderCandidateDecisionState,
@@ -207,6 +206,7 @@ const validateFinderPublicPageUrl = (value: string) => {
 
 const defaultFinderPublicPageFetcher: FinderPublicPageFetcher = async (url) => {
   await validatePublicHostResolution(url)
+  const { CheerioCrawler, LogLevel } = await import('@crawlee/cheerio')
   const tempStorageDirectory = await fs.mkdtemp(
     path.join(os.tmpdir(), 'coqpi-crawlee-public-page-')
   )

@@ -27,6 +27,9 @@ Markdown transcript.
 - can copy the Markdown transcript directly to clipboard if the save dialog is
   inconvenient during a call;
 - preserves finalized text when realtime transcription is interrupted.
+- follows language changes within a recording; the language selector is an initial hint;
+- retains each session in Saved conversations, independently of Clear;
+- retries interrupted WebRTC transport up to three times, without discarding the current session.
 
 ## What It Does Not Do
 
@@ -118,9 +121,17 @@ Session data is stored under the app sessions directory (development:
 
 - `meeting-transcription-current.json` is the latest atomic snapshot;
 - `meeting-transcription-journal.ndjson` is an append-only sequence of safe
-  session checkpoints used for recovery;
+  session checkpoints and changed-segment patches used for recovery;
+- `recordings/<sha256(session_id)>.json` retains independently readable session archives;
 - `Clear` removes the current snapshot and journal after explicit confirmation
   when needed.
+
+Window close and quit wait for a renderer checkpoint and backend flush; a failed
+save keeps the window open with an error. Clear does not remove archived sessions.
+Live sessions also retain assistant answers/model/latency, separate from original
+transcript segments. Export remains transcript-focused. Text already received is
+protected; audio spoken during an STT outage is not recoverable without an audio
+backup, which is not implemented.
 
 The journal contains only transcript session fields. It does not contain API
 keys, system prompts, unrelated settings, or assistant hidden reasoning.

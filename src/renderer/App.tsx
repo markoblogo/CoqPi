@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   startTransition,
   useEffect,
   useRef,
@@ -24,7 +26,7 @@ import {
   Square,
   Tags
 } from 'lucide-react'
-import { OpportunityWorkflowPanel } from './OpportunityWorkflowPanel'
+const OpportunityWorkflowPanel = lazy(() => import('./OpportunityWorkflowPanel').then(module => ({ default: module.OpportunityWorkflowPanel })))
 import {
   type AppUserSettings,
   type AssistantAnalysisRequest,
@@ -239,7 +241,11 @@ import {
   type MockTranscriptScenarioId
 } from '@renderer/mock/mock-transcript-lines'
 import { RealtimeTranscriptionClient } from '@renderer/realtime/realtime-transcription-client'
-import { TrainingPanel } from './TrainingPanel'
+const TrainingPanel = lazy(() => import('./TrainingPanel').then(module => ({ default: module.TrainingPanel })))
+import { detectConversationLanguage, type ConversationLanguage } from '@shared/conversation-language'
+import { CallFocusPanel } from './CallFocusPanel'
+const RecordingHistory = lazy(() => import('./RecordingHistory').then(module => ({ default: module.RecordingHistory })))
+const MeetingPreparationBrief = lazy(() => import('./MeetingPreparationBrief').then(module => ({ default: module.MeetingPreparationBrief })))
 
 const missingConfigStatus: ConfigStatus = {
   hasEnvFile: false,
@@ -390,6 +396,7 @@ const audioLevelDescriptions: Record<AudioLevelReading['status'], string> = {
 }
 
 const languageBadgeLabels: Record<TranscriptLanguage, string> = {
+  uk: 'UK',
   en: 'EN',
   fr: 'FR',
   ru: 'RU',
@@ -498,6 +505,8 @@ const makeTimestampedLog = (entry: string) =>
   })} - ${entry}`
 
 const toAssistantCallLanguage = (value: CallLanguage) => {
+  if (value === 'Russian') return 'ru'
+  if (value === 'Ukrainian') return 'uk'
   if (value === 'English') {
     return 'en'
   }
@@ -510,10 +519,14 @@ const toAssistantCallLanguage = (value: CallLanguage) => {
 }
 
 const toAssistantAnswerLanguage = (value: ControlState['answerLanguage']) => {
+  if (value === 'Russian') return 'ru'
+  if (value === 'Ukrainian') return 'uk'
   return value === 'French' ? 'fr' : 'en'
 }
 
 const toTranscriptLanguage = (value: CallLanguage): TranscriptLanguage => {
+  if (value === 'Russian') return 'ru'
+  if (value === 'Ukrainian') return 'uk'
   if (value === 'English') {
     return 'en'
   }
@@ -764,6 +777,13 @@ const getSessionContextRetrievalKinds = (
 }
 
 export const App = () => {
+  const [detectedLanguage, setDetectedLanguage] = useState<ConversationLanguage>('en')
+  const detectedLanguageRef = useRef<ConversationLanguage>('en')
+  const [liveExpanded, setLiveExpanded] = useState(false)
+  const [trainingPurpose, setTrainingPurpose] = useState<'coach' | 'rehearsal'>('coach')
+  const [recordingSavedAt, setRecordingSavedAt] = useState<string | null>(null)
+  const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null)
+  const interimCheckpointRef = useRef(0)
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
   const noEventTimeoutRef = useRef<number | null>(null)
   const autoAnalysisTimeoutRef = useRef<number | null>(null)
@@ -1210,8 +1230,14 @@ export const App = () => {
   >([])
   const [meetingLanguage, setMeetingLanguage] =
     useState<MeetingTranscriptionLanguage>('uk')
-  const [meetingSession, setMeetingSession] =
+  const [meetingSession, setMeetingSessionState] =
     useState<MeetingTranscriptionSession | null>(null)
+  const meetingSessionRef = useRef<MeetingTranscriptionSession | null>(null)
+  const setMeetingSession = (update: MeetingTranscriptionSession | null | ((current: MeetingTranscriptionSession | null) => MeetingTranscriptionSession | null)) => {
+    const next = typeof update === 'function' ? update(meetingSessionRef.current) : update
+    meetingSessionRef.current = next
+    setMeetingSessionState(next)
+  }
   const [meetingError, setMeetingError] = useState<string | null>(null)
   const [meetingNotice, setMeetingNotice] = useState<string | null>(null)
   const [isExportingMeetingTranscript, setIsExportingMeetingTranscript] =
@@ -1306,6 +1332,7 @@ export const App = () => {
 
   useEffect(() => {
     const flushMeetingTranscript = () => {
+      if (meetingSessionRef.current) void window.coqpi.meetingTranscription.saveCurrent(meetingSessionRef.current)
       void window.coqpi.meetingTranscription.flush()
     }
 
@@ -1313,6 +1340,17 @@ export const App = () => {
     return () =>
       window.removeEventListener('beforeunload', flushMeetingTranscript)
   }, [])
+
+  useEffect(() => window.coqpi.meetingTranscription.onShutdown(async () => {
+    await realtimeClientRef.current?.stop()
+    const current = meetingSessionRef.current
+    if (current) {
+      const stopped = stopMeetingTranscriptionSession(current, new Date().toISOString())
+      meetingSessionRef.current = stopped
+      await window.coqpi.meetingTranscription.saveCurrent(stopped)
+    }
+    await window.coqpi.meetingTranscription.flush()
+  }), [])
 
   useEffect(() => {
     const loadInitialState = async () => {
@@ -1736,7 +1774,7 @@ export const App = () => {
     )
   }
 
-  const currentTranscriptLanguage = toTranscriptLanguage(controls.callLanguage)
+  const currentTranscriptLanguage = controls.callLanguage === 'Auto' ? detectedLanguage : toTranscriptLanguage(controls.callLanguage)
 
   const handleRealtimeEvent = (event: Record<string, unknown>) => {
     persistMeetingRealtimeEvent(event)
@@ -1822,6 +1860,10 @@ export const App = () => {
         return
       }
 
+      const language = detectConversationLanguage(transcript, detectedLanguageRef.current)
+      detectedLanguageRef.current = language
+      setDetectedLanguage(language)
+
       setTranscriptUtterances((currentUtterances) => {
         const existingIndex = currentUtterances.findIndex(
           (utterance) => utterance.sourceItemId === itemId
@@ -1833,7 +1875,7 @@ export const App = () => {
             id: createTranscriptId(),
             speaker: 'other',
             text: transcript,
-            language: currentTranscriptLanguage,
+            language,
             isFinal: true,
             timestampStart: completedAt,
             timestampEnd: completedAt,
@@ -1848,6 +1890,7 @@ export const App = () => {
         nextUtterances[existingIndex] = {
           ...existingUtterance,
           text: transcript,
+          language,
           isFinal: true,
           timestampEnd: completedAt
         }
@@ -1894,7 +1937,12 @@ export const App = () => {
   const autosaveMeetingSession = (session: MeetingTranscriptionSession) => {
     void window.coqpi.meetingTranscription
       .saveCurrent(session)
+      .then(() => {
+        setRecordingSavedAt(new Date().toISOString())
+        setRecordingSaveError(null)
+      })
       .catch((error) => {
+        setRecordingSaveError(error instanceof Error ? error.message : 'Recording save failed')
         setMeetingError(
           error instanceof Error
             ? error.message
@@ -1916,8 +1964,9 @@ export const App = () => {
 
       if (
         result.committed ||
-        event.type === 'conversation.item.input_audio_transcription.delta'
+        (event.type === 'conversation.item.input_audio_transcription.delta' && Date.now() - interimCheckpointRef.current >= 1000)
       ) {
+        interimCheckpointRef.current = Date.now()
         autosaveMeetingSession(result.session)
       }
 
@@ -1952,6 +2001,23 @@ export const App = () => {
       'Realtime interrupted. Finalized transcript is preserved; use Stop, Save, or Copy.'
     )
     setMeetingError(message)
+  }
+
+  const handleRecordingStatus = (status: RealtimeConnectionStatus) => {
+    setRealtimeStatus(status)
+    if (status === 'listening') {
+      setRealtimeError(null)
+      setMeetingError(null)
+      if (meetingSessionRef.current?.status === 'error') {
+        setMeetingSession(current => {
+          if (!current) return current
+          const resumed = { ...current, status: 'recording' as const, stoppedAt: undefined, endedAt: undefined }
+          autosaveMeetingSession(resumed)
+          return resumed
+        })
+        setRealtimeStartedAt(Date.now())
+      }
+    }
   }
 
   const handleMeetingRealtimeEvent = (event: Record<string, unknown>) => {
@@ -4361,13 +4427,7 @@ export const App = () => {
       )
     }
 
-    if (meetingSession && meetingSession.segments.length > 0) {
-      setMeetingError(
-        'Current transcript is preserved. Export or Clear before starting a new recording.'
-      )
-      setActiveTab('transcribe')
-      return
-    }
+    if (meetingSession) await window.coqpi.meetingTranscription.saveCurrent(meetingSession)
 
     const copilotSession = createMeetingTranscriptionSession({
       id: createTranscriptId(),
@@ -4376,7 +4436,7 @@ export const App = () => {
           ? 'en'
           : controls.callLanguage === 'French'
             ? 'fr'
-            : meetingLanguage,
+            : controls.callLanguage === 'Russian' ? 'ru' : controls.callLanguage === 'Ukrainian' ? 'uk' : detectedLanguage,
       inputLabel: selectedDeviceLabel,
       mode: 'copilot',
       now: new Date().toISOString()
@@ -4407,8 +4467,8 @@ export const App = () => {
       setRealtimeStartedAt(Date.now())
       await realtimeClientRef.current?.start({
         selectedAudioDeviceId,
-        callLanguage: toAssistantCallLanguage(controls.callLanguage),
-        onStatusChange: (status) => setRealtimeStatus(status),
+        callLanguage: 'auto',
+        onStatusChange: handleRecordingStatus,
         onDebugEventType: handleRealtimeEventType,
         onLifecycleLog: pushRealtimeLifecycleLog,
         onPeerConnectionStateChange: setPeerConnectionState,
@@ -4499,12 +4559,7 @@ export const App = () => {
       return
     }
 
-    if (meetingSession && meetingSession.segments.length > 0) {
-      setMeetingError(
-        'Current transcript is preserved. Export or Clear before starting a new meeting session.'
-      )
-      return
-    }
+    if (meetingSession) await window.coqpi.meetingTranscription.saveCurrent(meetingSession)
 
     const now = new Date().toISOString()
     const session = createMeetingTranscriptionSession({
@@ -4543,8 +4598,8 @@ export const App = () => {
       setRealtimeStartedAt(Date.now())
       await realtimeClientRef.current?.start({
         selectedAudioDeviceId,
-        callLanguage: meetingLanguage,
-        onStatusChange: (status) => setRealtimeStatus(status),
+        callLanguage: 'auto',
+        onStatusChange: handleRecordingStatus,
         onDebugEventType: handleRealtimeEventType,
         onLifecycleLog: pushRealtimeLifecycleLog,
         onPeerConnectionStateChange: setPeerConnectionState,
@@ -4881,7 +4936,7 @@ export const App = () => {
       return false
     }
 
-    const assistantCallLanguage = toAssistantCallLanguage(controls.callLanguage)
+    const assistantCallLanguage = detectedLanguageRef.current
     const transcriptWindowUtterances =
       trigger === 'auto'
         ? getAutoAnalysisTranscriptUtterances(
@@ -4915,20 +4970,8 @@ export const App = () => {
     const normalizedForAnalysis = normalizePackSelectionsForAssistant()
     persistSelectedContextIfNeeded(normalizedForAnalysis.context)
 
-    let effectiveMode = mode
-
-    if (
-      costMode === 'economy' &&
-      mode === 'full' &&
-      recentWindowLabel === '30s'
-    ) {
-      effectiveMode = 'keywords'
-      setCostNotice(
-        'Economy mode downgraded the quick action to keywords-only to reduce cost.'
-      )
-    } else {
-      setCostNotice(null)
-    }
+    const effectiveMode = mode
+    setCostNotice(null)
 
     let transcriptToSend = recentTranscript
     const estimatedProfileChars = includeProfileContext
@@ -4972,9 +5015,10 @@ export const App = () => {
     }
 
     const request: AssistantAnalysisRequest = {
+      responseStyle: 'brief',
       transcriptText: transcriptToSend,
       callLanguage: assistantCallLanguage,
-      answerLanguage: toAssistantAnswerLanguage(controls.answerLanguage),
+      answerLanguage: detectedLanguageRef.current,
       mode: effectiveMode,
       includeProfileContext,
       sessionContext: normalizedForAnalysis.context,
@@ -4992,6 +5036,7 @@ export const App = () => {
     setAnalysisCooldownUntil(Date.now() + ANALYSIS_COOLDOWN_MS)
     setLastAnalyzePayloadInspector(normalizedForAnalysis.payloadInspector)
     setLastAnalyzeTranscriptText(transcriptToSend)
+    const recordingSessionId = meetingSessionRef.current?.id
 
     try {
       const response =
@@ -5007,6 +5052,15 @@ export const App = () => {
       }
 
       setAssistantResult(response.data)
+      setMeetingSession(current => {
+        if (!current || current.id !== recordingSessionId) return current
+        const next = { ...current, assistantEvents: [...(current.assistantEvents ?? []), {
+          timestamp: new Date().toISOString(), answer: response.data.suggestedAnswers[0]?.text ?? '',
+          meaning: response.data.meaningRu, model: response.data.model, latencyMs: response.data.latencyMs, language: request.answerLanguage
+        }] }
+        autosaveMeetingSession(next)
+        return next
+      })
       setAssistantResultUpdatedAt(new Date().toISOString())
       setLastAnalyzedUtteranceId(
         targetUtteranceId ?? getLastUtterance(transcriptUtterances)?.id ?? null
@@ -5067,7 +5121,7 @@ export const App = () => {
   runAssistantAnalysisRef.current = runAssistantAnalysis
 
   useEffect(() => {
-    const assistantCallLanguage = toAssistantCallLanguage(controls.callLanguage)
+    const assistantCallLanguage = detectedLanguage
     const latestFinalUtterance = getLatestAutoAnalysisUtterance(
       transcriptUtterances,
       assistantCallLanguage
@@ -5150,6 +5204,7 @@ export const App = () => {
     analysisCooldownUntil,
     assistantState,
     controls.callLanguage,
+    detectedLanguage,
     transcriptUtterances,
     sessionContext,
     counterpartyPacks,
@@ -5171,7 +5226,7 @@ export const App = () => {
     costMode
   )
   const lastUtterance = getLastUtterance(transcriptUtterances)
-  const assistantCallLanguage = toAssistantCallLanguage(controls.callLanguage)
+  const assistantCallLanguage = detectedLanguage
   const assistantRelevantLastUtterance = getLatestAutoAnalysisUtterance(
     transcriptUtterances,
     assistantCallLanguage
@@ -5228,8 +5283,7 @@ export const App = () => {
     realtimeStatus === 'connected' ||
     realtimeStatus === 'listening' ||
     realtimeStatus === 'error'
-  const canStartMeetingTranscription =
-    canStartListening && !(meetingSession && meetingSession.segments.length > 0)
+  const canStartMeetingTranscription = canStartListening
   const isMeetingRealtimeRunning =
     realtimeStatus === 'connecting' ||
     realtimeStatus === 'connected' ||
@@ -6839,7 +6893,7 @@ export const App = () => {
   } satisfies Record<string, ReactNode>
 
   return (
-    <div className={`app-shell density-${interfaceDensity}`}>
+    <div className={`app-shell density-${interfaceDensity} ${activeTab === 'live' && !liveExpanded ? 'call-focused-shell' : ''}`}>
       <header className="app-bar">
         <div className="app-bar-left" title={topStatusItems.join(' · ')}>
           <span className="app-brand">
@@ -6955,10 +7009,11 @@ export const App = () => {
         </button>
       </header>
 
-      {activeTab === 'training' ? <TrainingPanel /> : null}
+      {activeTab === 'training' ? <Suspense fallback={<p>Loading practice…</p>}><TrainingPanel initialMode={trainingPurpose} /></Suspense> : null}
 
       {activeTab === 'transcribe' ? (
         <section className="transcribe-layout">
+          <Suspense fallback={null}><RecordingHistory /></Suspense>
           <section className="control-strip">
             <div className="control-group live-primary-actions">
               <button
@@ -7121,7 +7176,30 @@ export const App = () => {
       ) : null}
 
       {activeTab === 'live' ? (
-        <section className="live-layout">
+        <section className={`live-layout ${liveExpanded ? '' : 'live-focused'}`}>
+          <CallFocusPanel
+            result={assistantResult}
+            heard={getLastUtterance(transcriptUtterances)?.text ?? ''}
+            stale={isAssistantResultStale || Boolean(assistantResult && lastAnalyzeTranscriptText && getLastUtterance(transcriptUtterances)?.text && !lastAnalyzeTranscriptText.includes(getLastUtterance(transcriptUtterances)!.text))}
+            analyzing={assistantState === 'analyzing'}
+            status={realtimeStatus}
+            language={controls.callLanguage}
+            detectedLanguage={detectedLanguage}
+            savedAt={recordingSavedAt}
+            saveError={recordingSaveError}
+            error={realtimeError || assistantError}
+            canStart={canStartListening} canStop={canStopListening}
+            expanded={liveExpanded}
+            onStart={() => void startRealtimeListening()}
+            onStop={() => void stopRealtimeListening()}
+            onRetry={() => void runManualAssistantRetryNow()}
+            onExpand={() => setLiveExpanded(value => !value)}
+            onLanguage={language => {
+              setControls(current => ({ ...current, callLanguage: language }))
+              const hint = toAssistantCallLanguage(language)
+              if (hint !== 'auto') { detectedLanguageRef.current = hint; setDetectedLanguage(hint) }
+            }}
+          />
           <section className="live-toolbar-panel">
             <div className="control-group live-primary-actions">
               <button
@@ -7285,6 +7363,7 @@ export const App = () => {
                 {activePopover === 'call' ? (
                   <div className="popover-menu popover-menu-small">
                     <div className="popover-title">Call language</div>
+                    {(['Russian', 'Ukrainian'] as const).map(language => <button key={language} onClick={() => { setControls(current => ({ ...current, callLanguage: language })); setActivePopover(null) }}>{language}</button>)}
                     <button
                       onClick={() => {
                         setControls((current) => ({
@@ -7523,6 +7602,7 @@ export const App = () => {
 
       {activeTab === 'prepare' ? (
         <section className="prepare-layout scroll-section">
+          <Suspense fallback={null}><MeetingPreparationBrief context={sessionContext} onPractice={() => { setTrainingPurpose('rehearsal'); setActiveTab('training') }} onSaved={context => { setSessionContext(context); setSessionContextDraft(context) }} /></Suspense>
           <section className="prepare-grid prepare-grid-single">
             <article className="panel-card">
               <div className="panel-header">
@@ -7959,7 +8039,7 @@ export const App = () => {
       {activeTab === 'finder' ? (
         <section className="prepare-layout scroll-section">
           <section className="prepare-grid prepare-grid-single">
-            <OpportunityWorkflowPanel />
+            <Suspense fallback={<p>Loading opportunities…</p>}><OpportunityWorkflowPanel /></Suspense>
             <article className="panel-card context-sources-card">
               <div className="panel-header">
                 <div>

@@ -589,7 +589,13 @@ export const getAutoAnalysisUtteranceEligibility = (
   const hasUnsupportedScript = unsupportedTranscriptScriptPattern.test(utterance.text)
   const hasLatinLetters = latinLetterPattern.test(utterance.text)
 
-  if (language === 'ru' || hasUnsupportedScript) {
+  if ((callLanguage === 'ru' || callLanguage === 'uk') && /[а-яіїєґ]/iu.test(utterance.text)) {
+    return (utterance.text.match(/[\p{L}]+/gu) ?? []).length >= 2
+      ? { eligible: true, reason: null }
+      : { eligible: false, reason: 'too-short-transcript' }
+  }
+
+  if (language === 'ru' || language === 'uk' || hasUnsupportedScript) {
     return {
       eligible: false,
       reason: 'unsupported-language'

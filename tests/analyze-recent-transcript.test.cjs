@@ -2362,6 +2362,22 @@ test('session context save and reload prune stale selected counterparty pack ids
   )
 })
 
+test('review and language coaching avoid unrelated profile and retrieval context', async () => {
+  for (const responseStyle of ['review', 'coaching']) {
+    await withLocalKnowledgeWorkspace(() => withStubbedProviderRoute({
+      profileCount: 1,
+      requestOverrides: { responseStyle, includeProfileContext: true, transcriptText: 'Please review this practice answer.' },
+      beforeAnalyze: async ({ profileService }) => { profileService.getProfileContext = async () => { throw new Error('Unrelated profile must not be loaded') } },
+      onRetrievalCall: () => assert.fail('Unrelated retrieval must not run'),
+      fetchHandler: async (_url, init) => {
+        const prompt = JSON.parse(init.body).messages[1].content
+        assert.match(prompt, /Please review this practice answer/)
+        return makeOllamaResponse({ message: { content: JSON.stringify({meaningRu:'Разбор',detectedQuestion:'What next?',intent:'practice',risk:'low',suggestedAnswers:[{label:'short',text:'I can explain my work clearly.',answerMeaningRu:'Я могу объяснить свою работу.'}],keywordsToRemember:[],openingPhrase:'Let us practice.'}) } })
+      }
+    }))
+  }
+})
+
 test('analyzeRecentTranscript returns structured result on valid Ollama JSON', async () => {
   const response = {
     meaningRu: 'Кандидат объясняет интерес к роли и следующий шаг.',

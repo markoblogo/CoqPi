@@ -50,6 +50,8 @@ import { createRealtimeTranscriptionAnswer } from '../backend/services/realtime-
 import {
   clearCurrentMeetingTranscriptionSession,
   flushMeetingTranscriptionWrites,
+  getMeetingTranscriptionHistory,
+  getArchivedMeetingTranscriptionSession,
   getCurrentMeetingTranscriptionSession,
   getMeetingTranscriptDefaultFilename,
   saveCurrentMeetingTranscriptionSession,
@@ -195,8 +197,15 @@ const createMainWindow = async () => {
     }
   )
 
-  window.on('close', () => {
-    void flushMeetingTranscriptionWrites()
+  let closing = false
+  window.on('close', event => {
+    event.preventDefault()
+    if (closing) return
+    closing = true
+    void flushRendererRecording(window).then(() => window.destroy()).catch(error => {
+      closing = false
+      dialog.showErrorBox('Recording not saved', String(error))
+    })
   })
 
   window.webContents.on(
@@ -806,6 +815,8 @@ const registerIpcHandlers = () => {
     'coqpi:meeting-transcription:get-current',
     async () => getCurrentMeetingTranscriptionSession()
   )
+  ipcMain.handle('coqpi:meeting-transcription:history', () => getMeetingTranscriptionHistory())
+  ipcMain.handle('coqpi:meeting-transcription:read', (_event, id: string) => getArchivedMeetingTranscriptionSession(id))
 
   ipcMain.handle(
     'coqpi:meeting-transcription:save-current',
@@ -854,11 +865,32 @@ const registerIpcHandlers = () => {
 
 let isQuitting = false
 
+const flushRendererRecording = async (window: BrowserWindow) => {
+  if (window.webContents.isDestroyed()) return flushMeetingTranscriptionWrites()
+  await new Promise<void>((resolve, reject) => {
+    const done = (event: Electron.IpcMainEvent, error: string | null) => {
+      if (event.sender.id !== window.webContents.id) return
+      clearTimeout(timer)
+      ipcMain.removeListener('coqpi:recording:flushed', done)
+      if (error) reject(new Error(error)); else resolve()
+    }
+    const timer = setTimeout(() => {
+      ipcMain.removeListener('coqpi:recording:flushed', done)
+      reject(new Error('The recording window did not respond. Your saved transcript remains on disk. Retry closing after the window responds.'))
+    }, 5000)
+    ipcMain.on('coqpi:recording:flushed', done)
+    window.webContents.send('coqpi:recording:flush-request')
+  })
+  await flushMeetingTranscriptionWrites()
+}
+
 app.on('before-quit', (event) => {
-  if (isQuitting) return
   event.preventDefault()
+  if (isQuitting) return
   isQuitting = true
-  void flushMeetingTranscriptionWrites().finally(() => app.exit(0))
+  void Promise.all(BrowserWindow.getAllWindows().map(flushRendererRecording))
+    .then(() => flushMeetingTranscriptionWrites()).then(() => app.exit(0))
+    .catch(error => { isQuitting = false; dialog.showErrorBox('Recording not saved', String(error)) })
 })
 
 app.whenReady().then(async () => {

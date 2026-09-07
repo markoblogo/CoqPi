@@ -1,6 +1,6 @@
 import type { AssistantCallLanguage } from './app-types'
 
-export type TranscriptLanguageHint = 'en' | 'fr' | 'mixed' | 'unknown'
+export type TranscriptLanguageHint = 'en' | 'fr' | 'ru' | 'uk' | 'mixed' | 'unknown'
 
 export interface ProcessedTranscript {
   text: string
@@ -21,7 +21,7 @@ export const processTranscriptForAssistant = (
     .replace(/\s+/gu, ' ')
     .trim()
 
-  if (callLanguage === 'en' || callLanguage === 'fr') {
+  if (callLanguage !== 'auto') {
     return { text, languageHint: callLanguage, removedNoise: text !== original.trim() }
   }
 

@@ -13,7 +13,7 @@ const settingsFilePath = path.join(app.getPath('userData'), 'settings.json')
 export const defaultAppUserSettings: AppUserSettings = {
   costMode: 'balanced',
   defaultCallLanguage: 'Auto',
-  defaultAnswerLanguage: 'English',
+  defaultAnswerLanguage: 'Auto',
   includeProfileContextByDefault: true,
   saveTranscriptByDefault: false
 }
@@ -35,12 +35,12 @@ const sanitizeSettings = (value: unknown): AppUserSettings => {
     defaultCallLanguage:
       candidate.defaultCallLanguage === 'Auto' ||
       candidate.defaultCallLanguage === 'English' ||
-      candidate.defaultCallLanguage === 'French'
+      candidate.defaultCallLanguage === 'French' || candidate.defaultCallLanguage === 'Russian' || candidate.defaultCallLanguage === 'Ukrainian'
         ? candidate.defaultCallLanguage
         : defaultAppUserSettings.defaultCallLanguage,
     defaultAnswerLanguage:
       candidate.defaultAnswerLanguage === 'English' ||
-      candidate.defaultAnswerLanguage === 'French'
+      candidate.defaultAnswerLanguage === 'French' || candidate.defaultAnswerLanguage === 'Auto' || candidate.defaultAnswerLanguage === 'Russian' || candidate.defaultAnswerLanguage === 'Ukrainian'
         ? candidate.defaultAnswerLanguage
         : defaultAppUserSettings.defaultAnswerLanguage,
     includeProfileContextByDefault:

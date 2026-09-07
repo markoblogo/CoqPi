@@ -44,6 +44,53 @@ const withMeetingWorkspace = async (run) => {
   }
 }
 
+test('a failed disk write does not poison subsequent transcript saves', async () => {
+  await withMeetingWorkspace(async ({ service, shared, directory }) => {
+    const sessions = path.join(directory, 'sessions')
+    const session = shared.createMeetingTranscriptionSession({
+      id: 'recover-write', language: 'ru', inputLabel: 'Mic', now: new Date().toISOString()
+    })
+    await fs.writeFile(sessions, 'temporarily blocked')
+    await assert.rejects(service.saveCurrentMeetingTranscriptionSession(session))
+    await fs.unlink(sessions)
+    await service.saveCurrentMeetingTranscriptionSession(session)
+    assert.equal((await service.getCurrentMeetingTranscriptionSession()).id, session.id)
+  })
+})
+
+test('clearing current recording retains an independently readable session archive', async () => {
+  await withMeetingWorkspace(async ({ service, shared }) => {
+    const session = shared.createMeetingTranscriptionSession({
+      id: '../../unsafe-id', language: 'fr', inputLabel: 'Mic', now: new Date().toISOString()
+    })
+    await service.saveCurrentMeetingTranscriptionSession(session)
+    await service.clearCurrentMeetingTranscriptionSession()
+    const archive = await service.getMeetingTranscriptionHistory()
+    assert.equal(archive[0].id, session.id)
+    assert.equal((await service.getArchivedMeetingTranscriptionSession(session.id)).language, 'fr')
+  })
+})
+
+test('fifteen-minute synthetic transcript survives a torn journal tail and stale snapshot', async () => {
+  await withMeetingWorkspace(async ({ service, shared, directory }) => {
+    let session = shared.createMeetingTranscriptionSession({id:'long-session',language:'ru',inputLabel:'Mic',now:'2026-09-07T10:00:00.000Z'})
+    const snapshot = path.join(directory,'sessions','meeting-transcription-current.json')
+    const journal = path.join(directory,'sessions','meeting-transcription-journal.ndjson')
+    let early
+    for (let i=0;i<90;i++) {
+      session = shared.applyMeetingTranscriptionRealtimeEvent({session,event:{type:'conversation.item.input_audio_transcription.completed',item_id:`line-${i}`,transcript:i%2 ? `Мій професійний досвід ${i}` : `Мой профессиональный опыт ${i}`},now:new Date(Date.UTC(2026,8,7,10,0,i*10)).toISOString(),createSegmentId:()=>`segment-${i}`}).session
+      await service.saveCurrentMeetingTranscriptionSession(session)
+      if(i===0) early = await fs.readFile(snapshot,'utf8')
+      if(i===45) await fs.appendFile(journal,'{"patch":')
+    }
+    await fs.writeFile(snapshot,early)
+    const recovered = await service.getCurrentMeetingTranscriptionSession()
+    assert.equal(recovered.segments.length,90)
+    assert.equal(recovered.segments.at(-1).text,session.segments.at(-1).text)
+    assert.equal((await service.getArchivedMeetingTranscriptionSession(session.id)).segments.length,90)
+  })
+})
+
 test('meeting transcription service autosaves restores exports and clears session', async () => {
   await withMeetingWorkspace(async ({ service, shared, directory }) => {
     let session = shared.createMeetingTranscriptionSession({

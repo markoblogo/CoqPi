@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Mic, Square, Volume2 } from 'lucide-react'
+import { RealtimeTranscriptionClient } from './realtime/realtime-transcription-client'
 import {
   simpleAssistantScenarioIds,
   type AssistantAnswerLanguage,
@@ -30,10 +32,16 @@ const makeId = () =>
     ? crypto.randomUUID()
     : `training-${Date.now()}`
 
-export const TrainingPanel = () => {
+export const TrainingPanel = ({ initialMode = 'coach' }: { initialMode?: 'coach' | 'rehearsal' }) => {
   const [scenarioId, setScenarioId] =
     useState<SimpleAssistantScenarioId>('france-job-interview')
-  const [language, setLanguage] = useState<AssistantAnswerLanguage>('en')
+  const [language, setLanguage] = useState<AssistantAnswerLanguage>('fr')
+  const [practiceMode, setPracticeMode] = useState<'coach' | 'rehearsal'>(initialMode)
+  const [question, setQuestion] = useState('Parlez-moi de votre parcours professionnel.')
+  const [listening, setListening] = useState(false)
+  const voice = useRef<RealtimeTranscriptionClient | null>(null)
+  const analyzedInput = useRef('')
+  const resultId = useRef('')
   const [sessionId] = useState(makeId)
   const [transcriptText, setTranscriptText] = useState('')
   const [result, setResult] = useState<AssistantAnalysisResult | null>(null)
@@ -48,6 +56,30 @@ export const TrainingPanel = () => {
       .catch(() => setError('Unable to load training history.'))
   }, [])
 
+  useEffect(() => () => { void voice.current?.stop(); window.speechSynthesis?.cancel() }, [])
+
+  const toggleVoice = async () => {
+    if (listening) { await voice.current?.stop(); setListening(false); return }
+    voice.current ??= new RealtimeTranscriptionClient()
+    setListening(true)
+    try {
+      await voice.current.start({
+        selectedAudioDeviceId: '', callLanguage: language,
+        onStatusChange: status => { if (status === 'error' || status === 'stopped') setListening(false) },
+        onEvent: event => { if (event.type === 'conversation.item.input_audio_transcription.completed' && typeof event.transcript === 'string') setTranscriptText(current => `${current} ${event.transcript}`.trim()) },
+        onError: message => setError(message), onDebugEventType: () => {}, onLifecycleLog: () => {},
+        onPeerConnectionStateChange: () => {}, onIceConnectionStateChange: () => {}, onIceGatheringStateChange: () => {}, onDataChannelStateChange: () => {}
+      })
+    } catch (cause) { setListening(false); setError(String(cause)) }
+  }
+
+  const speakQuestion = () => {
+    const utterance = new SpeechSynthesisUtterance(question)
+    utterance.lang = language === 'fr' ? 'fr-FR' : 'en-GB'
+    window.speechSynthesis.cancel()
+    window.speechSynthesis.speak(utterance)
+  }
+
   const analyze = async () => {
     if (!transcriptText.trim() || isAnalyzing) {
       return
@@ -57,15 +89,23 @@ export const TrainingPanel = () => {
     setError(null)
 
     try {
+      analyzedInput.current = transcriptText.trim()
+      resultId.current = makeId()
+      const history = sessions.filter(entry => entry.scenarioId === scenarioId && entry.language === language).slice(0, 6)
       const response = await window.coqpi.assistant.analyzeRecentTranscript({
-        transcriptText: transcriptText.trim(),
+        transcriptText: practiceMode === 'coach' ? [
+          `Practice question: ${question}`, `Learner answer: ${transcriptText.trim()}`,
+          `Confirmed successful exercises: ${history.filter(entry => entry.feedback === 'true').length}.`,
+          'Recent corrections to revisit:', ...history.map(entry => entry.answerMeaningRu.slice(0, 300))
+        ].join('\n') : transcriptText.trim(),
+        responseStyle: practiceMode === 'coach' ? 'coaching' : 'brief',
         callLanguage: language,
         answerLanguage: language,
         mode: 'full',
-        includeProfileContext: true,
+        includeProfileContext: practiceMode !== 'coach',
         recentWindowLabel: 'full',
         costMode: 'balanced',
-        assistantContextMode: 'simple',
+        assistantContextMode: 'legacy',
         scenarioId
       })
 
@@ -74,6 +114,15 @@ export const TrainingPanel = () => {
       }
 
       setResult(response.data)
+      const entry: TrainingSessionEntry = {
+        id: resultId.current, sessionId, createdAt: new Date().toISOString(), scenarioId, language,
+        transcriptText: analyzedInput.current, source: 'manual', speaker: 'other',
+        answerText: response.data.suggestedAnswers[0]?.text ?? '',
+        answerMeaningRu: practiceMode === 'coach' ? response.data.meaningRu : response.data.suggestedAnswers[0]?.answerMeaningRu ?? '',
+        feedback: null, mode: 'legacy', model: response.data.model, latencyMs: response.data.latencyMs
+      }
+      const saved = await window.coqpi.trainingSessions.save(entry)
+      setSessions(saved.sessions)
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : 'Training analysis failed.'
@@ -90,18 +139,18 @@ export const TrainingPanel = () => {
     }
 
     const entry: TrainingSessionEntry = {
-      id: makeId(),
+      id: resultId.current,
       sessionId,
       createdAt: new Date().toISOString(),
       scenarioId,
       language,
-      transcriptText: transcriptText.trim(),
+      transcriptText: analyzedInput.current,
       source: 'manual',
       speaker: 'other',
       answerText: answer.text,
-      answerMeaningRu: answer.answerMeaningRu,
+      answerMeaningRu: practiceMode === 'coach' ? result?.meaningRu ?? '' : answer.answerMeaningRu,
       feedback,
-      mode: 'simple',
+      mode: 'legacy',
       latencyMs: result?.latencyMs,
       model: result?.model,
       promptVersion: result?.promptVersion,
@@ -157,26 +206,25 @@ export const TrainingPanel = () => {
         <div className="panel-heading">
           <div>
             <p className="eyebrow">Training lab</p>
-            <h1>Practice one answer at a time</h1>
+            <h1>Conversation practice</h1>
           </div>
-          <span className="status-chip">Simple markdown mode</span>
+          <select aria-label="Practice mode" value={practiceMode} onChange={event => setPracticeMode(event.target.value as 'coach' | 'rehearsal')}><option value="coach">Language lesson</option><option value="rehearsal">Interview rehearsal</option></select>
         </div>
-        <p>
-          Paste one interviewer question or statement. CoqPi uses only the
-          shared profile and the selected scenario.
-        </p>
       </section>
 
       <section className="panel training-input-panel">
+        {practiceMode === 'coach' && <div className="lesson-question"><p>{question}</p><button title="Read question aloud" aria-label="Read question aloud" disabled={listening} onClick={speakQuestion}><Volume2 size={18} /></button></div>}
         <label className="field-label" htmlFor="training-scenario">
           Scenario
         </label>
         <select
           id="training-scenario"
+          disabled={isAnalyzing || listening}
           value={scenarioId}
           onChange={(event) =>
             (() => {
               const nextScenario = event.target.value as SimpleAssistantScenarioId
+              setResult(null)
               setScenarioId(nextScenario)
               const defaultLanguage = defaultScenarioLanguages[nextScenario]
               if (defaultLanguage) {
@@ -196,14 +244,15 @@ export const TrainingPanel = () => {
         </label>
         <select
           id="training-language"
+          disabled={isAnalyzing || listening}
           value={language}
-          onChange={(event) => setLanguage(event.target.value as AssistantAnswerLanguage)}
+          onChange={(event) => { setResult(null); setLanguage(event.target.value as AssistantAnswerLanguage); setQuestion(event.target.value === 'fr' ? 'Parlez-moi de votre parcours professionnel.' : 'Tell me about your professional background.') }}
         >
           <option value="en">English</option>
           <option value="fr">French</option>
         </select>
         <label className="field-label" htmlFor="training-transcript">
-          Question or transcript line
+          {practiceMode === 'coach' ? 'Your answer' : 'Interview question'}
         </label>
         <textarea
           id="training-transcript"
@@ -212,13 +261,14 @@ export const TrainingPanel = () => {
           placeholder="Tell me about your experience with AI products."
           rows={5}
         />
+        <button aria-label={listening ? 'Stop voice input' : 'Start voice input'} title={listening ? 'Stop voice input' : 'Start voice input'} onClick={() => void toggleVoice()}>{listening ? <Square size={18} /> : <Mic size={18} />}</button>
         <button
           className="primary-button"
           disabled={!transcriptText.trim() || isAnalyzing}
           onClick={() => void analyze()}
           type="button"
         >
-          {isAnalyzing ? 'Thinking...' : 'Suggest one answer'}
+          {isAnalyzing ? 'Thinking...' : practiceMode === 'coach' ? 'Review my answer' : 'Suggest one answer'}
         </button>
         {error ? <p className="error-text">{error}</p> : null}
       </section>
@@ -236,17 +286,18 @@ export const TrainingPanel = () => {
         {answer ? (
           <>
             <blockquote>{answer.text}</blockquote>
-            <p className="muted-text">{answer.answerMeaningRu}</p>
+            <p className="muted-text">{practiceMode === 'coach' ? result?.meaningRu : answer.answerMeaningRu}</p>
+            {practiceMode === 'coach' && result?.detectedQuestion && <button onClick={() => { setQuestion(result.detectedQuestion); setTranscriptText(''); setResult(null) }}>Next question</button>}
             <div className="training-feedback-actions">
               <button
                 className="primary-button"
                 onClick={() => void saveFeedback('true')}
                 type="button"
               >
-                True: useful
+                {practiceMode === 'coach' ? 'Practiced correctly' : 'Useful answer'}
               </button>
               <button onClick={() => void saveFeedback('false')} type="button">
-                False: change it
+                {practiceMode === 'coach' ? 'Needs practice' : 'Needs a change'}
               </button>
             </div>
           </>

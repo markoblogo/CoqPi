@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import type {
   MeetingTranscriptionExportRequest,
   MeetingTranscriptionExportResult,
@@ -23,10 +24,26 @@ const getMeetingTranscriptionJournalPath = () =>
   path.join(getAppInfo().sessionsDirectory, 'meeting-transcription-journal.ndjson')
 
 let saveQueue = Promise.resolve()
+let lastPersisted: MeetingTranscriptionSession | null = null
+let lastPersistedPath = ''
+const archiveDirectory = () => path.join(getAppInfo().sessionsDirectory, 'recordings')
+const archivePath = (id: string) => path.join(archiveDirectory(), `${createHash('sha256').update(id).digest('hex')}.json`)
+
+const enqueueWrite = (write: () => Promise<void>) => {
+  const operation = saveQueue.catch(() => undefined).then(write)
+  saveQueue = operation
+  return operation
+}
 
 const writeAtomic = async (filePath: string, content: string) => {
   const temporaryPath = `${filePath}.tmp`
-  await fs.writeFile(temporaryPath, content, 'utf8')
+  const handle = await fs.open(temporaryPath, 'w', 0o600)
+  try {
+    await handle.writeFile(content, 'utf8')
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
   await fs.rename(temporaryPath, filePath)
 }
 
@@ -70,6 +87,7 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
         startTime,
         endTime: sanitizeText(entry.endTime) || undefined,
         text,
+        language: entry.language ? sanitizeLanguage(entry.language) : undefined,
         source: sanitizeSource(entry.source),
         translatedText: sanitizeText(entry.translatedText) || undefined,
         confidence:
@@ -105,6 +123,9 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
 
   return {
     id,
+    assistantEvents: Array.isArray(candidate.assistantEvents) ? candidate.assistantEvents
+      .filter(event => event && typeof event.timestamp === 'string' && typeof event.answer === 'string')
+      .map(event => ({ timestamp: event.timestamp, answer: event.answer, meaning: sanitizeText(event.meaning), model: sanitizeText(event.model), latencyMs: typeof event.latencyMs === 'number' ? event.latencyMs : undefined, language: sanitizeText(event.language) })) : [],
     language: sanitizeLanguage(candidate.language),
     inputLabel: sanitizeText(candidate.inputLabel),
     mode:
@@ -128,30 +149,48 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
 
 export const getCurrentMeetingTranscriptionSession =
   async (): Promise<MeetingTranscriptionSession | null> => {
+    let recovered: MeetingTranscriptionSession | null = null
     try {
       const raw = await fs.readFile(getCurrentMeetingTranscriptionPath(), 'utf8')
-      return sanitizeSession(JSON.parse(raw))
-    } catch {
-      try {
+      recovered = sanitizeSession(JSON.parse(raw))
+    } catch { /* Recover from the durable journal below. */ }
+    try {
         const journal = await fs.readFile(
           getMeetingTranscriptionJournalPath(),
           'utf8'
         )
-        const entries = journal.trim().split('\n').reverse()
+        const entries = journal.trim().split('\n')
         for (const entry of entries) {
           try {
-            const session = sanitizeSession(JSON.parse(entry).session)
-            if (session) return session
+            const record = JSON.parse(entry)
+            if (record.session) recovered = sanitizeSession(record.session) ?? recovered
+            else if (record.patch && recovered && recovered.id === record.patch.id) {
+              const byId = new Map(recovered.segments.map(segment => [segment.id, segment]))
+              for (const segment of record.patch.segments ?? []) byId.set(segment.id, segment)
+              recovered = sanitizeSession({ ...recovered, ...record.patch, segments: [...byId.values()] })
+            }
           } catch {
             // Ignore a truncated final journal record and try the previous one.
           }
         }
-      } catch {
-        // No recoverable local transcript exists.
-      }
-      return null
-    }
+    } catch { /* A snapshot can still be used without a journal. */ }
+    return recovered
   }
+
+export const getMeetingTranscriptionHistory = async () => {
+  await saveQueue.catch(() => undefined)
+  const names = await fs.readdir(archiveDirectory()).catch(() => [])
+  const sessions = await Promise.all(names.filter(name => name.endsWith('.json')).map(async name => {
+    try { return sanitizeSession(JSON.parse(await fs.readFile(path.join(archiveDirectory(), name), 'utf8'))) }
+    catch { return null }
+  }))
+  return sessions.filter((session): session is MeetingTranscriptionSession => session !== null)
+    .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
+    .map(({ id, startedAt, endedAt, language, mode, segments }) => ({ id, startedAt, endedAt, language, mode, segmentCount: segments.length }))
+}
+
+export const getArchivedMeetingTranscriptionSession = async (id: string) =>
+  sanitizeSession(JSON.parse(await fs.readFile(archivePath(id), 'utf8')))
 
 export const saveCurrentMeetingTranscriptionSession = async (
   session: MeetingTranscriptionSession
@@ -165,28 +204,42 @@ export const saveCurrentMeetingTranscriptionSession = async (
   const filePath = getCurrentMeetingTranscriptionPath()
   const journalPath = getMeetingTranscriptionJournalPath()
   const serialized = JSON.stringify(sanitized, null, 2)
-  const journalEntry = `${JSON.stringify({
-    savedAt: new Date().toISOString(),
-    session: sanitized
-  })}\n`
-
-  saveQueue = saveQueue.then(async () => {
+  await enqueueWrite(async () => {
     await fs.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.appendFile(journalPath, journalEntry, 'utf8')
+    await fs.mkdir(archiveDirectory(), { recursive: true })
+    const previous = lastPersistedPath === filePath ? lastPersisted : null
+    const sameSession = previous?.id === sanitized.id
+    const previousSegments = new Map(previous?.segments.map(segment => [segment.id, JSON.stringify(segment)]))
+    const record = sameSession ? { patch: {
+      ...sanitized,
+      segments: sanitized.segments.filter(segment => previousSegments.get(segment.id) !== JSON.stringify(segment))
+    } } : { session: sanitized }
+    const handle = await fs.open(journalPath, 'a', 0o600)
+    try {
+      await handle.writeFile(`\n${JSON.stringify(record)}\n`, 'utf8')
+      await handle.sync()
+    } finally { await handle.close() }
+    await writeAtomic(archivePath(sanitized.id), serialized)
     await writeAtomic(filePath, serialized)
+    lastPersisted = sanitized
+    lastPersistedPath = filePath
   })
-  await saveQueue
 
   return { ok: true }
 }
 
 export const clearCurrentMeetingTranscriptionSession =
   async (): Promise<MeetingTranscriptionSaveResult> => {
-    saveQueue = saveQueue.then(async () => {
+    await enqueueWrite(async () => {
+      const current = await getCurrentMeetingTranscriptionSession()
+      if (current) {
+        await fs.mkdir(archiveDirectory(), { recursive: true })
+        await writeAtomic(archivePath(current.id), JSON.stringify(current, null, 2))
+      }
       await fs.rm(getCurrentMeetingTranscriptionPath(), { force: true })
       await fs.rm(getMeetingTranscriptionJournalPath(), { force: true })
+      lastPersisted = null
     })
-    await saveQueue
     return { ok: true }
   }
 

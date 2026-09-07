@@ -29,11 +29,11 @@ const getTranscriptionPrompt = (
   callLanguage: RealtimeTranscriptionStartRequest['callLanguage']
 ) => {
   if (callLanguage === 'en') {
-    return 'Transcribe spoken English only. Ignore other languages and background speech. Do not translate.'
+    return 'Transcribe the conversation faithfully in its original language, primarily English. Preserve code-switching. Do not translate.'
   }
 
   if (callLanguage === 'fr') {
-    return 'Transcribe spoken French only. Ignore other languages and background speech. Do not translate.'
+    return 'Transcribe the conversation faithfully in its original language, primarily French. Preserve code-switching. Do not translate.'
   }
 
   if (callLanguage === 'uk') {
@@ -44,7 +44,7 @@ const getTranscriptionPrompt = (
     return 'Transcribe spoken Russian only. Do not translate, summarize, or rewrite.'
   }
 
-  return 'Transcribe spoken English or French only. Ignore all other languages and background speech. Do not translate.'
+  return 'Transcribe Russian, Ukrainian, English or French speech faithfully in the original language. Preserve language switches. Do not translate, summarize or invent speech during silence.'
 }
 
 const getApiKey = async () => {
@@ -137,7 +137,8 @@ export const createRealtimeTranscriptionAnswer = async (
           Authorization: `Bearer ${await getApiKey()}`,
           'OpenAI-Safety-Identifier': getSafetyIdentifier()
         },
-        body: formData
+        body: formData,
+        signal: AbortSignal.timeout(15000)
       })
   )
 

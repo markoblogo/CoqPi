@@ -10,7 +10,7 @@
 
 CoqPi is a local Electron app for three connected jobs:
 
-1. help during real English/French calls with fast Russian support;
+1. help during English/French calls with Russian meaning and spoken replies, or Russian/Ukrainian calls without unnecessary translation;
 2. find and prepare job / partner / investor / accelerator targets before the call;
 3. accumulate private owner/context knowledge without sending raw source material into the assistant path.
 
@@ -22,6 +22,16 @@ OpenAI Realtime is the primary live transcription path. OpenAI text analysis is 
 
 ## Current product status
 
+### Conversation-first update
+
+- Live opens with one large suggested answer and smaller incoming meaning. Recording status and Stop stay visible; context and diagnostics expand on demand.
+- Language follows each finalized utterance, including switches during a call. Short ambiguous replies retain the previous language. Detection is a local text heuristic, not guaranteed acoustic language identification.
+- Recorder and Copilot save original text independently of assistant success. Safe interim checkpoints, recoverable write queues, bounded STT reconnects and archived sessions protect already received text.
+- Saved conversations can be exported or explicitly reviewed. Training offers EN/FR correction and next-question practice; Prepare can turn selected context into a reviewed strategy and rehearsal.
+- Automated checks cover language switches, storage failures and the actual Electron UI with simulated providers. Real microphone quality, mixed-speaker attribution and long noisy calls still need human validation. No raw audio backup or system-audio capture is claimed.
+
+See [delivery priorities, verification and remaining work](docs/CONVERSATION_DELIVERY_PLAN.md).
+
 Read first for a fresh coding session:
 
 1. `README.md`
@@ -31,14 +41,14 @@ Read first for a fresh coding session:
 
 ### 1) Communicator: live assistant / translator
 
-Status: MVP is real and fairly stable.
+Status: functional MVP; repeated real-call reliability and latency validation remain required.
 
 What works now:
 - mic input -> realtime transcript -> assistant answer loop;
-- EN/FR -> RU meaning, detected question, short answer options in EN/FR, answer meaning, keywords;
+- EN/FR -> RU meaning and a brief answer in the current interlocutor language; RU/UK replies preserve the original language;
 - auto-analysis after final `other` utterances with manual override;
 - real-call boundary hardening for:
-  - background non-EN/FR speech,
+  - unsupported-language and low-signal speech,
   - short noise,
   - acknowledgement noise,
   - rapid duplicate finals,
@@ -50,7 +60,7 @@ What works now:
 - assistant output QA fixtures now verify that EN/FR suggestions use selected
   Knowledge-to-Finder facts, avoid unrelated owner facts, and switch to a
   clarifying answer when target fit is weak;
-- live cockpit shows what is listened to, what is ignored, what was sent, and what context actually went into the last analyze;
+- expanded cockpit shows what is listened to, ignored, sent and included in the last analysis;
 - real-smoke execution diagnostics now show:
   - first failed stage,
   - compact realtime/transcript trace,
@@ -59,7 +69,7 @@ What works now:
   focus and missing-context indicators;
 - bounded Cortex-backed preparation context in Prepare mode:
   `SessionContext -> ABVX ContextRequest -> ContextPack -> compact review sections`;
-- local EN/FR transcript cleanup and language hint before assistant analysis;
+- local per-utterance EN/FR/RU/UK language resolution before assistant analysis; protected EN/FR-only retrieval scopes are not widened;
 - fail-closed privacy gate before external provider calls: PII is redacted and
   secret-like material blocks the request;
 - append-only post-call recap shape with agenda, confirmed outcomes, follow-ups

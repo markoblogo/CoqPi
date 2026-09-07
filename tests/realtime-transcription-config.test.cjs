@@ -35,9 +35,10 @@ test('realtime transcription config passes explicit meeting languages', () => {
   }
 })
 
-test('realtime transcription config keeps live auto as EN/FR only prompt without explicit language', () => {
+test('realtime auto preserves all four languages and language switches', () => {
   const config = buildRealtimeTranscriptionSessionConfigForTests('auto')
 
   assert.equal(config.audio.input.transcription.language, undefined)
-  assert.match(config.audio.input.transcription.prompt, /English or French/)
+  assert.match(config.audio.input.transcription.prompt, /Russian, Ukrainian, English or French/)
+  assert.match(config.audio.input.transcription.prompt, /Preserve language switches/)
 })

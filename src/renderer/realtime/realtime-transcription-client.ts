@@ -82,10 +82,19 @@ export class RealtimeTranscriptionClient {
   private dataChannel: RTCDataChannel | null = null
   private mediaStream: MediaStream | null = null
   private isStopping = false
+  private generation = 0
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
+  private reconnectAttempts = 0
 
   async start(options: StartRealtimeTranscriptionOptions) {
     await this.stop()
     this.isStopping = false
+    this.reconnectAttempts = 0
+    await this.connect(options)
+  }
+
+  private async connect(options: StartRealtimeTranscriptionOptions) {
+    const generation = this.generation
     options.onStatusChange('connecting')
     options.onLifecycleLog('Start Listening clicked')
 
@@ -94,6 +103,10 @@ export class RealtimeTranscriptionClient {
         audio: buildAudioInputConstraints(options.selectedAudioDeviceId),
         video: false
       })
+      if (this.isStopping || generation !== this.generation) {
+        mediaStream.getTracks().forEach(track => track.stop())
+        return
+      }
       options.onLifecycleLog('microphone stream acquired')
 
       const peerConnection = new RTCPeerConnection()
@@ -110,6 +123,7 @@ export class RealtimeTranscriptionClient {
       options.onLifecycleLog('audio track added')
 
       peerConnection.onconnectionstatechange = () => {
+        if (this.isStopping || generation !== this.generation) return
         const state = peerConnection.connectionState
         options.onPeerConnectionStateChange(state)
 
@@ -121,11 +135,13 @@ export class RealtimeTranscriptionClient {
         if (state === 'failed') {
           options.onStatusChange('error')
           options.onError('Peer connection failed.')
+          this.scheduleReconnect(options)
           return
         }
 
         if (state === 'disconnected' || state === 'closed') {
-          options.onStatusChange(this.isStopping ? 'stopped' : 'idle')
+          options.onStatusChange('connecting')
+          this.scheduleReconnect(options)
         }
       }
 
@@ -138,22 +154,27 @@ export class RealtimeTranscriptionClient {
       }
 
       dataChannel.addEventListener('open', () => {
+        if (this.isStopping || generation !== this.generation) return
         options.onDataChannelStateChange(dataChannel.readyState)
         options.onStatusChange('listening')
         options.onLifecycleLog('data channel open')
       })
 
       dataChannel.addEventListener('error', () => {
+        if (this.isStopping || generation !== this.generation) return
         options.onDataChannelStateChange(dataChannel.readyState)
         options.onStatusChange('error')
         options.onError('Data channel failed to open or encountered an error.')
+        this.scheduleReconnect(options)
       })
 
       dataChannel.addEventListener('close', () => {
         options.onDataChannelStateChange(dataChannel.readyState)
+        if (!this.isStopping && generation === this.generation) this.scheduleReconnect(options)
       })
 
       dataChannel.addEventListener('message', (event) => {
+        if (this.isStopping || generation !== this.generation) return
         try {
           const payload = JSON.parse(String(event.data)) as RealtimeServerEvent
           const eventType =
@@ -184,6 +205,7 @@ export class RealtimeTranscriptionClient {
         offerSdp: localDescription,
         callLanguage: options.callLanguage
       })
+      if (this.isStopping || generation !== this.generation) return
 
       if (!response.ok) {
         throw new Error(response.error.message)
@@ -200,14 +222,46 @@ export class RealtimeTranscriptionClient {
       })
       options.onLifecycleLog('remote description set')
     } catch (error) {
-      await this.stop()
+      if (generation !== this.generation || this.isStopping) return
+      this.releaseConnection()
       options.onStatusChange('error')
       throw new Error(getRealtimeMicrophoneErrorMessage(error))
     }
   }
 
+  private scheduleReconnect(options: StartRealtimeTranscriptionOptions) {
+    if (this.reconnectTimer || this.isStopping) return
+    if (this.reconnectAttempts >= 3) {
+      options.onStatusChange('error')
+      options.onError('Connection interrupted. Saved text is safe; press Start to reconnect. Speech during the interruption was not transcribed.')
+      return
+    }
+    const delay = 1000 * 2 ** this.reconnectAttempts++
+    options.onStatusChange('connecting')
+    options.onLifecycleLog(`Reconnect scheduled in ${delay} ms; transcription gap possible`)
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      this.generation++
+      this.releaseConnection()
+      void this.connect(options).catch(() => this.scheduleReconnect(options))
+    }, delay)
+  }
+
+  private releaseConnection() {
+    if (this.peerConnection) this.peerConnection.onconnectionstatechange = null
+    this.dataChannel?.close()
+    this.dataChannel = null
+    this.peerConnection?.close()
+    this.peerConnection = null
+    this.mediaStream?.getTracks().forEach(track => track.stop())
+    this.mediaStream = null
+  }
+
   async stop() {
     this.isStopping = true
+    this.generation++
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
 
     this.dataChannel?.close()
     this.dataChannel = null

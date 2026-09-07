@@ -1,8 +1,8 @@
 export type ListeningStatus = 'Idle' | 'Listening' | 'Mock running' | 'Error'
 
-export type CallLanguage = 'Auto' | 'English' | 'French'
+export type CallLanguage = 'Auto' | 'English' | 'French' | 'Russian' | 'Ukrainian'
 
-export type AnswerLanguage = 'English' | 'French'
+export type AnswerLanguage = 'Auto' | 'English' | 'French' | 'Russian' | 'Ukrainian'
 
 export const enum PatterLikeProviderKind {
   OpenAI = 'openai',
@@ -53,7 +53,7 @@ export interface ControlState {
 export const defaultControlState: ControlState = {
   listeningStatus: 'Idle',
   callLanguage: 'Auto',
-  answerLanguage: 'English'
+  answerLanguage: 'Auto'
 }
 
 export interface PanelDefinition {
@@ -840,7 +840,7 @@ export interface AudioLevelReading {
 
 export type TranscriptSpeaker = 'other' | 'me' | 'system'
 
-export type TranscriptLanguage = 'en' | 'fr' | 'ru' | 'unknown'
+export type TranscriptLanguage = 'en' | 'fr' | 'ru' | 'uk' | 'unknown'
 
 export interface TranscriptUtterance {
   id: string
@@ -862,9 +862,9 @@ export interface SuggestedAnswer {
   answerMeaningRu: string
 }
 
-export type AssistantCallLanguage = 'auto' | 'en' | 'fr'
+export type AssistantCallLanguage = 'auto' | 'en' | 'fr' | 'ru' | 'uk'
 
-export type AssistantAnswerLanguage = 'en' | 'fr'
+export type AssistantAnswerLanguage = 'en' | 'fr' | 'ru' | 'uk'
 
 export type AssistantAnalysisMode = 'full' | 'keywords'
 
@@ -889,6 +889,7 @@ export type SimpleAssistantScenarioId =
   (typeof simpleAssistantScenarioIds)[number]
 
 export interface AssistantAnalysisRequest {
+  responseStyle?: 'brief' | 'coaching' | 'review' | 'preparation'
   transcriptText: string
   callLanguage: AssistantCallLanguage
   answerLanguage: AssistantAnswerLanguage

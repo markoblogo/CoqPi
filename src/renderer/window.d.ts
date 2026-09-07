@@ -265,6 +265,9 @@ declare global {
         ) => Promise<RealtimeTranscriptionResponse>
       }
       meetingTranscription: {
+        onShutdown: (callback: () => Promise<void>) => () => void
+        history: () => Promise<Array<Pick<MeetingTranscriptionSession, 'id' | 'startedAt' | 'endedAt' | 'language' | 'mode'> & { segmentCount: number }>>
+        read: (id: string) => Promise<MeetingTranscriptionSession | null>
         getCurrent: () => Promise<MeetingTranscriptionSession | null>
         saveCurrent: (
           session: MeetingTranscriptionSession

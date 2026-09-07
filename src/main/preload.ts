@@ -289,6 +289,13 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:realtime:create-transcription-answer', request)
   },
   meetingTranscription: {
+    onShutdown: (callback: () => Promise<void>) => {
+      const listener = () => { void callback().then(() => ipcRenderer.send('coqpi:recording:flushed', null)).catch(() => ipcRenderer.send('coqpi:recording:flushed', 'Unable to save the latest recording. Export it before closing.')) }
+      ipcRenderer.on('coqpi:recording:flush-request', listener)
+      return () => { ipcRenderer.removeListener('coqpi:recording:flush-request', listener) }
+    },
+    history: () => ipcRenderer.invoke('coqpi:meeting-transcription:history'),
+    read: (id: string) => ipcRenderer.invoke('coqpi:meeting-transcription:read', id),
     getCurrent: (): Promise<MeetingTranscriptionSession | null> =>
       ipcRenderer.invoke('coqpi:meeting-transcription:get-current'),
     saveCurrent: (session: MeetingTranscriptionSession) =>

@@ -1,0 +1,43 @@
+.live-layout.live-focused {
+  display: block;
+  overflow: auto;
+  min-height: 0;
+  padding: 8px;
+}
+.call-focused-shell .app-bar-left > .status-chip,
+.call-focused-shell .app-bar-left > .health-pill,
+.call-focused-shell .density-toggle { display: none; }
+.call-focused-shell .tab-bar .nav-label { display: none; }
+.call-focused-shell .tab-bar button { width: 34px; min-width: 34px; padding: 6px; }
+.call-focused-shell .app-bar { min-height: 42px; padding: 4px 8px; }
+.call-focused-shell .app-bar .app-title { font-size: 16px; }
+.conversation-review { white-space: pre-wrap; line-height: 1.6; }
+.lesson-question { display: flex; gap: 12px; align-items: center; }
+.lesson-question p { font-size: 20px; line-height: 1.5; }
+.live-layout.live-focused > :not(.call-focus) { display: none; }
+.live-layout > .call-focus { order: -10; flex: 0 0 auto; }
+.call-focus { width: 100%; min-width: 0; color: #f4f4f5; }
+.call-focus-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 0 12px; border-bottom: 1px solid #353539; }
+.call-focus-toolbar button, .call-section-label button, .call-error button { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border-radius: 6px; flex: 0 0 34px; }
+.call-focus-toolbar select { width: auto; max-width: 150px; min-height: 34px; font-size: 13px; }
+.call-focus button { appearance: none; background: #202425; color: #d9e5df; border: 1px solid #3d4944; box-shadow: none; cursor: pointer; }
+.call-focus button:hover:not(:disabled) { background: #303b36; border-color: #82ac97; }
+.call-focus button:disabled { opacity: .4; cursor: default; }
+.call-focus button:focus-visible { outline: 2px solid #93cbb0; outline-offset: 2px; }
+.call-focus-toolbar > span { font-size: 12px; }
+.call-save-status { margin-left: auto; color: #9fbdab; }
+.call-answer { padding: 18px 4px 22px; }
+.call-section-label { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: #acaeb4; font-size: 12px; font-weight: 500; }
+.call-answer > p { font-size: 30px; line-height: 1.4; font-weight: 500; letter-spacing: 0; margin: 10px 0 0; overflow-wrap: anywhere; }
+.call-heard { padding: 14px 4px; border-top: 1px solid #353539; }
+.call-heard > p { font-size: 17px; line-height: 1.5; color: #c7c8cd; margin: 8px 0; overflow-wrap: anywhere; }
+.call-error { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #ffc6c0; padding: 8px 0; overflow-wrap: anywhere; }
+.call-focus details { font-size: 14px; color: #a5a7ad; padding: 10px 4px; }
+.recording-history { flex: 0 0 auto; padding: 10px; font-size: 13px; }
+.recording-history summary { cursor: pointer; }
+.recording-history-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 0; border-bottom: 1px solid #353539; }
+.recording-history-row button { margin-left: auto; }
+@media (max-width: 600px) {
+  .call-answer > p { font-size: 26px; }
+  .call-heard > p { font-size: 16px; }
+}

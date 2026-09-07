@@ -3,7 +3,6 @@ import fs from 'node:fs/promises'
 import http from 'node:http'
 import path from 'node:path'
 import { shell } from 'electron'
-import { google } from 'googleapis'
 import {
   isBatchSendApprovalValid,
   extractCalendarSuggestion,
@@ -94,6 +93,7 @@ const createAuthorizedClient = async () => {
   }
   const token = await readToken()
   if (!token) throw new Error('Google Workspace is not connected.')
+  const { google } = await import('googleapis')
   const client = new google.auth.OAuth2(config.clientId, config.clientSecret)
   client.setCredentials(token)
   client.on('tokens', async (tokens) => {
@@ -114,6 +114,7 @@ export const connectGoogleWorkspace = async (
   const requested = capability === 'mail' ? MAIL_SCOPES : CALENDAR_SCOPES
   const existingScopes = (existing?.scope ?? '').split(/\s+/).filter(Boolean)
   const scopes = Array.from(new Set([...existingScopes, ...requested]))
+  const { google } = await import('googleapis')
 
   return new Promise<GoogleConnectionStatus>((resolve, reject) => {
     const server = http.createServer()
@@ -174,6 +175,7 @@ export const disconnectGoogleWorkspace = async () => {
 
 const liveGateway = async (): Promise<GoogleWorkspaceGateway> => {
   const auth = await createAuthorizedClient()
+  const { google } = await import('googleapis')
   const gmail = google.gmail({ version: 'v1', auth })
   const calendar = google.calendar({ version: 'v3', auth })
   return {

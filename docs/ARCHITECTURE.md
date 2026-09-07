@@ -57,7 +57,7 @@ This path is on-demand only. It is read-only, does not use microphone/audio, and
 
 ### Realtime transcription path
 
-`selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> transcript state -> completed utterance -> local EN/FR auto-analysis guard -> 900 ms debounce -> assistant analysis -> cockpit panels`
+`selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> durable transcript checkpoint -> completed utterance -> per-utterance EN/FR/RU/UK language resolution -> local auto-analysis guard -> 900 ms debounce -> assistant analysis -> answer-first cockpit`
 
 ### Meeting transcription path
 
@@ -77,7 +77,7 @@ summarize, suggest answers, call Ollama, or call
 
 Only one automatic analysis request may run at a time. Manual controls remain an override.
 
-The local auto-analysis guard is deliberately cheap and does not add an LLM or provider round trip in the audio hot path. It allows explicit EN/FR transcript language, allows unknown-language Latin text in Auto mode, and blocks obvious non-EN/FR background speech, too-short transcript noise, and low-signal acknowledgement noise before the assistant provider is called.
+The local auto-analysis guard adds no provider round trip. App resolves each final utterance to EN/FR/RU/UK, retaining the previous language for ambiguous text; explicitly resolved native-language speech is eligible. The legacy Auto guard remains conservative for callers without language resolution. Noise and low-signal acknowledgements are filtered before analysis. Language routing does not widen protected retrieval scopes. See `CONVERSATION_DELIVERY_PLAN.md` for persistence, reconnection and verification boundaries.
 
 Current boundary hardening also includes:
 

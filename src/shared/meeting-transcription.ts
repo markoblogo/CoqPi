@@ -1,3 +1,5 @@
+import { detectConversationLanguage } from './conversation-language'
+
 export type MeetingTranscriptionLanguage = 'uk' | 'ru' | 'en' | 'fr'
 
 export type MeetingTranscriptionStatus =
@@ -11,6 +13,7 @@ export type MeetingTranscriptionMode = 'recorder' | 'copilot'
 export type MeetingTranscriptionSource = 'microphone' | 'system' | 'unknown'
 
 export interface MeetingTranscriptionSegment {
+  language?: MeetingTranscriptionLanguage
   id: string
   startTime: string
   endTime?: string
@@ -31,6 +34,7 @@ export interface MeetingTranscriptionInterim {
 }
 
 export interface MeetingTranscriptionSession {
+  assistantEvents?: Array<{ timestamp: string; answer: string; meaning: string; model?: string; latencyMs?: number; language?: string }>
   id: string
   language: MeetingTranscriptionLanguage
   inputLabel: string
@@ -137,7 +141,7 @@ export const applyMeetingTranscriptionRealtimeEvent = ({
   session: MeetingTranscriptionSession
   committed: boolean
 } => {
-  if (session.status !== 'recording') {
+  if (session.status !== 'recording' && session.status !== 'error') {
     return { session, committed: false }
   }
 
@@ -220,6 +224,7 @@ export const applyMeetingTranscriptionRealtimeEvent = ({
           startTime: interim?.startTime ?? now,
           endTime: now,
           text,
+          language: detectConversationLanguage(text, session.segments.at(-1)?.language ?? session.language),
           source: 'unknown',
           isFinal: true,
           sourceItemId: itemId

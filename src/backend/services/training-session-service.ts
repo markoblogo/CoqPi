@@ -9,6 +9,7 @@ import { simpleAssistantScenarioIds } from '../../shared/app-types'
 import { getSimpleAssistantTrainingDirectory } from './app-state'
 
 const trainingFileName = 'sessions.json'
+let writeQueue = Promise.resolve()
 
 const getTrainingFilePath = () =>
   path.join(getSimpleAssistantTrainingDirectory(), trainingFileName)
@@ -91,12 +92,21 @@ export const getTrainingSessions = async (): Promise<TrainingSessionResult> => {
 export const saveTrainingSession = async (
   entry: TrainingSessionEntry
 ): Promise<TrainingSessionResult> => {
+  const sanitized = sanitizeEntry(entry)
+  if (!sanitized) throw new Error('Invalid training entry')
+  let next: TrainingSessionEntry[] = []
+  const operation = writeQueue.catch(() => undefined).then(async () => {
   const current = await getTrainingSessions()
-  const next = [entry, ...current.sessions].slice(0, 500)
+  next = [sanitized, ...current.sessions.filter(item => item.id !== sanitized.id)].slice(0, 500)
   const filePath = getTrainingFilePath()
 
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  await fs.writeFile(filePath, JSON.stringify(next, null, 2), 'utf8')
+  await fs.appendFile(`${filePath}.ndjson`, `${JSON.stringify(sanitized)}\n`, { mode: 0o600 })
+  await fs.writeFile(`${filePath}.tmp`, JSON.stringify(next, null, 2), { mode: 0o600 })
+  await fs.rename(`${filePath}.tmp`, filePath)
+  })
+  writeQueue = operation
+  await operation
 
   return { sessions: next }
 }

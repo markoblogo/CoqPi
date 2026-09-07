@@ -92,7 +92,7 @@ Test the Live path with disconnected, connecting, listening, transcript-active, 
 
 ## First redesign surface
 
-Start with the `Live` cockpit. Reframe it around a primary transcript/event stream, a current assistant/action rail, and an evidence/status inspector. Do not redesign Training, Finder, or Settings in the same slice.
+The Live default is answer-first: one large ready-to-say answer, smaller incoming meaning, and persistent recording/Stop controls. Transcript, context and diagnostic surfaces are expandable. Never enlarge the window to conceal overflow or show a stale answer as current. Training, preparation and archive review reuse compact controls; Finder and Settings retain their existing workflows.
 
 ## Implemented slice
 
