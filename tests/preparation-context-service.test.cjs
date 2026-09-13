@@ -33,6 +33,7 @@ test('buildPreparationContextRequest creates bounded ABVX request', () => {
   )
   assert.equal(request.entities.includes('Northfield Labs'), true)
   assert.equal(request.entities.includes('Product Lead'), true)
+  assert.deepEqual(request.entities.slice(0, 2), ['CoqPi', 'Northfield Labs'])
 })
 
 test('formatPreparationContextResult groups partial pack metadata for UI', () => {

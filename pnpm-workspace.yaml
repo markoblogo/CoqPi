@@ -2,7 +2,43 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@xmldom/xmldom@0.8.15'
+  - adm-zip@0.6.1
+  - axios@1.18.0
+  - baseline-browser-mapping@2.11.0
+  - brace-expansion@1.1.18 || 2.1.4 || 5.0.9
+  - browserslist@4.28.7
+  - fast-uri@3.1.6
+  - joi@18.2.5
+  - js-yaml@4.3.2
+  - nanoid@3.3.18
+  - postcss@8.5.23
+  - qs@6.16.0
+  - shell-quote@1.8.5
+  - stream-json@3.4.1
+  - tar@7.5.21
+  - undici@6.28.0
 onlyBuiltDependencies:
   - electron
   - electron-winstaller
   - esbuild
+overrides:
+  '@xmldom/xmldom@<=0.8.14': ^0.8.15
+  'adm-zip@<=0.6.0': ^0.6.1
+  'axios@<1.18.0': ^1.18.0
+  'baseline-browser-mapping@<2.11.0': ^2.11.0
+  'brace-expansion@<1.1.18': ^1.1.18
+  'brace-expansion@>=2 <2.1.4': ^2.1.4
+  'brace-expansion@>=3 <5.0.9': ^5.0.9
+  'browserslist@<=4.28.6': ^4.28.7
+  'fast-uri@<3.1.6': ^3.1.6
+  'joi@<18.2.5': ^18.2.5
+  'js-yaml@<4.3.2': ^4.3.2
+  'nanoid@<3.3.18': ^3.3.18
+  'postcss@<=8.5.22': ^8.5.23
+  'qs@<6.16.0': ^6.16.0
+  'shell-quote@<=1.8.4': ^1.8.5
+  'stream-json@<=3.4.0': ^3.4.1
+  'tar@<=7.5.20': ^7.5.21
+  'undici@<6.28.0': ^6.28.0

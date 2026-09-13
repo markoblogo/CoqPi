@@ -10,13 +10,13 @@ import {
 const defaultProfile = `# CoqPi Simple Assistant Profile
 
 ## Short identity
-Senior product, marketing, growth and AI transformation professional based in France.
+Add a short, verified professional identity.
 
 ## Current direction
-Looking for relevant roles, partnerships and professional conversations in France or the EU.
+Add the roles, partnerships or conversations you are preparing for.
 
 ## Communication style
-Use calm, senior, natural English or French. Prefer short phrases that are easy to say under stress.
+Add preferred languages, tone and answer length.
 
 ## Facts to use
 Add verified CV and interview facts here.

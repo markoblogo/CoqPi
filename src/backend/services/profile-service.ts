@@ -6,43 +6,28 @@ import { getProfileContextPath } from './app-state'
 const profileTemplate = `# CoqPi Profile Context
 
 ## Personal Summary
-I am a senior product, marketing, growth and AI transformation professional based in France.
+Add a short, verified professional summary.
 
-## Target CDI Roles
-- AI Product Manager
-- Digital Transformation Lead
-- Product Owner B2B SaaS
-- Product-Growth Lead
-- GTM / Product Marketing Lead
-- AI Workflow Automation Lead
+## Current Goals
+- Add the roles, conversations, or outcomes you are preparing for.
 
-## Current Situation in France
-I am based in France and looking for a stable CDI role in France or the EU, preferably remote or hybrid.
+## Languages
+- Add the languages you understand and the languages you want CoqPi to answer in.
 
-## Language Situation
-My written English is strong. My spoken English and French are less fluent under stress. I understand more than I can express orally. I prefer prepared video calls, written follow-ups and live captions/translation support.
+## Communication Preferences
+- Add useful constraints such as answer length, tone, or terminology.
 
-## Communication Constraints
-Unplanned phone calls are difficult. Planned video calls with written context are better. The tool should help me understand questions, remember facts, and answer calmly.
+## Verified Experience
+- Add concise facts that may be used in answers.
 
-## Key Professional Experience
-Add details here later.
+## Current Projects
+- Add only project facts that are safe and relevant for the intended conversation.
 
-## Agro-Commodity / Brokerage Projects
-Add details about MN7R, Monitor-like tools, market intelligence, broker workspaces, validation-gated workflows and AI-assisted commodity workflows here later.
-
-## MN7R-Safe Wording
-I have hands-on experience building AI-assisted product systems for agro-commodity brokerage workflows. I am not proposing to transfer proprietary product logic or client-specific systems. I am interested in building compliant, market-specific internal tools and digital workflows for the French / European context.
-
-## Salary Expectations
-Minimum useful CDI salary target: around 3k EUR net/month.
-Preferred long-term target: 5k+ EUR net/month.
-
-## Interview Answer Facts
-Add reusable facts here later.
+## Reusable Answer Facts
+- Add facts that can be stated directly without inference.
 
 ## Things Not To Invent
-Do not invent employers, titles, dates, degrees, client names, revenue, product metrics or legal status details.
+Do not invent employers, titles, dates, degrees, clients, metrics, legal status, commitments, or personal details.
 `
 
 const ensureProfileContextFile = async (profilePath: string) => {

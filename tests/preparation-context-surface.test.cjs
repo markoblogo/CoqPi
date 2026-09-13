@@ -16,7 +16,7 @@ test('buildPreparationContextSurface renders compact review sections', () => {
       task: 'Prepare compact context.',
       intent: 'professional_preparation',
       related_projects: ['coqpi'],
-      entities: ['Anton', 'CoqPi'],
+      entities: ['CoqPi'],
       domains: ['professional-context'],
       freshness_requirement: 'CURRENT',
       privacy_domain: 'PERSONAL_PRIVATE',

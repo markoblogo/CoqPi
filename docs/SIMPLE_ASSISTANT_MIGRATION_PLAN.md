@@ -1,5 +1,7 @@
 # CoqPi Simple Assistant Migration Plan
 
+> Historical implementation plan. The parallel Simple Assistant and Training paths described here are implemented; use the README and `CONVERSATION_DELIVERY_PLAN.md` for current product status.
+
 Date: 2026-08-24
 Current baseline commit: `8ffa6e5`
 Scope: audit first, low-risk migration second
