@@ -108,7 +108,7 @@ The cost guardrail layer is intentionally approximate and local-only.
 
 Shared cost constants live in:
 
-- [src/shared/cost-estimator.ts](/Users/antonbiletskiy-volokh/Downloads/Projects/CoqPi/src/shared/cost-estimator.ts)
+- [`src/shared/cost-estimator.ts`](../src/shared/cost-estimator.ts)
 
 ## Local persistence
 
@@ -147,7 +147,7 @@ The `Context` screen is the owner-controlled ingress UI for a future shared Cort
 
 An explicit file-only capture action may locally hash and classify supported plaintext sources for the `coqpi_interview_en_fr` retrieval scope. This retrieval runs only during assistant analysis, never in the realtime audio path.
 
-Promotion to Cortex personal context, cross-tenant retrieval, public-surface exposure, and external actions are denied by default. A compact personal context pack remains a possible later scoped export, not the only ingress. See [docs/CORTEX_CONTEXT_CONTRACT.md](/Volumes/Work/Work/CoqPi/docs/CORTEX_CONTEXT_CONTRACT.md).
+Promotion to Cortex personal context, cross-tenant retrieval, public-surface exposure, and external actions are denied by default. A compact personal context pack remains a possible later scoped export, not the only ingress. See [`CORTEX_CONTEXT_CONTRACT.md`](CORTEX_CONTEXT_CONTRACT.md).
 
 For synchronous handoff workflows, CoqPi can emit an immutable snapshot of this contract state with:
 `pnpm dump-manifest -- --dump-manifest [--sign]`.

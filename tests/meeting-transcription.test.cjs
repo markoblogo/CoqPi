@@ -136,12 +136,17 @@ test('exports valid UTF-8 text for Ukrainian Russian French and English', () => 
 })
 
 test('filename generation uses meeting date time and language', () => {
+  const localNoonSession = (language) => ({
+    ...makeSession(language),
+    startedAt: '2026-08-13T12:00:00'
+  })
+
   assert.equal(
-    generateMeetingTranscriptFilename(makeSession('uk'), 'md'),
+    generateMeetingTranscriptFilename(localNoonSession('uk'), 'md'),
     'meeting-2026-08-13-1200-uk.md'
   )
   assert.equal(
-    generateMeetingTranscriptFilename(makeSession('ru'), 'txt'),
+    generateMeetingTranscriptFilename(localNoonSession('ru'), 'txt'),
     'meeting-2026-08-13-1200-ru.txt'
   )
 })

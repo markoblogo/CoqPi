@@ -52,7 +52,6 @@ export const buildPreparationContextRequest = (
     intent: 'professional_preparation',
     related_projects: ['coqpi'],
     entities: uniq([
-      'Anton',
       'CoqPi',
       context.company.trim(),
       context.role.trim(),

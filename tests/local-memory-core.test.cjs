@@ -176,11 +176,11 @@ const makeStore = () => ({
       nextAction: 'Use this as continuity for the next call.',
       warnings: [],
       status: 'follow_up',
-      createdAt: '2026-07-24T10:10:00.000Z',
+      createdAt: '2099-07-24T10:10:00.000Z',
       statusHistory: [
         {
           status: 'follow_up',
-          at: '2026-07-25T08:00:00.000Z',
+          at: '2099-07-25T08:00:00.000Z',
           reason: 'owner needs a short follow-up'
         }
       ],

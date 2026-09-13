@@ -117,24 +117,53 @@ test('training journal saves and reads a bounded session entry', async () => {
 test('France interview context loads the complete core then scenario documents', async () => {
   await withElectronMock(async () => {
     const previousDataDir = process.env.COQPI_DATA_DIR
-    process.env.COQPI_DATA_DIR = 'data'
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-simple-context-'))
+    process.env.COQPI_DATA_DIR = directory
 
     try {
+      await fs.mkdir(path.join(directory, 'simple-assistant', 'profile'), { recursive: true })
+      await fs.mkdir(path.join(directory, 'simple-assistant', 'scenarios'), { recursive: true })
+      await fs.writeFile(
+        path.join(directory, 'simple-assistant', 'profile', 'core-profile.md'),
+        '# Synthetic Profile\n\nVerified test profile fact.\n'
+      )
+      await fs.writeFile(
+        path.join(directory, 'simple-assistant', 'scenarios', 'france-interview.md'),
+        '# France Interview\n\n# FINAL LIVE RULE\n\nUse only synthetic facts.\n'
+      )
       const { getSimpleAssistantContext } = require('../dist-electron/backend/services/simple-assistant-context-service.js')
       const context = await getSimpleAssistantContext('france-job-interview')
 
-      assert.match(context.profileMarkdown, /Anton Biletskyi-Volokh/)
-      assert.match(context.profileMarkdown, /# RESPONSE RULES FOR LIVE COPILOT/)
+      assert.match(context.profileMarkdown, /Verified test profile fact/)
       assert.match(context.scenarioMarkdown, /# France Interview/)
       assert.match(context.scenarioMarkdown, /# FINAL LIVE RULE/)
-      assert.ok(context.profileMarkdown.length > 13000)
-      assert.ok(context.scenarioMarkdown.length > 10000)
     } finally {
       if (previousDataDir === undefined) {
         delete process.env.COQPI_DATA_DIR
       } else {
         process.env.COQPI_DATA_DIR = previousDataDir
       }
+      await fs.rm(directory, { recursive: true, force: true })
+    }
+  })
+})
+
+test('first run creates a neutral simple-assistant profile', async () => {
+  await withElectronMock(async () => {
+    const previousDataDir = process.env.COQPI_DATA_DIR
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-simple-context-'))
+    process.env.COQPI_DATA_DIR = directory
+
+    try {
+      const { getSimpleAssistantContext } = require('../dist-electron/backend/services/simple-assistant-context-service.js')
+      const context = await getSimpleAssistantContext('art')
+
+      assert.match(context.profileMarkdown, /Add a short, verified professional identity/)
+      assert.doesNotMatch(context.profileMarkdown, /based in France|CDI|salary/i)
+    } finally {
+      if (previousDataDir === undefined) delete process.env.COQPI_DATA_DIR
+      else process.env.COQPI_DATA_DIR = previousDataDir
+      await fs.rm(directory, { recursive: true, force: true })
     }
   })
 })
@@ -142,23 +171,34 @@ test('France interview context loads the complete core then scenario documents',
 test('Art context loads core plus art only', async () => {
   await withElectronMock(async () => {
     const previousDataDir = process.env.COQPI_DATA_DIR
-    process.env.COQPI_DATA_DIR = 'data'
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'coqpi-simple-context-'))
+    process.env.COQPI_DATA_DIR = directory
 
     try {
+      await fs.mkdir(path.join(directory, 'simple-assistant', 'profile'), { recursive: true })
+      await fs.mkdir(path.join(directory, 'simple-assistant', 'scenarios'), { recursive: true })
+      await fs.writeFile(
+        path.join(directory, 'simple-assistant', 'profile', 'core-profile.md'),
+        '# Synthetic Profile\n\nVerified test profile fact.\n'
+      )
+      await fs.writeFile(
+        path.join(directory, 'simple-assistant', 'scenarios', 'art.md'),
+        '# Art / Nantes Art Ecosystem\n\nDefault language: French\n'
+      )
       const { getSimpleAssistantContext } = require('../dist-electron/backend/services/simple-assistant-context-service.js')
       const context = await getSimpleAssistantContext('art')
 
-      assert.match(context.profileMarkdown, /Anton Biletskyi-Volokh/)
+      assert.match(context.profileMarkdown, /Verified test profile fact/)
       assert.match(context.scenarioMarkdown, /# Art \/ Nantes Art Ecosystem/)
       assert.match(context.scenarioMarkdown, /Default language: French/)
       assert.doesNotMatch(context.scenarioMarkdown, /# France Interview/)
-      assert.ok(context.scenarioMarkdown.length > 10000)
     } finally {
       if (previousDataDir === undefined) {
         delete process.env.COQPI_DATA_DIR
       } else {
         process.env.COQPI_DATA_DIR = previousDataDir
       }
+      await fs.rm(directory, { recursive: true, force: true })
     }
   })
 })
