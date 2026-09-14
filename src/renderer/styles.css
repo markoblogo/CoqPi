@@ -808,6 +808,105 @@ button:disabled {
   min-height: 0;
 }
 
+.monitor-live-copilot {
+  min-width: 0;
+}
+
+.monitor-live-copilot .panel-kicker,
+.monitor-live-draft small,
+.monitor-live-hint small {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+.monitor-live-status {
+  margin-bottom: var(--space-2);
+  color: var(--text-soft);
+  font-size: var(--font-sm);
+}
+
+.monitor-live-status-loading,
+.monitor-live-status-saving {
+  color: var(--accent);
+}
+
+.monitor-live-empty {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.monitor-live-copilot button:not(.icon-command-button) {
+  width: auto;
+  min-width: max-content;
+  padding: 0 10px;
+}
+
+.monitor-live-draft {
+  display: grid;
+  gap: 6px;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-border-strong);
+  border-radius: 8px;
+  background: rgba(18, 24, 31, 0.72);
+}
+
+.monitor-live-draft p,
+.monitor-live-hint p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.monitor-request-kind {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: var(--font-xs);
+  letter-spacing: 0.04em;
+}
+
+.monitor-request-kind-bid {
+  color: #b7e4ff;
+  background: rgba(24, 118, 168, 0.28);
+}
+
+.monitor-request-kind-offer {
+  color: #ffd9a6;
+  background: rgba(167, 101, 20, 0.3);
+}
+
+.monitor-live-hints-title {
+  margin: var(--space-2) 0 6px;
+  color: var(--text-soft);
+  font-size: var(--font-sm);
+  font-weight: 700;
+}
+
+.monitor-live-hints {
+  display: grid;
+  grid-auto-columns: minmax(210px, 82%);
+  grid-auto-flow: column;
+  gap: var(--space-2);
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x proximity;
+}
+
+.monitor-live-hint {
+  display: grid;
+  gap: 4px;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: rgba(12, 17, 23, 0.82);
+  scroll-snap-align: start;
+}
+
+.monitor-live-hint-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .mini-main {
   display: grid;
   grid-template-rows: auto 1fr;

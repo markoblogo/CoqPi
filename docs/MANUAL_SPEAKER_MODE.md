@@ -8,6 +8,9 @@ click again in CoqPi when done. Recording remains active throughout.
   and export. Recorder-only mode without manual marking retains UNKNOWN.
 - Only OTHER speech drives language changes, translation and answer requests.
   ME speech does not replace the current incoming question or reading prompt.
+- When the optional MN7R Monitor bridge is enabled, only finalized OTHER speech
+  can enter its live-preview payload. ME, partial and system items are removed
+  before IPC and rejected again by the Monitor endpoint.
 - Server VAD item IDs pin the role across delayed deltas/finals. Releasing Space
   does not relabel an already identified item. If marking begins during an
   active item, that whole item is conservatively excluded from assistant input.

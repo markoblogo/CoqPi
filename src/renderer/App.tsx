@@ -53,6 +53,9 @@ import {
   type FinderSearchJobDraft,
   type FinderSearchStore,
   type KnowledgePackLifecycleEntry,
+  type MonitorLiveCopilotRequest,
+  type MonitorLiveCopilotResponse,
+  type MonitorTokenStatus,
   type OpenAIKeyStatus,
   type PreparationContextResult,
   type RealtimeConnectionStatus,
@@ -93,6 +96,13 @@ import {
   getAssistantStatusRecoveryGuide,
   getAssistantStatusLabel
 } from '@shared/live-loop'
+import {
+  MONITOR_LIVE_COPILOT_DEBOUNCE_MS,
+  buildMonitorLiveCopilotFingerprint,
+  buildMonitorLiveCopilotRequest,
+  parseMonitorLiveCopilotSetup,
+  shouldApplyMonitorLiveCopilotResponse
+} from '@shared/monitor-live-copilot'
 import {
   APPROXIMATE_COST_MODEL,
   COST_GUARDRAILS,
@@ -244,6 +254,7 @@ import { RealtimeTranscriptionClient } from '@renderer/realtime/realtime-transcr
 const TrainingPanel = lazy(() => import('./TrainingPanel').then(module => ({ default: module.TrainingPanel })))
 import { detectConversationLanguage, type ConversationLanguage } from '@shared/conversation-language'
 import { CallFocusPanel } from './CallFocusPanel'
+import { MonitorLiveCopilotPanel } from './MonitorLiveCopilotPanel'
 import { useManualSpeaker } from './useManualSpeaker'
 const RecordingHistory = lazy(() => import('./RecordingHistory').then(module => ({ default: module.RecordingHistory })))
 const MeetingPreparationBrief = lazy(() => import('./MeetingPreparationBrief').then(module => ({ default: module.MeetingPreparationBrief })))
@@ -276,7 +287,19 @@ const defaultSettings: AppUserSettings = {
   defaultCallLanguage: 'Auto',
   defaultAnswerLanguage: 'English',
   includeProfileContextByDefault: true,
-  saveTranscriptByDefault: false
+  saveTranscriptByDefault: false,
+  monitorBaseUrl: 'https://mn7r.com',
+  monitorCompanyId: '',
+  monitorClientName: '',
+  monitorLiveCopilotEnabled: false,
+  monitorConsentConfirmed: false,
+  monitorAllowAiProcessing: false
+}
+
+const defaultMonitorTokenStatus: MonitorTokenStatus = {
+  hasStoredToken: false,
+  hasEnvToken: false,
+  effectiveTokenAvailable: false
 }
 
 const getNextFinderOutreachDraftStatus = (
@@ -788,6 +811,10 @@ export const App = () => {
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
   const noEventTimeoutRef = useRef<number | null>(null)
   const autoAnalysisTimeoutRef = useRef<number | null>(null)
+  const monitorLiveTimeoutRef = useRef<number | null>(null)
+  const monitorLiveSequenceRef = useRef(0)
+  const monitorLiveFingerprintRef = useRef<string | null>(null)
+  const latestMonitorLiveRequestRef = useRef<MonitorLiveCopilotRequest | null>(null)
   const preparePackReviewSectionRef = useRef<HTMLDivElement | null>(null)
   const meetingTranscriptEndRef = useRef<HTMLDivElement | null>(null)
   const lastAutoAnalyzedFingerprintRef = useRef<string | null>(null)
@@ -817,6 +844,21 @@ export const App = () => {
   const [keyStatus, setKeyStatus] = useState<OpenAIKeyStatus>(defaultKeyStatus)
   const [settingsForm, setSettingsForm] =
     useState<AppUserSettings>(defaultSettings)
+  const [monitorTokenStatus, setMonitorTokenStatus] = useState<MonitorTokenStatus>(
+    defaultMonitorTokenStatus
+  )
+  const [monitorTokenDraft, setMonitorTokenDraft] = useState('')
+  const [monitorSetupDraft, setMonitorSetupDraft] = useState('')
+  const [monitorUsernameDraft, setMonitorUsernameDraft] = useState('')
+  const [monitorPasswordDraft, setMonitorPasswordDraft] = useState('')
+  const [monitorLiveStatus, setMonitorLiveStatus] = useState<
+    'idle' | 'waiting' | 'loading' | 'ready' | 'error' | 'saving'
+  >('idle')
+  const [monitorLiveResult, setMonitorLiveResult] =
+    useState<MonitorLiveCopilotResponse | null>(null)
+  const [monitorLiveError, setMonitorLiveError] = useState<string | null>(null)
+  const [monitorLiveNotice, setMonitorLiveNotice] = useState<string | null>(null)
+  const [monitorLiveRefreshNonce, setMonitorLiveRefreshNonce] = useState(0)
   const [settingsMeta, setSettingsMeta] = useState<SettingsMeta | null>(null)
   const [profileContext, setProfileContext] = useState('')
   const [profileError, setProfileError] = useState<string | null>(null)
@@ -1317,7 +1359,7 @@ export const App = () => {
     'mic' | 'call' | 'answer' | null
   >(null)
   const [settingsSection, setSettingsSection] = useState<
-    'key' | 'defaults' | 'test' | 'profile' | 'cost' | 'debug' | 'about'
+    'key' | 'monitor' | 'defaults' | 'test' | 'profile' | 'cost' | 'debug' | 'about'
   >('key')
   const [interfaceDensity, setInterfaceDensity] = useState<
     'compact' | 'comfortable'
@@ -1363,6 +1405,7 @@ export const App = () => {
           contextSourcePayload,
           settingsPayload,
           keyState,
+          monitorTokenState,
           smokeNotePayload,
           finderSearchPayload,
           meetingTranscriptionSession
@@ -1374,6 +1417,7 @@ export const App = () => {
             window.coqpi.contextSources.get(),
             window.coqpi.settings.get(),
             window.coqpi.secrets.getOpenAIKeyStatus(),
+            window.coqpi.monitor.getTokenStatus(),
             window.coqpi.smokeNotes.get(),
             window.coqpi.finderSearch.get(),
             window.coqpi.meetingTranscription.getCurrent()
@@ -1413,6 +1457,7 @@ export const App = () => {
         setCounterpartyPackDraftNotice(null)
         setCounterpartyPackFinderPayload('')
         setKeyStatus(initialLoadState.keyStatus)
+        setMonitorTokenStatus(monitorTokenState)
         setSettingsForm(initialLoadState.settingsForm)
         setSettingsMeta(initialLoadState.settingsMeta)
         setSmokeNotes(initialLoadState.smokeNotes)
@@ -4837,6 +4882,62 @@ export const App = () => {
     }
   }
 
+  const saveMonitorTokenFromSettings = async () => {
+    setSettingsError(null)
+    setSettingsNotice(null)
+    try {
+      await window.coqpi.monitor.saveToken(monitorTokenDraft)
+      setMonitorTokenStatus(await window.coqpi.monitor.getTokenStatus())
+      setMonitorTokenDraft('')
+      setSettingsNotice('Secure Monitor token saved locally.')
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to save Monitor token.')
+    }
+  }
+
+  const connectMonitorAccountFromSettings = async () => {
+    setSettingsError(null)
+    setSettingsNotice(null)
+    try {
+      const result = await window.coqpi.monitor.connectAccount({
+        username: monitorUsernameDraft,
+        password: monitorPasswordDraft,
+        baseUrl: settingsForm.monitorBaseUrl
+      })
+      setMonitorTokenStatus(await window.coqpi.monitor.getTokenStatus())
+      setMonitorPasswordDraft('')
+      setSettingsNotice(`Monitor account connected: ${result.displayName}.`)
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to connect Monitor account.')
+    }
+  }
+
+  const applyMonitorSetupFromClipboard = () => {
+    setSettingsError(null)
+    setSettingsNotice(null)
+    try {
+      const setup = parseMonitorLiveCopilotSetup(monitorSetupDraft)
+      setSettingsForm(current => ({ ...current, ...setup }))
+      setMonitorSetupDraft('')
+      setSettingsNotice('Monitor client setup applied. Save settings to keep it.')
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to read Monitor setup.')
+    }
+  }
+
+  const deleteMonitorTokenFromSettings = async () => {
+    setSettingsError(null)
+    setSettingsNotice(null)
+    try {
+      await window.coqpi.monitor.deleteToken()
+      setMonitorTokenStatus(await window.coqpi.monitor.getTokenStatus())
+      setMonitorTokenDraft('')
+      setSettingsNotice('Stored Monitor token deleted.')
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : 'Unable to delete Monitor token.')
+    }
+  }
+
   const runAssistantAnalysis = async ({
     recentWindowLabel,
     seconds,
@@ -5233,6 +5334,100 @@ export const App = () => {
     sessionContext.selectedCounterpartyPackIds,
     sessionContext.selectedFinderOutreachDraftId
   ])
+
+  useEffect(() => {
+    if (
+      activeTab !== 'live' ||
+      !settingsForm.monitorLiveCopilotEnabled ||
+      !settingsForm.monitorConsentConfirmed ||
+      manualSpeaker.speaking
+    ) {
+      if (!settingsForm.monitorLiveCopilotEnabled) {
+        setMonitorLiveStatus('idle')
+        setMonitorLiveResult(null)
+      }
+      return
+    }
+
+    const sequence = monitorLiveSequenceRef.current + 1
+    const request = buildMonitorLiveCopilotRequest({
+      sequence,
+      utterances: transcriptUtterances,
+      clientName: settingsForm.monitorClientName || sessionContext.company
+    })
+    if (!request.segments.length) {
+      setMonitorLiveStatus('waiting')
+      return
+    }
+
+    const fingerprint = [
+      settingsForm.monitorBaseUrl,
+      settingsForm.monitorCompanyId,
+      settingsForm.monitorClientName,
+      settingsForm.monitorAllowAiProcessing ? 'ai' : 'local',
+      monitorLiveRefreshNonce,
+      buildMonitorLiveCopilotFingerprint(request)
+    ].join('::')
+    if (fingerprint === monitorLiveFingerprintRef.current) return
+
+    monitorLiveFingerprintRef.current = fingerprint
+    monitorLiveSequenceRef.current = sequence
+    latestMonitorLiveRequestRef.current = request
+    setMonitorLiveStatus('waiting')
+    setMonitorLiveError(null)
+    setMonitorLiveNotice(null)
+
+    if (monitorLiveTimeoutRef.current !== null) {
+      window.clearTimeout(monitorLiveTimeoutRef.current)
+    }
+    monitorLiveTimeoutRef.current = window.setTimeout(() => {
+      setMonitorLiveStatus('loading')
+      void window.coqpi.monitor.livePreview(request).then(response => {
+        if (!shouldApplyMonitorLiveCopilotResponse(response.sequence, monitorLiveSequenceRef.current)) return
+        setMonitorLiveResult(response)
+        setMonitorLiveStatus('ready')
+      }).catch(error => {
+        if (request.sequence !== monitorLiveSequenceRef.current) return
+        setMonitorLiveStatus('error')
+        setMonitorLiveError(error instanceof Error ? error.message : 'Unable to update Monitor live preview.')
+      })
+    }, MONITOR_LIVE_COPILOT_DEBOUNCE_MS)
+
+    return () => {
+      if (monitorLiveTimeoutRef.current !== null) {
+        window.clearTimeout(monitorLiveTimeoutRef.current)
+        monitorLiveTimeoutRef.current = null
+      }
+    }
+  }, [
+    activeTab,
+    manualSpeaker.speaking,
+    monitorLiveRefreshNonce,
+    sessionContext.company,
+    settingsForm.monitorAllowAiProcessing,
+    settingsForm.monitorBaseUrl,
+    settingsForm.monitorClientName,
+    settingsForm.monitorCompanyId,
+    settingsForm.monitorConsentConfirmed,
+    settingsForm.monitorLiveCopilotEnabled,
+    transcriptUtterances
+  ])
+
+  const saveCurrentMonitorLiveDraft = async () => {
+    const request = latestMonitorLiveRequestRef.current
+    if (!request || !monitorLiveResult?.draft) return
+    setMonitorLiveStatus('saving')
+    setMonitorLiveError(null)
+    setMonitorLiveNotice(null)
+    try {
+      const saved = await window.coqpi.monitor.saveLiveDraft(request)
+      setMonitorLiveNotice(`Saved to Monitor Draft Inbox (${saved.sessionId}).`)
+      setMonitorLiveStatus('ready')
+    } catch (error) {
+      setMonitorLiveStatus('error')
+      setMonitorLiveError(error instanceof Error ? error.message : 'Unable to save to Monitor Draft Inbox.')
+    }
+  }
 
   const realtimeMinutes =
     (accumulatedRealtimeMs +
@@ -6014,6 +6209,7 @@ export const App = () => {
 
   const settingsNavItems = [
     ['key', 'Key'],
+    ['monitor', 'Monitor'],
     ['defaults', 'Defaults'],
     ['test', 'Test'],
     ['profile', 'Profile'],
@@ -6074,6 +6270,130 @@ export const App = () => {
               </button>
             </div>
           </label>
+        </div>
+      </article>
+    ),
+    monitor: (
+      <article className="panel-card settings-card">
+        <div className="panel-header">
+          <div>
+            <h2>Monitor Live Copilot</h2>
+            <p className="panel-kicker">Finalized OTHER speech only. ME speech never leaves CoqPi.</p>
+          </div>
+        </div>
+        <div className="form-grid compact-form-grid">
+          <label className="settings-row settings-row-input">
+            <span className="settings-row-label">Client setup</span>
+            <textarea
+              onChange={event => setMonitorSetupDraft(event.target.value)}
+              placeholder="Paste “Copy CoqPi setup” from the Monitor client card"
+              rows={3}
+              value={monitorSetupDraft}
+            />
+            <div className="button-row button-row-inline">
+              <button disabled={!monitorSetupDraft.trim()} onClick={applyMonitorSetupFromClipboard} type="button">Apply setup</button>
+            </div>
+          </label>
+          <label className="settings-row settings-row-input">
+            <span className="settings-row-label">Monitor URL</span>
+            <input
+              onChange={event => setSettingsForm(current => ({ ...current, monitorBaseUrl: event.target.value }))}
+              placeholder="https://mn7r.com"
+              type="url"
+              value={settingsForm.monitorBaseUrl}
+            />
+          </label>
+          <label className="settings-row settings-row-input">
+            <span className="settings-row-label">Client ID</span>
+            <input
+              onChange={event => setSettingsForm(current => ({ ...current, monitorCompanyId: event.target.value }))}
+              placeholder="Monitor client/company ID"
+              type="text"
+              value={settingsForm.monitorCompanyId}
+            />
+          </label>
+          <label className="settings-row settings-row-input">
+            <span className="settings-row-label">Client name</span>
+            <input
+              onChange={event => setSettingsForm(current => ({ ...current, monitorClientName: event.target.value }))}
+              placeholder="Shown in the saved Draft Inbox item"
+              type="text"
+              value={settingsForm.monitorClientName}
+            />
+          </label>
+          <label className="settings-row settings-row-input">
+            <span className="settings-row-label">Monitor login</span>
+            <input
+              autoComplete="username"
+              onChange={event => setMonitorUsernameDraft(event.target.value)}
+              placeholder="Email or username"
+              type="text"
+              value={monitorUsernameDraft}
+            />
+            <input
+              autoComplete="current-password"
+              onChange={event => setMonitorPasswordDraft(event.target.value)}
+              placeholder="Password (not stored)"
+              type="password"
+              value={monitorPasswordDraft}
+            />
+            <div className="button-row button-row-inline">
+              <button
+                disabled={!monitorUsernameDraft.trim() || !monitorPasswordDraft}
+                onClick={() => void connectMonitorAccountFromSettings()}
+                type="button"
+              >
+                Connect account
+              </button>
+              <span>{monitorTokenStatus.effectiveTokenAvailable ? 'Connected' : 'Not connected'}</span>
+            </div>
+          </label>
+          <details className="settings-row">
+            <summary>Advanced token setup</summary>
+            <label className="settings-row settings-row-input">
+            <span className="settings-row-label">Access token</span>
+            <input
+              onChange={event => setMonitorTokenDraft(event.target.value)}
+              placeholder={monitorTokenStatus.effectiveTokenAvailable ? 'Token available' : 'Paste Monitor bearer token'}
+              type="password"
+              value={monitorTokenDraft}
+            />
+            <div className="button-row button-row-inline">
+              <button disabled={!monitorTokenDraft.trim()} onClick={() => void saveMonitorTokenFromSettings()} type="button">Save token</button>
+              <button disabled={!monitorTokenStatus.hasStoredToken} onClick={() => void deleteMonitorTokenFromSettings()} type="button">Delete</button>
+            </div>
+            </label>
+          </details>
+          <label className="settings-row settings-row-checkbox">
+            <span className="settings-row-label">Permission</span>
+            <input
+              checked={settingsForm.monitorConsentConfirmed}
+              onChange={event => setSettingsForm(current => ({ ...current, monitorConsentConfirmed: event.target.checked }))}
+              type="checkbox"
+            />
+            <span className="checkbox-label">I may process this client's speech</span>
+          </label>
+          <label className="settings-row settings-row-checkbox">
+            <span className="settings-row-label">Live bridge</span>
+            <input
+              checked={settingsForm.monitorLiveCopilotEnabled}
+              onChange={event => setSettingsForm(current => ({ ...current, monitorLiveCopilotEnabled: event.target.checked }))}
+              type="checkbox"
+            />
+            <span className="checkbox-label">Update BID/OFFER and hints during the call</span>
+          </label>
+          <label className="settings-row settings-row-checkbox">
+            <span className="settings-row-label">AI extraction</span>
+            <input
+              checked={settingsForm.monitorAllowAiProcessing}
+              onChange={event => setSettingsForm(current => ({ ...current, monitorAllowAiProcessing: event.target.checked }))}
+              type="checkbox"
+            />
+            <span className="checkbox-label">Send client text to Monitor's configured AI; otherwise use fast local rules</span>
+          </label>
+          <div className="button-row settings-actions">
+            <button disabled={isSavingSettings} onClick={() => void saveCurrentSettings()} type="button">Save Monitor settings</button>
+          </div>
         </div>
       </article>
     ),
@@ -7221,6 +7541,21 @@ export const App = () => {
             }}
             speaking={manualSpeaker.speaking}
             onToggleSpeaking={manualSpeaker.toggle}
+            marketPanel={settingsForm.monitorCompanyId || settingsForm.monitorLiveCopilotEnabled ? (
+              <MonitorLiveCopilotPanel
+                enabled={settingsForm.monitorLiveCopilotEnabled && settingsForm.monitorConsentConfirmed}
+                status={monitorLiveStatus}
+                result={monitorLiveResult}
+                error={monitorLiveError}
+                notice={monitorLiveNotice}
+                onRefresh={() => setMonitorLiveRefreshNonce(value => value + 1)}
+                onSave={() => void saveCurrentMonitorLiveDraft()}
+                onOpenSettings={() => {
+                  setSettingsSection('monitor')
+                  setActiveTab('settings')
+                }}
+              />
+            ) : null}
           />
           <section className="live-toolbar-panel">
             <div className="control-group live-primary-actions">
@@ -11170,6 +11505,7 @@ export const App = () => {
                     setSettingsSection(
                       id as
                         | 'key'
+                        | 'monitor'
                         | 'defaults'
                         | 'test'
                         | 'profile'

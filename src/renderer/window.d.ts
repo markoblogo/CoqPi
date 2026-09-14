@@ -21,6 +21,12 @@ import type {
   MeetingTranscriptionExportRequest,
   MeetingTranscriptionExportResult,
   MeetingTranscriptionSaveResult,
+  MonitorAccountLogin,
+  MonitorAccountLoginResult,
+  MonitorLiveCopilotRequest,
+  MonitorLiveCopilotResponse,
+  MonitorLiveCopilotSaveResult,
+  MonitorTokenStatus,
   OpenAIKeyStatus,
   PreparationContextResult,
   ProfileContextResult,
@@ -247,6 +253,18 @@ declare global {
       settings: {
         get: () => Promise<SettingsPayload>
         save: (settings: AppUserSettings) => Promise<SettingsPayload>
+      }
+      monitor: {
+        getTokenStatus: () => Promise<MonitorTokenStatus>
+        connectAccount: (login: MonitorAccountLogin) => Promise<MonitorAccountLoginResult>
+        saveToken: (token: string) => Promise<{ ok: boolean }>
+        deleteToken: () => Promise<{ ok: boolean }>
+        livePreview: (
+          request: MonitorLiveCopilotRequest
+        ) => Promise<MonitorLiveCopilotResponse>
+        saveLiveDraft: (
+          request: MonitorLiveCopilotRequest
+        ) => Promise<MonitorLiveCopilotSaveResult>
       }
       cortexBridge: {
         buildExport: () => Promise<CortexBridgeExport>

@@ -1,5 +1,6 @@
 import { Copy, Play, Square, Settings2, RefreshCw, UserRound, Ear } from 'lucide-react'
 import type { AssistantAnalysisResult, CallLanguage, RealtimeConnectionStatus } from '@shared/app-types'
+import type { ReactNode } from 'react'
 
 interface Props {
   speaking: boolean
@@ -22,6 +23,7 @@ interface Props {
   onRetry: () => void
   onExpand: () => void
   onLanguage: (language: CallLanguage) => void
+  marketPanel?: ReactNode
 }
 
 export const CallFocusPanel = (props: Props) => {
@@ -57,6 +59,7 @@ export const CallFocusPanel = (props: Props) => {
       <span className="call-section-label">{native ? 'You heard' : 'Meaning in Russian'}</span>
       <p>{fresh && props.result ? (native ? props.heard : props.result.meaningRu) : props.heard || 'Waiting for speech.'}</p>
     </div>
+    {props.marketPanel}
     {props.stale && props.result?.suggestedAnswers[0] && <details><summary>Previous answer</summary><p>{props.result.suggestedAnswers[0].text}</p></details>}
   </section>
 }

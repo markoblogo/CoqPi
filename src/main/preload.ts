@@ -14,6 +14,8 @@ import type {
   FinderSearchJobDraft,
   FinderSearchJobStatus,
   MeetingTranscriptionExportRequest,
+  MonitorAccountLogin,
+  MonitorLiveCopilotRequest,
   PreparationContextResult,
   RealtimeTranscriptionStartRequest,
   SessionContext,
@@ -271,6 +273,17 @@ contextBridge.exposeInMainWorld('coqpi', {
     get: () => ipcRenderer.invoke('coqpi:settings:get'),
     save: (settings: AppUserSettings) =>
       ipcRenderer.invoke('coqpi:settings:save', settings)
+  },
+  monitor: {
+    getTokenStatus: () => ipcRenderer.invoke('coqpi:monitor:get-token-status'),
+    connectAccount: (login: MonitorAccountLogin) =>
+      ipcRenderer.invoke('coqpi:monitor:connect-account', login),
+    saveToken: (token: string) => ipcRenderer.invoke('coqpi:monitor:save-token', token),
+    deleteToken: () => ipcRenderer.invoke('coqpi:monitor:delete-token'),
+    livePreview: (request: MonitorLiveCopilotRequest) =>
+      ipcRenderer.invoke('coqpi:monitor:live-preview', request),
+    saveLiveDraft: (request: MonitorLiveCopilotRequest) =>
+      ipcRenderer.invoke('coqpi:monitor:save-live-draft', request)
   },
   cortexBridge: {
     buildExport: (): Promise<CortexBridgeExport> =>

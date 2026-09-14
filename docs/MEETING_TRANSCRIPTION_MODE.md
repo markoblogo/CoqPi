@@ -22,6 +22,8 @@ Markdown transcript.
   append-only NDJSON journal after realtime events;
 - uses the same recording path when Live Copilot is enabled, while keeping
   assistant failures separate from transcript persistence;
+- can optionally update the MN7R Monitor Live panel from finalized `OTHER`
+  lines; this bridge is separately consented and does not change local transcript persistence;
 - flushes pending local writes on Stop, window close, app quit, and reload;
 - exports Markdown or TXT as UTF-8;
 - can copy the Markdown transcript directly to clipboard if the save dialog is
@@ -40,6 +42,8 @@ Markdown transcript.
 - no reliable speaker labels unless the audio route provides them; otherwise
   exports use `UNKNOWN`;
 - no system-audio routing.
+- no automatic Monitor write: a live brokerage preview stays temporary until
+  the broker explicitly saves it to Draft Inbox.
 
 When recording through Live, [manual speaker marking](MANUAL_SPEAKER_MODE.md)
 preserves `ME`/`OTHER` labels without stopping transcription. This is a user

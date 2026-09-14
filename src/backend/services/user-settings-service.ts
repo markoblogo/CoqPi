@@ -15,7 +15,13 @@ export const defaultAppUserSettings: AppUserSettings = {
   defaultCallLanguage: 'Auto',
   defaultAnswerLanguage: 'Auto',
   includeProfileContextByDefault: true,
-  saveTranscriptByDefault: false
+  saveTranscriptByDefault: false,
+  monitorBaseUrl: 'https://mn7r.com',
+  monitorCompanyId: '',
+  monitorClientName: '',
+  monitorLiveCopilotEnabled: false,
+  monitorConsentConfirmed: false,
+  monitorAllowAiProcessing: false
 }
 
 const sanitizeSettings = (value: unknown): AppUserSettings => {
@@ -50,7 +56,22 @@ const sanitizeSettings = (value: unknown): AppUserSettings => {
     saveTranscriptByDefault:
       typeof candidate.saveTranscriptByDefault === 'boolean'
         ? candidate.saveTranscriptByDefault
-        : defaultAppUserSettings.saveTranscriptByDefault
+        : defaultAppUserSettings.saveTranscriptByDefault,
+    monitorBaseUrl:
+      typeof candidate.monitorBaseUrl === 'string'
+        ? candidate.monitorBaseUrl.trim().slice(0, 500)
+        : defaultAppUserSettings.monitorBaseUrl,
+    monitorCompanyId:
+      typeof candidate.monitorCompanyId === 'string'
+        ? candidate.monitorCompanyId.trim().slice(0, 180)
+        : defaultAppUserSettings.monitorCompanyId,
+    monitorClientName:
+      typeof candidate.monitorClientName === 'string'
+        ? candidate.monitorClientName.trim().slice(0, 240)
+        : defaultAppUserSettings.monitorClientName,
+    monitorLiveCopilotEnabled: candidate.monitorLiveCopilotEnabled === true,
+    monitorConsentConfirmed: candidate.monitorConsentConfirmed === true,
+    monitorAllowAiProcessing: candidate.monitorAllowAiProcessing === true
   }
 }
 

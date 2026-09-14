@@ -1,6 +1,6 @@
 # Conversation delivery order
 
-Updated: 2026-09-07. This plan supersedes transcript-first UI priorities and
+Updated: 2026-09-14. This plan supersedes transcript-first UI priorities and
 EN/FR-only Live assumptions. Source and fixture verification do not establish
 real microphone accuracy or provider latency.
 
@@ -91,6 +91,14 @@ Saved recordings support an explicit assistant review after the conversation.
 Review only uses the selected recorded text, not unrelated private context.
 Language coaching also skips profile/retrieval assembly; meeting rehearsal
 retains the selected meeting context.
+
+For MN7R brokerage calls, Live now has an optional supervised bridge. Finalized
+OTHER speech is debounced locally and sent through Electron main to a scoped
+Monitor live-preview endpoint. The cockpit shows a temporary current BID/OFFER
+and loose opposite-side market options. ME/partial/system lines are excluded;
+preview persists nothing; one explicit button saves the current client-only
+window to Monitor Draft Inbox. Synthetic tests cover filtering, limits and
+stale responses; real microphone accuracy and end-to-end latency are not proven.
 
 ## 5. Validate the real working loop, then extend audio/research
 

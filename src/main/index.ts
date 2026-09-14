@@ -27,6 +27,12 @@ import type {
   MeetingTranscriptionExportRequest,
   MeetingTranscriptionExportResult,
   MeetingTranscriptionSaveResult,
+  MonitorLiveCopilotRequest,
+  MonitorLiveCopilotResponse,
+  MonitorLiveCopilotSaveResult,
+  MonitorTokenStatus,
+  MonitorAccountLogin,
+  MonitorAccountLoginResult,
   RealtimeTranscriptionResponse,
   RealtimeTranscriptionStartRequest,
   SaveOpenAIKeyResult,
@@ -66,6 +72,14 @@ import {
   getSettingsPayload,
   saveSettings
 } from '../backend/services/user-settings-service'
+import {
+  analyzeMonitorLiveRequest,
+  connectMonitorAccount,
+  deleteMonitorToken,
+  getMonitorTokenStatus,
+  saveMonitorLiveDraft,
+  saveMonitorToken
+} from '../backend/services/monitor-live-copilot-service'
 import {
   getSessionContext,
   saveSessionContext
@@ -698,6 +712,32 @@ const registerIpcHandlers = () => {
     async (_event, settings: AppUserSettings): Promise<SettingsPayload> => {
       return saveSettings(settings)
     }
+  )
+
+  ipcMain.handle(
+    'coqpi:monitor:get-token-status',
+    async (): Promise<MonitorTokenStatus> => getMonitorTokenStatus()
+  )
+  ipcMain.handle(
+    'coqpi:monitor:connect-account',
+    async (_event, login: MonitorAccountLogin): Promise<MonitorAccountLoginResult> =>
+      connectMonitorAccount(login)
+  )
+  ipcMain.handle('coqpi:monitor:save-token', async (_event, token: string) =>
+    saveMonitorToken(token)
+  )
+  ipcMain.handle('coqpi:monitor:delete-token', async () =>
+    deleteMonitorToken()
+  )
+  ipcMain.handle(
+    'coqpi:monitor:live-preview',
+    async (_event, request: MonitorLiveCopilotRequest): Promise<MonitorLiveCopilotResponse> =>
+      analyzeMonitorLiveRequest(request)
+  )
+  ipcMain.handle(
+    'coqpi:monitor:save-live-draft',
+    async (_event, request: MonitorLiveCopilotRequest): Promise<MonitorLiveCopilotSaveResult> =>
+      saveMonitorLiveDraft(request)
   )
 
   ipcMain.handle(

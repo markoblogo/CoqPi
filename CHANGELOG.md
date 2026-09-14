@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.1 — 2026-09-14
+
+- Added the optional MN7R Monitor Live bridge: client-card setup handoff, normal Monitor sign-in with secure token storage, finalized-`OTHER`-only live previews, temporary BID/OFFER drafts, scrollable opposite-side market options, stale-response protection, and explicit save to Monitor Draft Inbox.
+- Live previews remain read-only and unpersisted; no client message or operational BID/OFFER/TRADE is created automatically.
+
 ## 0.3.0 — 2026-09-13
 
 - Added reproducible CI covering TypeScript, lint, 300+ deterministic tests, builds, repository privacy boundary, and dependency audit.

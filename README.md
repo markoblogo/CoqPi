@@ -22,6 +22,7 @@
 CoqPi keeps the communication loop in one desktop app:
 
 - **Live** transcribes an active microphone, follows EN/FR/RU/UK language changes, and prepares one short response.
+- **Monitor Live** can send finalized `OTHER` text to the selected MN7R client, show a temporary BID/OFFER draft and scrollable opposite-side market options, then save to Draft Inbox only after a click.
 - **Transcribe** records a plain local meeting transcript without assistant analysis.
 - **Training** supports interview rehearsal and language correction with local feedback history.
 - **Prepare** builds a reviewed session brief from explicitly selected context.
@@ -37,6 +38,7 @@ CoqPi is local-first, but OpenAI-backed transcription and assistant features sen
 - Runtime profiles, transcripts, context packs, receipts, and OAuth tokens stay outside the Git repository.
 - Assistant requests pass through a local privacy gate that redacts recognized contact/tracking data and blocks secret-like material.
 - Gmail sending and Calendar creation require explicit, hash-bound user approval.
+- The Monitor bridge is disabled by default, requires explicit client-speech permission, keeps its token in macOS secure storage, and never sends `ME`, partial, or system transcript items.
 - CoqPi cannot autonomously join calls, control other apps, send messages, or publish content.
 - CortexABV handoff accepts compact, reviewed artifacts only; raw transcripts and cross-tenant promotion remain denied.
 
@@ -81,6 +83,8 @@ The default fast-response model is `gpt-5.6-luna`; the realtime transcription de
 3. Open **Transcribe**, select the microphone and language, and record a short local sample.
 4. Export it and confirm that the Markdown/TXT file contains the expected finalized text.
 5. Only then try a short Live call.
+
+For the brokerage bridge, open the selected Monitor client in Light or Detailed View, choose `Copy CoqPi setup`, paste it into `Settings → Monitor`, connect the normal Monitor account, confirm permission, enable the bridge, and save. During Live, use `Говорю я`/Space for your own speech. The market preview is temporary until `Save to Monitor Draft Inbox` is selected.
 
 For the real-provider checklist, use [Realtime smoke test](docs/REALTIME_SMOKE_TEST.md). For storage and recovery, use [Meeting transcription mode](docs/MEETING_TRANSCRIPTION_MODE.md).
 
@@ -136,6 +140,7 @@ pnpm test:pass2-live-smoke-readiness
 - Apple Silicon macOS build only; the app is unsigned and not notarized.
 - Microphone input only; no system-audio capture or raw-audio backup.
 - Speaker attribution is manual and cannot split one mixed speech item.
+- Monitor live preview depends on a selected client, an authenticated Monitor account, and correct manual `ME`/`OTHER` marking; it never creates or sends an operational BID/OFFER/TRADE.
 - Live quality and p50/p95 response latency still need repeated real-call measurement.
 - Finder is bounded and owner-triggered; no mass crawling or automatic outreach.
 - Gmail and Calendar integrations require local OAuth setup and explicit approval.

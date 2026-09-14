@@ -77,6 +77,12 @@ summarize, suggest answers, call Ollama, or call
 
 Only one automatic analysis request may run at a time. Manual controls remain an override.
 
+### MN7R Monitor live bridge
+
+`finalized OTHER utterances -> 900 ms local debounce -> bounded 12-line/8k-character payload -> Electron main -> authenticated MN7R live-preview endpoint -> temporary BID/OFFER draft + opposite-side hints -> Live cockpit`
+
+The renderer never receives the Monitor token. Normal Monitor credentials are used once in Electron main to obtain a token, which is stored with `safeStorage`; the password is discarded. Live preview is a governed read-only route and is unpersisted. `ME`, partial, and system lines are excluded before IPC and rejected again by MN7R. A separate Live button invokes the existing consented Draft Inbox import endpoint as an explicitly approved external write; this still does not publish, send, or create a working market record. Governance receipts contain route metadata and latency, never transcript text, credentials, or response bodies.
+
 The local auto-analysis guard adds no provider round trip. App resolves each final utterance to EN/FR/RU/UK, retaining the previous language for ambiguous text; explicitly resolved native-language speech is eligible. The legacy Auto guard remains conservative for callers without language resolution. Noise and low-signal acknowledgements are filtered before analysis. Language routing does not widen protected retrieval scopes. See `CONVERSATION_DELIVERY_PLAN.md` for persistence, reconnection and verification boundaries.
 
 Current boundary hardening also includes:
@@ -135,6 +141,7 @@ Shared cost constants live in:
 - **Vector-ready retrieval v0**: `future_vector` is a contract guard over the existing scorer. It creates a metadata-only strict candidate set from selected, session-eligible counterparty packs and prevents captured sources or unselected packs from expanding a selected session context. No vector index, embedding model, external fetch, or raw-content handoff is introduced in this phase.
 - **User settings**: JSON under `app.getPath("userData")`
 - **Stored encrypted API key**: file under `app.getPath("userData")/secrets/`
+- **Stored encrypted Monitor token**: separate file under `app.getPath("userData")/secrets/`; never exposed to the renderer.
 - **Governance receipts**: `data/governance/receipts.jsonl`
 
 Transcript persistence is enabled for the standalone Transcribe path and for

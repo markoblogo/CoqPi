@@ -854,6 +854,74 @@ export interface TranscriptUtterance {
   sourceItemId?: string
 }
 
+export interface MonitorLiveCopilotSegment {
+  id: string
+  timestamp: string
+  speaker: 'OTHER'
+  text: string
+}
+
+export interface MonitorLiveCopilotRequest {
+  sequence: number
+  segments: MonitorLiveCopilotSegment[]
+  clientName?: string
+}
+
+export interface MonitorLiveCopilotDraft {
+  kind: 'bid' | 'offer'
+  title: string
+  body: string
+  evidence: string[]
+  provider: 'openai' | 'local_rules'
+}
+
+export interface MonitorLiveCopilotHint {
+  entryId: string
+  publicSerial: number | null
+  type: 'bid' | 'offer'
+  brokerCode: string
+  brokerName: string
+  commodity: string
+  quantity: string
+  basis: string
+  destination: string
+  deliveryPeriod: string
+  price: string
+  score: number
+  reasons: string[]
+}
+
+export interface MonitorLiveCopilotResponse {
+  sequence: number
+  requestKind: 'bid' | 'offer' | null
+  draft: MonitorLiveCopilotDraft | null
+  hints: MonitorLiveCopilotHint[]
+  persisted: false
+  warnings: string[]
+}
+
+export interface MonitorLiveCopilotSaveResult {
+  ok: boolean
+  sessionId: string
+}
+
+export interface MonitorTokenStatus {
+  hasStoredToken: boolean
+  hasEnvToken: boolean
+  effectiveTokenAvailable: boolean
+}
+
+export interface MonitorAccountLogin {
+  username: string
+  password: string
+  baseUrl?: string
+}
+
+export interface MonitorAccountLoginResult {
+  ok: true
+  displayName: string
+}
+
 export type AssistantAnswerLabel = 'short' | 'strong' | 'clarifying'
 
 export interface SuggestedAnswer {
@@ -1109,6 +1177,12 @@ export interface AppUserSettings {
   defaultAnswerLanguage: AnswerLanguage
   includeProfileContextByDefault: boolean
   saveTranscriptByDefault: boolean
+  monitorBaseUrl: string
+  monitorCompanyId: string
+  monitorClientName: string
+  monitorLiveCopilotEnabled: boolean
+  monitorConsentConfirmed: boolean
+  monitorAllowAiProcessing: boolean
 }
 
 export interface SettingsMeta {
