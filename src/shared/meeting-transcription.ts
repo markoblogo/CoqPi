@@ -12,6 +12,68 @@ export type MeetingTranscriptionMode = 'recorder' | 'copilot'
 
 export type MeetingTranscriptionSource = 'microphone' | 'system' | 'unknown'
 
+export type MeetingAudioBackupSource = Extract<
+  MeetingTranscriptionSource,
+  'microphone' | 'system'
+>
+
+export type MeetingAudioBackupStatus =
+  | 'planned'
+  | 'recording'
+  | 'stopped'
+  | 'failed'
+  | 'unavailable'
+
+export type MeetingAudioBackupFormat = 'wav_pcm' | 'caf_pcm'
+
+export interface MeetingAudioBackupFile {
+  source: MeetingAudioBackupSource
+  relativePath: string
+  byteLength?: number
+  sha256?: string
+  status: 'open' | 'closed' | 'missing'
+  startedAt: string
+  endedAt?: string
+  error?: string
+}
+
+export interface MeetingAudioBackupManifest {
+  version: 1
+  sessionId: string
+  createdAt: string
+  updatedAt: string
+  status: MeetingAudioBackupStatus
+  format: MeetingAudioBackupFormat
+  files: MeetingAudioBackupFile[]
+  recoveryNote?: string
+}
+
+export type MeetingRecordingClaimStage =
+  | 'recording'
+  | 'transcribing'
+  | 'finalizing'
+
+export interface MeetingRecordingClaim {
+  version: 1
+  sessionId: string
+  stage: MeetingRecordingClaimStage
+  ownerPid: number
+  ownerStartedAt: string
+  token: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MeetingRecordingClaimResult {
+  acquired: boolean
+  reason:
+    | 'created'
+    | 'already-held'
+    | 'recovered-dead-owner'
+    | 'recovered-stale'
+  claim: MeetingRecordingClaim
+}
+
 export interface MeetingTranscriptionSegment {
   language?: MeetingTranscriptionLanguage
   id: string
@@ -36,6 +98,11 @@ export interface MeetingTranscriptionInterim {
 
 export interface MeetingTranscriptionSession {
   assistantEvents?: Array<{ timestamp: string; answer: string; meaning: string; model?: string; latencyMs?: number; language?: string }>
+  audioBackup?: {
+    manifestId: string
+    status: MeetingAudioBackupStatus
+    updatedAt: string
+  }
   id: string
   language: MeetingTranscriptionLanguage
   inputLabel: string

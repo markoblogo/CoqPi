@@ -2,6 +2,7 @@ import {
   lazy,
   Suspense,
   startTransition,
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -75,6 +76,7 @@ import {
   formatMeetingDuration,
   meetingTranscriptionLanguageLabels,
   stopMeetingTranscriptionSession,
+  type MeetingAudioBackupStatus,
   type MeetingTranscriptionLanguage,
   type MeetingTranscriptionSession
 } from '@shared/meeting-transcription'
@@ -251,6 +253,7 @@ import {
   type MockTranscriptScenarioId
 } from '@renderer/mock/mock-transcript-lines'
 import { RealtimeTranscriptionClient } from '@renderer/realtime/realtime-transcription-client'
+import { RawAudioBackupRecorder } from '@renderer/raw-audio-backup-recorder'
 const TrainingPanel = lazy(() => import('./TrainingPanel').then(module => ({ default: module.TrainingPanel })))
 import { detectConversationLanguage, type ConversationLanguage } from '@shared/conversation-language'
 import { CallFocusPanel } from './CallFocusPanel'
@@ -809,6 +812,8 @@ export const App = () => {
   const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null)
   const interimCheckpointRef = useRef(0)
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
+  const rawAudioBackupRecorderRef = useRef<RawAudioBackupRecorder | null>(null)
+  const rawAudioBackupSessionIdRef = useRef<string | null>(null)
   const noEventTimeoutRef = useRef<number | null>(null)
   const autoAnalysisTimeoutRef = useRef<number | null>(null)
   const monitorLiveTimeoutRef = useRef<number | null>(null)
@@ -827,6 +832,10 @@ export const App = () => {
 
   if (!realtimeClientRef.current) {
     realtimeClientRef.current = new RealtimeTranscriptionClient()
+  }
+
+  if (!rawAudioBackupRecorderRef.current) {
+    rawAudioBackupRecorderRef.current = new RawAudioBackupRecorder()
   }
 
   const [activeTab, setActiveTab] = useState<
@@ -1281,6 +1290,81 @@ export const App = () => {
     meetingSessionRef.current = next
     setMeetingSessionState(next)
   }
+  const persistAudioBackupMetadata = useCallback(({
+    sessionId,
+    manifestId,
+    status,
+    updatedAt
+  }: {
+    sessionId: string
+    manifestId: string
+    status: MeetingAudioBackupStatus
+    updatedAt: string
+  }) => {
+    const current = meetingSessionRef.current
+    if (!current || current.id !== sessionId) return
+    const next = {
+      ...current,
+      audioBackup: { manifestId, status, updatedAt }
+    }
+    meetingSessionRef.current = next
+    setMeetingSessionState(next)
+    void window.coqpi.meetingTranscription
+      .saveCurrent(next)
+      .then(() => {
+        setRecordingSavedAt(new Date().toISOString())
+        setRecordingSaveError(null)
+      })
+      .catch((error) => {
+        setRecordingSaveError(
+          error instanceof Error ? error.message : 'Recording save failed'
+        )
+      })
+  }, [])
+
+  const stopRawAudioBackup = useCallback(async () => {
+    const sessionId = rawAudioBackupSessionIdRef.current
+    rawAudioBackupSessionIdRef.current = null
+    if (!sessionId) return
+
+    const result = await rawAudioBackupRecorderRef.current?.stop(
+      new Date().toISOString()
+    )
+    if (!result) return
+
+    persistAudioBackupMetadata({
+      sessionId,
+      manifestId: result.manifestId,
+      status: result.manifest.status,
+      updatedAt: result.manifest.updatedAt
+    })
+  }, [persistAudioBackupMetadata])
+
+  const startRawAudioBackup = useCallback(async (sessionId: string, stream: MediaStream) => {
+    if (rawAudioBackupSessionIdRef.current === sessionId) {
+      stream.getTracks().forEach((track) => track.stop())
+      return
+    }
+
+    if (rawAudioBackupSessionIdRef.current) {
+      await stopRawAudioBackup().catch(() => undefined)
+    }
+
+    const result = await rawAudioBackupRecorderRef.current?.start({
+      sessionId,
+      stream,
+      now: new Date().toISOString()
+    })
+    if (!result) return
+
+    rawAudioBackupSessionIdRef.current = sessionId
+    persistAudioBackupMetadata({
+      sessionId,
+      manifestId: result.manifestId,
+      status: result.manifest.status,
+      updatedAt: result.manifest.updatedAt
+    })
+  }, [persistAudioBackupMetadata, stopRawAudioBackup])
   const [meetingError, setMeetingError] = useState<string | null>(null)
   const [meetingNotice, setMeetingNotice] = useState<string | null>(null)
   const [isExportingMeetingTranscript, setIsExportingMeetingTranscript] =
@@ -1375,6 +1459,7 @@ export const App = () => {
 
   useEffect(() => {
     const flushMeetingTranscript = () => {
+      void stopRawAudioBackup().catch(() => undefined)
       if (meetingSessionRef.current) void window.coqpi.meetingTranscription.saveCurrent(meetingSessionRef.current)
       void window.coqpi.meetingTranscription.flush()
     }
@@ -1382,10 +1467,11 @@ export const App = () => {
     window.addEventListener('beforeunload', flushMeetingTranscript)
     return () =>
       window.removeEventListener('beforeunload', flushMeetingTranscript)
-  }, [])
+  }, [stopRawAudioBackup])
 
   useEffect(() => window.coqpi.meetingTranscription.onShutdown(async () => {
     await realtimeClientRef.current?.stop()
+    await stopRawAudioBackup().catch(() => undefined)
     const current = meetingSessionRef.current
     if (current) {
       const stopped = stopMeetingTranscriptionSession(current, new Date().toISOString())
@@ -1393,7 +1479,7 @@ export const App = () => {
       await window.coqpi.meetingTranscription.saveCurrent(stopped)
     }
     await window.coqpi.meetingTranscription.flush()
-  }), [])
+  }), [stopRawAudioBackup])
 
   useEffect(() => {
     const loadInitialState = async () => {
@@ -4537,6 +4623,8 @@ export const App = () => {
         onIceConnectionStateChange: setIceConnectionState,
         onIceGatheringStateChange: setIceGatheringState,
         onDataChannelStateChange: setDataChannelState,
+        onAudioBackupStream: (stream) =>
+          startRawAudioBackup(copilotSession.id, stream),
         onEvent: handleRealtimeEvent,
         onError: (message) => {
           setRealtimeStatus('error')
@@ -4547,6 +4635,7 @@ export const App = () => {
       })
       armNoEventTimeout()
     } catch (error) {
+      await stopRawAudioBackup().catch(() => undefined)
       setRealtimeStartedAt(null)
       setRealtimeStatus('error')
       const message =
@@ -4567,6 +4656,7 @@ export const App = () => {
 
     try {
       await realtimeClientRef.current?.stop()
+      await stopRawAudioBackup().catch(() => undefined)
       if (realtimeStartedAt !== null) {
         setAccumulatedRealtimeMs(
           (currentValue) => currentValue + (Date.now() - realtimeStartedAt)
@@ -4668,6 +4758,8 @@ export const App = () => {
         onIceConnectionStateChange: setIceConnectionState,
         onIceGatheringStateChange: setIceGatheringState,
         onDataChannelStateChange: setDataChannelState,
+        onAudioBackupStream: (stream) =>
+          startRawAudioBackup(session.id, stream),
         onEvent: handleMeetingRealtimeEvent,
         onError: (message) => {
           setRealtimeStatus('error')
@@ -4677,6 +4769,7 @@ export const App = () => {
       })
       armNoEventTimeout()
     } catch (error) {
+      await stopRawAudioBackup().catch(() => undefined)
       setRealtimeStartedAt(null)
       setRealtimeStatus('error')
       const message =
@@ -4696,6 +4789,7 @@ export const App = () => {
 
     try {
       await realtimeClientRef.current?.stop()
+      await stopRawAudioBackup().catch(() => undefined)
       if (realtimeStartedAt !== null) {
         setAccumulatedRealtimeMs(
           (currentValue) => currentValue + (Date.now() - realtimeStartedAt)

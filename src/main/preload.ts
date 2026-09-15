@@ -313,6 +313,12 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:meeting-transcription:get-current'),
     saveCurrent: (session: MeetingTranscriptionSession) =>
       ipcRenderer.invoke('coqpi:meeting-transcription:save-current', session),
+    backupStart: (request: import('../shared/app-types').MeetingAudioBackupStartRequest) =>
+      ipcRenderer.invoke('coqpi:meeting-transcription:backup-start', request),
+    backupChunk: (request: import('../shared/app-types').MeetingAudioBackupChunkRequest) =>
+      ipcRenderer.invoke('coqpi:meeting-transcription:backup-chunk', request),
+    backupStop: (request: import('../shared/app-types').MeetingAudioBackupStopRequest) =>
+      ipcRenderer.invoke('coqpi:meeting-transcription:backup-stop', request),
     clearCurrent: () =>
       ipcRenderer.invoke('coqpi:meeting-transcription:clear-current'),
     flush: () => ipcRenderer.invoke('coqpi:meeting-transcription:flush'),

@@ -1052,6 +1052,38 @@ export interface MeetingTranscriptionSaveResult {
   ok: true
 }
 
+export interface MeetingAudioBackupStartRequest {
+  sessionId: string
+  source: 'microphone'
+  sampleRate: number
+  channelCount: number
+  now: string
+}
+
+export interface MeetingAudioBackupStartResult {
+  ok: true
+  manifestId: string
+  manifest: import('./meeting-transcription').MeetingAudioBackupManifest
+}
+
+export interface MeetingAudioBackupChunkRequest {
+  sessionId: string
+  source: 'microphone'
+  pcm16: ArrayBuffer
+}
+
+export interface MeetingAudioBackupStopRequest {
+  sessionId: string
+  source: 'microphone'
+  now: string
+}
+
+export interface MeetingAudioBackupStopResult {
+  ok: true
+  manifestId: string
+  manifest: import('./meeting-transcription').MeetingAudioBackupManifest
+}
+
 export interface MeetingTranscriptionExportRequest {
   session: import('./meeting-transcription').MeetingTranscriptionSession
   format: 'md' | 'txt'

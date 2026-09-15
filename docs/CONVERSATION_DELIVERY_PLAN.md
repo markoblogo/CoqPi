@@ -26,15 +26,22 @@ limited to one per second, final segments save immediately. A renderer-owned
 latest snapshot is flushed before Electron closes or quits. A save failure
 keeps the window open. Already received segments continue to persist after STT
 errors. WebRTC transport interruptions have three bounded reconnect attempts.
+The first Amanu-inspired foundation is also in place: per-session audio-backup
+manifests are stored under a hash directory, and exclusive claim files prevent
+duplicate recording/transcription/recovery workers from processing the same
+session while allowing recovery from corrupt or dead-owner claims. A local
+microphone WAV/PCM writer is now connected to that manifest through the same
+recording lifecycle, using a cloned microphone stream so it can keep the backup
+separate from the OpenAI realtime transport.
 
 Each recording has a local archive under `sessions/recordings/<sha256(id)>.json`.
 Clear resets the current workspace and retains the archive. Transcribe exposes
 saved conversations and export. Live suggestions, model and latency are stored
 with their originating recording. No API keys or system prompts enter exports.
 
-Limits: this is text recording, not an audio backup. Speech spoken while STT
-is unavailable cannot be recovered from text. Hardware failure/power loss and
-real 15-minute RU/UK sessions still need observed tests. No claim of zero loss
+Limits: saved microphone audio is not automatically retranscribed yet, and it
+does not include separate system audio. Hardware failure/power loss and real
+15-minute RU/UK sessions still need observed tests. No claim of zero loss
 across network outages is made.
 
 ## 2. Follow language switches and keep answers short
@@ -108,10 +115,10 @@ one vacancy + submitted CV selected in Prepare -> rehearsal -> Live.
 Measure speech-end to meaning and answer at p50/p95 before changing models or
 debounce values. Target budgets must be set from actual device/network results.
 
-Further work: optional system-audio routing with reliable source labels; local
-audio backup/retranscription for network gaps; automatic multi-source company
-research; longitudinal language error mastery and spaced repetition. These are
-not represented as completed by the current fixture tests.
+Further work: add retranscription from retained microphone audio for network
+gaps; optional system-audio routing with reliable source labels; automatic
+multi-source company research; longitudinal language error mastery and spaced
+repetition. These are not represented as completed by the current fixture tests.
 
 ## Commands
 

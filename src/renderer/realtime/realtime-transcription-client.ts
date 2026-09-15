@@ -23,6 +23,7 @@ export interface StartRealtimeTranscriptionOptions {
   onIceConnectionStateChange: (state: RTCIceConnectionState) => void
   onIceGatheringStateChange: (state: RTCIceGatheringState) => void
   onDataChannelStateChange: (state: RTCDataChannelState) => void
+  onAudioBackupStream?: (stream: MediaStream) => Promise<void>
   onError: (message: string) => void
 }
 
@@ -116,6 +117,18 @@ export class RealtimeTranscriptionClient {
       this.mediaStream = mediaStream
       this.peerConnection = peerConnection
       this.dataChannel = dataChannel
+
+      if (options.onAudioBackupStream) {
+        const backupStream = mediaStream.clone()
+        void options.onAudioBackupStream(backupStream).catch((error) => {
+          backupStream.getTracks().forEach((track) => track.stop())
+          options.onLifecycleLog(
+            error instanceof Error
+              ? `audio backup unavailable: ${error.message}`
+              : 'audio backup unavailable'
+          )
+        })
+      }
 
       mediaStream.getAudioTracks().forEach((track) => {
         peerConnection.addTrack(track, mediaStream)

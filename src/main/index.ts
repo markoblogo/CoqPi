@@ -27,6 +27,11 @@ import type {
   MeetingTranscriptionExportRequest,
   MeetingTranscriptionExportResult,
   MeetingTranscriptionSaveResult,
+  MeetingAudioBackupChunkRequest,
+  MeetingAudioBackupStartRequest,
+  MeetingAudioBackupStartResult,
+  MeetingAudioBackupStopRequest,
+  MeetingAudioBackupStopResult,
   MonitorLiveCopilotRequest,
   MonitorLiveCopilotResponse,
   MonitorLiveCopilotSaveResult,
@@ -63,6 +68,12 @@ import {
   saveCurrentMeetingTranscriptionSession,
   writeMeetingTranscriptExport
 } from '../backend/services/meeting-transcription-service'
+import {
+  appendMeetingAudioBackupChunk,
+  getMeetingAudioBackupManifestId,
+  startMeetingAudioBackup,
+  stopMeetingAudioBackup
+} from '../backend/services/meeting-recording-backup-service'
 import {
   deleteOpenAIKey,
   getOpenAIKeyStatus,
@@ -865,6 +876,47 @@ const registerIpcHandlers = () => {
       session
     ): Promise<MeetingTranscriptionSaveResult> =>
       saveCurrentMeetingTranscriptionSession(session)
+  )
+
+  ipcMain.handle(
+    'coqpi:meeting-transcription:backup-start',
+    async (
+      _event,
+      request: MeetingAudioBackupStartRequest
+    ): Promise<MeetingAudioBackupStartResult> => {
+      const result = await startMeetingAudioBackup(request)
+      return {
+        ok: true,
+        manifestId: getMeetingAudioBackupManifestId(request.sessionId),
+        manifest: result.manifest
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'coqpi:meeting-transcription:backup-chunk',
+    async (
+      _event,
+      request: MeetingAudioBackupChunkRequest
+    ): Promise<{ ok: true }> => {
+      await appendMeetingAudioBackupChunk(request)
+      return { ok: true }
+    }
+  )
+
+  ipcMain.handle(
+    'coqpi:meeting-transcription:backup-stop',
+    async (
+      _event,
+      request: MeetingAudioBackupStopRequest
+    ): Promise<MeetingAudioBackupStopResult> => {
+      const manifest = await stopMeetingAudioBackup(request)
+      return {
+        ok: true,
+        manifestId: getMeetingAudioBackupManifestId(request.sessionId),
+        manifest
+      }
+    }
   )
 
   ipcMain.handle(

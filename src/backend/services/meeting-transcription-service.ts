@@ -126,6 +126,20 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
     assistantEvents: Array.isArray(candidate.assistantEvents) ? candidate.assistantEvents
       .filter(event => event && typeof event.timestamp === 'string' && typeof event.answer === 'string')
       .map(event => ({ timestamp: event.timestamp, answer: event.answer, meaning: sanitizeText(event.meaning), model: sanitizeText(event.model), latencyMs: typeof event.latencyMs === 'number' ? event.latencyMs : undefined, language: sanitizeText(event.language) })) : [],
+    audioBackup: candidate.audioBackup && typeof candidate.audioBackup === 'object'
+      ? {
+          manifestId: sanitizeText(candidate.audioBackup.manifestId),
+          status:
+            candidate.audioBackup.status === 'planned' ||
+            candidate.audioBackup.status === 'recording' ||
+            candidate.audioBackup.status === 'stopped' ||
+            candidate.audioBackup.status === 'failed' ||
+            candidate.audioBackup.status === 'unavailable'
+              ? candidate.audioBackup.status
+              : 'unavailable',
+          updatedAt: sanitizeText(candidate.audioBackup.updatedAt) || startedAt
+        }
+      : undefined,
     language: sanitizeLanguage(candidate.language),
     inputLabel: sanitizeText(candidate.inputLabel),
     mode:

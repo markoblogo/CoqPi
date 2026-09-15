@@ -9,7 +9,9 @@ Path:
 Current status: local incremental persistence is implemented. The app can
 transcribe from the selected microphone, preserve checkpoints during an
 interruption, restore a damaged snapshot from its journal, and export a UTF-8
-Markdown transcript.
+Markdown transcript. An Amanu-inspired local microphone backup now writes
+WAV/PCM audio alongside the transcript manifest. This backup is separate from
+assistant suggestions and is kept local.
 
 ## What It Does
 
@@ -29,6 +31,8 @@ Markdown transcript.
 - can copy the Markdown transcript directly to clipboard if the save dialog is
   inconvenient during a call;
 - preserves finalized text when realtime transcription is interrupted.
+- writes a local microphone WAV/PCM backup while recording, so later recovery
+  work has audio to retranscribe.
 - follows language changes within a recording; the language selector is an initial hint;
 - retains each session in Saved conversations, independently of Clear;
 - retries interrupted WebRTC transport up to three times, without discarding the current session.
@@ -42,6 +46,7 @@ Markdown transcript.
 - no reliable speaker labels unless the audio route provides them; otherwise
   exports use `UNKNOWN`;
 - no system-audio routing.
+- no automatic retranscription from the saved WAV backup yet.
 - no automatic Monitor write: a live brokerage preview stays temporary until
   the broker explicitly saves it to Draft Inbox.
 
@@ -132,6 +137,12 @@ Session data is stored under the app sessions directory (development:
 - `meeting-transcription-journal.ndjson` is an append-only sequence of safe
   session checkpoints and changed-segment patches used for recovery;
 - `recordings/<sha256(session_id)>.json` retains independently readable session archives;
+- `audio-backups/<sha256(session_id)>/manifest.json` tracks the local
+  microphone WAV/PCM backup;
+- `audio-backups/<sha256(session_id)>/microphone.wav` stores the local
+  microphone audio backup when available;
+- `audio-backups/<sha256(session_id)>/*.claim.json` prevents duplicate
+  recording/transcription/recovery workers from processing the same session;
 - `Clear` removes the current snapshot and journal after explicit confirmation
   when needed.
 
@@ -139,8 +150,8 @@ Window close and quit wait for a renderer checkpoint and backend flush; a failed
 save keeps the window open with an error. Clear does not remove archived sessions.
 Live sessions also retain assistant answers/model/latency, separate from original
 transcript segments. Export remains transcript-focused. Text already received is
-protected; audio spoken during an STT outage is not recoverable without an audio
-backup, which is not implemented.
+protected; audio spoken during an STT outage may exist in the local microphone
+WAV backup, but CoqPi does not yet automatically retranscribe that backup.
 
 The journal contains only transcript session fields. It does not contain API
 keys, system prompts, unrelated settings, or assistant hidden reasoning.

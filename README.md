@@ -138,7 +138,9 @@ pnpm test:pass2-live-smoke-readiness
 ## Current limits
 
 - Apple Silicon macOS build only; the app is unsigned and not notarized.
-- Microphone input only; no system-audio capture or raw-audio backup.
+- Microphone input only; no system-audio capture.
+- Microphone raw-audio backup writes local WAV/PCM files next to the transcript
+  manifest, but retranscription from that audio is not connected yet.
 - Speaker attribution is manual and cannot split one mixed speech item.
 - Monitor live preview depends on a selected client, an authenticated Monitor account, and correct manual `ME`/`OTHER` marking; it never creates or sends an operational BID/OFFER/TRADE.
 - Live quality and p50/p95 response latency still need repeated real-call measurement.

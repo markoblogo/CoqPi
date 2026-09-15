@@ -71,6 +71,16 @@ recovery. It does not translate,
 summarize, suggest answers, call Ollama, or call
 `assistant.analyzeRecentTranscript`.
 
+An Amanu-inspired recording backup layer sits next to this path:
+
+`cloned microphone stream -> Web Audio PCM16 chunks -> Electron main WAV writer -> audio-backups/<sha256(session_id)>/manifest.json + microphone.wav + stage claim files`
+
+The manifest records the local microphone backup contract (`wav_pcm`). Stage
+claims are exclusive local JSON locks for recording, transcribing, and
+finalizing work. They avoid duplicate workers and recover from corrupt or
+dead-owner claims. This layer writes microphone audio only; it does not yet
+capture separate system audio or retranscribe retained audio.
+
 ### Assistant analysis path
 
 `completed utterance or manual analysis click -> recent transcript selector -> optional profile and session context -> backend assistant service -> structured result -> cockpit panels`
@@ -143,6 +153,9 @@ Shared cost constants live in:
 - **Stored encrypted API key**: file under `app.getPath("userData")/secrets/`
 - **Stored encrypted Monitor token**: separate file under `app.getPath("userData")/secrets/`; never exposed to the renderer.
 - **Governance receipts**: `data/governance/receipts.jsonl`
+- **Meeting audio backup**: `data/sessions/audio-backups/<sha256(session_id)>/manifest.json`,
+  `microphone.wav`, and stage claim files. It is local-only, microphone-only,
+  and currently used as retained evidence for future retranscription work.
 
 Transcript persistence is enabled for the standalone Transcribe path and for
 Live sessions. It remains local-only and is cleared only by an explicit user

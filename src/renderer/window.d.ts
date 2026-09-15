@@ -20,6 +20,11 @@ import type {
   KnowledgePackLifecycleDraft,
   MeetingTranscriptionExportRequest,
   MeetingTranscriptionExportResult,
+  MeetingAudioBackupChunkRequest,
+  MeetingAudioBackupStartRequest,
+  MeetingAudioBackupStartResult,
+  MeetingAudioBackupStopRequest,
+  MeetingAudioBackupStopResult,
   MeetingTranscriptionSaveResult,
   MonitorAccountLogin,
   MonitorAccountLoginResult,
@@ -290,6 +295,15 @@ declare global {
         saveCurrent: (
           session: MeetingTranscriptionSession
         ) => Promise<MeetingTranscriptionSaveResult>
+        backupStart: (
+          request: MeetingAudioBackupStartRequest
+        ) => Promise<MeetingAudioBackupStartResult>
+        backupChunk: (
+          request: MeetingAudioBackupChunkRequest
+        ) => Promise<{ ok: true }>
+        backupStop: (
+          request: MeetingAudioBackupStopRequest
+        ) => Promise<MeetingAudioBackupStopResult>
         clearCurrent: () => Promise<MeetingTranscriptionSaveResult>
         flush: () => Promise<void>
         exportSession: (
