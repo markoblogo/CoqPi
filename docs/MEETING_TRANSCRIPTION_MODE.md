@@ -10,8 +10,9 @@ Current status: local incremental persistence is implemented. The app can
 transcribe from the selected microphone, preserve checkpoints during an
 interruption, restore a damaged snapshot from its journal, and export a UTF-8
 Markdown transcript. An Amanu-inspired local microphone backup now writes
-WAV/PCM audio alongside the transcript manifest. This backup is separate from
-assistant suggestions and is kept local.
+WAV/PCM audio alongside the transcript manifest. A stopped session can be
+manually recovered from that backup if realtime STT missed text. This backup is
+separate from assistant suggestions and is kept local.
 
 ## What It Does
 
@@ -30,9 +31,13 @@ assistant suggestions and is kept local.
 - exports Markdown or TXT as UTF-8;
 - can copy the Markdown transcript directly to clipboard if the save dialog is
   inconvenient during a call;
-- preserves finalized text when realtime transcription is interrupted.
+- preserves finalized text when realtime transcription is interrupted;
 - writes a local microphone WAV/PCM backup while recording, so later recovery
-  work has audio to retranscribe.
+  has audio to retranscribe;
+- can manually recover a stopped session from `microphone.wav`; the recovered
+  text is split near detected low-energy pauses when possible, otherwise by
+  safe fixed windows, then appended with approximate timestamps to the local
+  transcript journal once per audio hash/chunk;
 - follows language changes within a recording; the language selector is an initial hint;
 - retains each session in Saved conversations, independently of Clear;
 - retries interrupted WebRTC transport up to three times, without discarding the current session.
@@ -45,8 +50,8 @@ assistant suggestions and is kept local.
 - no summary during the call;
 - no reliable speaker labels unless the audio route provides them; otherwise
   exports use `UNKNOWN`;
-- no system-audio routing.
-- no automatic retranscription from the saved WAV backup yet.
+- no system-audio routing;
+- no automatic background retranscription from the saved WAV backup yet;
 - no automatic Monitor write: a live brokerage preview stays temporary until
   the broker explicitly saves it to Draft Inbox.
 
@@ -65,8 +70,10 @@ sessions continue to use `UNKNOWN` when the source is unavailable.
 6. Play another Ukrainian speaker through Mac speakers so the microphone hears both voices.
 7. Confirm finalized lines appear in the transcript area.
 8. Press `Stop`.
-9. Press `Save Markdown` or `Copy Markdown`.
-10. Open the exported file, or paste copied Markdown into a note, and check
+9. If expected text is missing and the session has a completed audio backup,
+   press `Recover`.
+10. Press `Save Markdown` or `Copy Markdown`.
+11. Open the exported file, or paste copied Markdown into a note, and check
     Ukrainian characters and obvious duplicate fragments.
 
 Repeat a short one-sentence check for:
@@ -86,13 +93,15 @@ Use this when the call is in Google Meet or another app on the same Mac:
 5. Keep call audio on Mac speakers if you need both sides captured by the mic.
 6. Press `Start Transcription` before the important part begins.
 7. Press `Stop` after the call.
-8. Export Markdown, or use `Copy Markdown` if the file dialog is not convenient.
+8. If the transcript missed a section after an STT interruption, press
+   `Recover` before export.
+9. Export Markdown, or use `Copy Markdown` if the file dialog is not convenient.
 
 If status becomes `interrupted - transcript preserved`, realtime transcription
 failed but the finalized text and any saved interim checkpoint remain in the
-local session. Use `Stop`, then `Save Markdown` or `Copy Markdown`. `Clear`
-asks for confirmation when the current transcript has not been
-exported/copied yet.
+local session. Use `Stop`, then `Recover` if the microphone backup completed,
+then `Save Markdown` or `Copy Markdown`. `Clear` asks for confirmation when the
+current transcript has not been exported/copied yet.
 
 If headphones are used, CoqPi will usually capture only your own voice unless
 the headset leaks enough audio into the microphone. System-audio routing is not
@@ -122,7 +131,8 @@ Run:
 pnpm test:meeting-transcription
 ```
 
-This covers final/interim handling, stop/clear behavior, UTF-8 export,
+This covers final/interim handling, stop/clear behavior, backup recovery
+dedupe and chunk timestamping, UTF-8 export,
 filename generation, explicit language config, reconnect-style duplicate final
 events, append-only journal recovery after a broken snapshot, serialized
 atomic local writes, local autosave/restore/export, and the no-assistant
@@ -151,7 +161,12 @@ save keeps the window open with an error. Clear does not remove archived session
 Live sessions also retain assistant answers/model/latency, separate from original
 transcript segments. Export remains transcript-focused. Text already received is
 protected; audio spoken during an STT outage may exist in the local microphone
-WAV backup, but CoqPi does not yet automatically retranscribe that backup.
+WAV backup. Manual `Recover` scans that stopped WAV for low-energy pauses near
+chunk boundaries, falls back to fixed windows when no useful pause is found,
+sends each chunk to the configured STT provider, and appends recovered
+`UNKNOWN`/`microphone` segments with approximate chunk timestamps to the local
+journal. Repeating `Recover` for the same audio hash/chunk does not duplicate
+text.
 
 The journal contains only transcript session fields. It does not contain API
 keys, system prompts, unrelated settings, or assistant hidden reasoning.

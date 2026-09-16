@@ -32,6 +32,8 @@ import type {
   MeetingAudioBackupStartResult,
   MeetingAudioBackupStopRequest,
   MeetingAudioBackupStopResult,
+  MeetingTranscriptionRecoveryRequest,
+  MeetingTranscriptionRecoveryResult,
   MonitorLiveCopilotRequest,
   MonitorLiveCopilotResponse,
   MonitorLiveCopilotSaveResult,
@@ -74,6 +76,7 @@ import {
   startMeetingAudioBackup,
   stopMeetingAudioBackup
 } from '../backend/services/meeting-recording-backup-service'
+import { recoverCurrentMeetingTranscriptFromBackup } from '../backend/services/meeting-transcription-recovery-service'
 import {
   deleteOpenAIKey,
   getOpenAIKeyStatus,
@@ -917,6 +920,15 @@ const registerIpcHandlers = () => {
         manifest
       }
     }
+  )
+
+  ipcMain.handle(
+    'coqpi:meeting-transcription:recover-from-backup',
+    async (
+      _event,
+      request: MeetingTranscriptionRecoveryRequest
+    ): Promise<MeetingTranscriptionRecoveryResult> =>
+      recoverCurrentMeetingTranscriptFromBackup(request)
   )
 
   ipcMain.handle(

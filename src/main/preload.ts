@@ -14,6 +14,7 @@ import type {
   FinderSearchJobDraft,
   FinderSearchJobStatus,
   MeetingTranscriptionExportRequest,
+  MeetingTranscriptionRecoveryRequest,
   MonitorAccountLogin,
   MonitorLiveCopilotRequest,
   PreparationContextResult,
@@ -319,6 +320,8 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:meeting-transcription:backup-chunk', request),
     backupStop: (request: import('../shared/app-types').MeetingAudioBackupStopRequest) =>
       ipcRenderer.invoke('coqpi:meeting-transcription:backup-stop', request),
+    recoverFromBackup: (request: MeetingTranscriptionRecoveryRequest) =>
+      ipcRenderer.invoke('coqpi:meeting-transcription:recover-from-backup', request),
     clearCurrent: () =>
       ipcRenderer.invoke('coqpi:meeting-transcription:clear-current'),
     flush: () => ipcRenderer.invoke('coqpi:meeting-transcription:flush'),

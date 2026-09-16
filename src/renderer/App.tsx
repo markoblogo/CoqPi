@@ -1369,6 +1369,8 @@ export const App = () => {
   const [meetingNotice, setMeetingNotice] = useState<string | null>(null)
   const [isExportingMeetingTranscript, setIsExportingMeetingTranscript] =
     useState(false)
+  const [isRecoveringMeetingTranscript, setIsRecoveringMeetingTranscript] =
+    useState(false)
   const [hasExportedMeetingTranscript, setHasExportedMeetingTranscript] =
     useState(false)
   const [includeProfileContext, setIncludeProfileContext] = useState(
@@ -4908,6 +4910,34 @@ export const App = () => {
     }
   }
 
+  const recoverMeetingTranscriptFromBackup = async () => {
+    if (!meetingSession) {
+      setMeetingError('No active transcript session to recover.')
+      return
+    }
+
+    setIsRecoveringMeetingTranscript(true)
+    setMeetingError(null)
+    setMeetingNotice(null)
+
+    try {
+      const result = await window.coqpi.meetingTranscription.recoverFromBackup({
+        sessionId: meetingSession.id
+      })
+      setMeetingSession(result.session)
+      setHasExportedMeetingTranscript(false)
+      setMeetingNotice(result.message)
+    } catch (error) {
+      setMeetingError(
+        error instanceof Error
+          ? error.message
+          : 'Unable to recover transcript from audio backup.'
+      )
+    } finally {
+      setIsRecoveringMeetingTranscript(false)
+    }
+  }
+
   const saveCurrentSettings = async () => {
     setIsSavingSettings(true)
     setSettingsError(null)
@@ -7541,6 +7571,20 @@ export const App = () => {
                   <h2>Meeting transcript</h2>
                 </div>
                 <div className="button-row">
+                  <button
+                    className="secondary-button"
+                    disabled={
+                      isRecoveringMeetingTranscript ||
+                      !meetingSession ||
+                      meetingSession.status === 'recording' ||
+                      meetingSession.audioBackup?.status !== 'stopped'
+                    }
+                    onClick={() => void recoverMeetingTranscriptFromBackup()}
+                    type="button"
+                  >
+                    <RefreshCw aria-hidden="true" size={14} />
+                    <span>Recover</span>
+                  </button>
                   <button
                     className="secondary-button"
                     disabled={

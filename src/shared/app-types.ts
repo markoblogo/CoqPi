@@ -1084,6 +1084,18 @@ export interface MeetingAudioBackupStopResult {
   manifest: import('./meeting-transcription').MeetingAudioBackupManifest
 }
 
+export interface MeetingTranscriptionRecoveryRequest {
+  sessionId: string
+}
+
+export interface MeetingTranscriptionRecoveryResult {
+  ok: true
+  session: import('./meeting-transcription').MeetingTranscriptionSession
+  addedSegments: number
+  recoveredTextChars: number
+  message: string
+}
+
 export interface MeetingTranscriptionExportRequest {
   session: import('./meeting-transcription').MeetingTranscriptionSession
   format: 'md' | 'txt'

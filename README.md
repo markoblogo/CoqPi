@@ -81,8 +81,10 @@ The default fast-response model is `gpt-5.6-luna`; the realtime transcription de
 1. Open **Training** and submit one short mock interview question.
 2. Check the answer, language, model, and latency.
 3. Open **Transcribe**, select the microphone and language, and record a short local sample.
-4. Export it and confirm that the Markdown/TXT file contains the expected finalized text.
-5. Only then try a short Live call.
+4. Stop the sample. If finalized text is missing but the audio backup completed,
+   use **Recover** before export.
+5. Export it and confirm that the Markdown/TXT file contains the expected finalized text.
+6. Only then try a short Live call.
 
 For the brokerage bridge, open the selected Monitor client in Light or Detailed View, choose `Copy CoqPi setup`, paste it into `Settings → Monitor`, connect the normal Monitor account, confirm permission, enable the bridge, and save. During Live, use `Говорю я`/Space for your own speech. The market preview is temporary until `Save to Monitor Draft Inbox` is selected.
 
@@ -140,7 +142,8 @@ pnpm test:pass2-live-smoke-readiness
 - Apple Silicon macOS build only; the app is unsigned and not notarized.
 - Microphone input only; no system-audio capture.
 - Microphone raw-audio backup writes local WAV/PCM files next to the transcript
-  manifest, but retranscription from that audio is not connected yet.
+  manifest. Stopped sessions can be manually recovered from `microphone.wav`
+  into timestamped journal chunks without duplicating a previous recovery.
 - Speaker attribution is manual and cannot split one mixed speech item.
 - Monitor live preview depends on a selected client, an authenticated Monitor account, and correct manual `ME`/`OTHER` marking; it never creates or sends an operational BID/OFFER/TRADE.
 - Live quality and p50/p95 response latency still need repeated real-call measurement.

@@ -25,6 +25,8 @@ import type {
   MeetingAudioBackupStartResult,
   MeetingAudioBackupStopRequest,
   MeetingAudioBackupStopResult,
+  MeetingTranscriptionRecoveryRequest,
+  MeetingTranscriptionRecoveryResult,
   MeetingTranscriptionSaveResult,
   MonitorAccountLogin,
   MonitorAccountLoginResult,
@@ -304,6 +306,9 @@ declare global {
         backupStop: (
           request: MeetingAudioBackupStopRequest
         ) => Promise<MeetingAudioBackupStopResult>
+        recoverFromBackup: (
+          request: MeetingTranscriptionRecoveryRequest
+        ) => Promise<MeetingTranscriptionRecoveryResult>
         clearCurrent: () => Promise<MeetingTranscriptionSaveResult>
         flush: () => Promise<void>
         exportSession: (

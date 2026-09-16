@@ -343,6 +343,24 @@ export const readMeetingAudioBackupManifest = async (
 export const getMeetingAudioBackupManifestId = (sessionId: string) =>
   backupId(sanitizeSessionId(sessionId))
 
+export const getMeetingAudioBackupFilePath = async ({
+  sessionId,
+  source
+}: {
+  sessionId: string
+  source: MeetingAudioBackupSource
+}) => {
+  const id = sanitizeSessionId(sessionId)
+  const manifest = await readMeetingAudioBackupManifest(id)
+  const file = manifest?.files.find((entry) => entry.source === source) ?? null
+  if (!manifest || !file) return null
+  return {
+    manifest,
+    file,
+    filePath: path.join(backupDirectory(id), file.relativePath)
+  }
+}
+
 export const acquireMeetingRecordingClaim = async ({
   sessionId,
   stage,
