@@ -15,6 +15,7 @@ import {
   Database,
   FileAudio,
   Maximize2,
+  Merge,
   Minimize2,
   Play,
   Radio,
@@ -54,6 +55,7 @@ import {
   type FinderSearchJobDraft,
   type FinderSearchStore,
   type KnowledgePackLifecycleEntry,
+  type MeetingTranscriptionRecoveryReport,
   type MonitorLiveCopilotRequest,
   type MonitorLiveCopilotResponse,
   type MonitorTokenStatus,
@@ -72,9 +74,14 @@ import {
 import {
   applyMeetingTranscriptionRealtimeEvent,
   createMeetingTranscriptionSession,
+  excludeMeetingTranscriptSegmentFromExport,
   exportMeetingTranscriptMarkdown,
   formatMeetingDuration,
+  isMeetingTranscriptSegmentExportable,
+  isRecoveredMeetingTranscriptSegment,
   meetingTranscriptionLanguageLabels,
+  mergeMeetingTranscriptSegmentIntoPrevious,
+  restoreMeetingTranscriptSegmentToExport,
   stopMeetingTranscriptionSession,
   type MeetingAudioBackupStatus,
   type MeetingTranscriptionLanguage,
@@ -1371,6 +1378,11 @@ export const App = () => {
     useState(false)
   const [isRecoveringMeetingTranscript, setIsRecoveringMeetingTranscript] =
     useState(false)
+  const [meetingRecoveryReport, setMeetingRecoveryReport] =
+    useState<MeetingTranscriptionRecoveryReport | null>(null)
+  const [meetingTranscriptFilter, setMeetingTranscriptFilter] = useState<
+    'all' | 'exported' | 'excluded'
+  >('all')
   const [hasExportedMeetingTranscript, setHasExportedMeetingTranscript] =
     useState(false)
   const [includeProfileContext, setIncludeProfileContext] = useState(
@@ -4727,6 +4739,7 @@ export const App = () => {
     setMeetingSession(session)
     setMeetingError(null)
     setMeetingNotice('Meeting transcription started.')
+    setMeetingRecoveryReport(null)
     setHasExportedMeetingTranscript(false)
     autosaveMeetingSession(session)
 
@@ -4851,12 +4864,16 @@ export const App = () => {
     setMeetingSession(null)
     setMeetingError(null)
     setMeetingNotice('Meeting transcript cleared.')
+    setMeetingRecoveryReport(null)
     setHasExportedMeetingTranscript(false)
     await window.coqpi.meetingTranscription.clearCurrent()
   }
 
   const exportMeetingTranscription = async (format: 'md' | 'txt') => {
-    if (!meetingSession || meetingSession.segments.length === 0) {
+    if (
+      !meetingSession ||
+      !meetingSession.segments.some(isMeetingTranscriptSegmentExportable)
+    ) {
       setMeetingError('No finalized transcript segments to export.')
       return
     }
@@ -4889,7 +4906,10 @@ export const App = () => {
   }
 
   const copyMeetingTranscriptMarkdown = async () => {
-    if (!meetingSession || meetingSession.segments.length === 0) {
+    if (
+      !meetingSession ||
+      !meetingSession.segments.some(isMeetingTranscriptSegmentExportable)
+    ) {
       setMeetingError('No finalized transcript segments to copy.')
       return
     }
@@ -4910,6 +4930,52 @@ export const App = () => {
     }
   }
 
+  const excludeRecoveredTranscriptSegment = (segmentId: string) => {
+    if (!meetingSession) return
+
+    const next = excludeMeetingTranscriptSegmentFromExport(
+      meetingSession,
+      segmentId,
+      'excluded_in_review'
+    )
+    setMeetingSession(next)
+    setHasExportedMeetingTranscript(false)
+    setMeetingNotice('Recovered segment excluded from export.')
+    autosaveMeetingSession(next)
+  }
+
+  const mergeRecoveredTranscriptSegment = (segmentId: string) => {
+    if (!meetingSession) return
+
+    const next = mergeMeetingTranscriptSegmentIntoPrevious(
+      meetingSession,
+      segmentId
+    )
+
+    if (next === meetingSession) {
+      setMeetingNotice('This segment cannot be merged.')
+      return
+    }
+
+    setMeetingSession(next)
+    setHasExportedMeetingTranscript(false)
+    setMeetingNotice('Recovered segment merged into the previous segment.')
+    autosaveMeetingSession(next)
+  }
+
+  const restoreRecoveredTranscriptSegment = (segmentId: string) => {
+    if (!meetingSession) return
+
+    const next = restoreMeetingTranscriptSegmentToExport(
+      meetingSession,
+      segmentId
+    )
+    setMeetingSession(next)
+    setHasExportedMeetingTranscript(false)
+    setMeetingNotice('Recovered segment restored to export.')
+    autosaveMeetingSession(next)
+  }
+
   const recoverMeetingTranscriptFromBackup = async () => {
     if (!meetingSession) {
       setMeetingError('No active transcript session to recover.')
@@ -4919,12 +4985,14 @@ export const App = () => {
     setIsRecoveringMeetingTranscript(true)
     setMeetingError(null)
     setMeetingNotice(null)
+    setMeetingRecoveryReport(null)
 
     try {
       const result = await window.coqpi.meetingTranscription.recoverFromBackup({
         sessionId: meetingSession.id
       })
       setMeetingSession(result.session)
+      setMeetingRecoveryReport(result.report)
       setHasExportedMeetingTranscript(false)
       setMeetingNotice(result.message)
     } catch (error) {
@@ -5665,10 +5733,27 @@ export const App = () => {
     realtimeStatus === 'error' && meetingSession?.segments.length
       ? 'interrupted - transcript preserved'
       : realtimeStatus
+  const meetingTranscriptSegments = meetingSession?.segments ?? []
+  const meetingExportedSegmentCount = meetingTranscriptSegments.filter(
+    isMeetingTranscriptSegmentExportable
+  ).length
+  const meetingExcludedSegmentCount =
+    meetingTranscriptSegments.length - meetingExportedSegmentCount
+  const filteredMeetingTranscriptSegments = meetingTranscriptSegments.filter(
+    (segment) => {
+      if (meetingTranscriptFilter === 'exported') {
+        return isMeetingTranscriptSegmentExportable(segment)
+      }
+      if (meetingTranscriptFilter === 'excluded') {
+        return !isMeetingTranscriptSegmentExportable(segment)
+      }
+      return true
+    }
+  )
 
   useEffect(() => {
     meetingTranscriptEndRef.current?.scrollIntoView({ block: 'end' })
-  }, [meetingSession?.segments.length, meetingInterimText])
+  }, [meetingSession?.segments.length, meetingInterimText, meetingTranscriptFilter])
   const autoAnalysisTranscriptText = getRecentTranscriptText(
     getAutoAnalysisTranscriptUtterances(
       transcriptUtterances,
@@ -7563,12 +7648,36 @@ export const App = () => {
 
           {meetingError ? <div className="error-box">{meetingError}</div> : null}
           {meetingNotice ? <div className="info-box">{meetingNotice}</div> : null}
+          {meetingRecoveryReport ? (
+            <div className="recovery-report" aria-label="Recovery report">
+              <strong>Recovery report</strong>
+              <span>
+                {meetingRecoveryReport.recoveredSegments} recovered ·{' '}
+                {meetingRecoveryReport.failedChunks} failed ·{' '}
+                {meetingRecoveryReport.skippedChunks} skipped ·{' '}
+                {meetingRecoveryReport.emptyChunks} empty
+              </span>
+              <span>
+                {meetingRecoveryReport.sources.length > 0
+                  ? meetingRecoveryReport.sources
+                      .map(
+                        (source) =>
+                          `${source.source}: ${source.recoveredSegments}/${source.chunks}`
+                      )
+                      .join(' · ')
+                  : 'No backup chunks processed'}
+              </span>
+            </div>
+          ) : null}
 
           <section className="transcribe-main">
             <article className="panel-card transcribe-transcript-card">
               <div className="panel-header">
                 <div>
                   <h2>Meeting transcript</h2>
+                  <span>
+                    {meetingExportedSegmentCount} exported · {meetingExcludedSegmentCount} excluded
+                  </span>
                 </div>
                 <div className="button-row">
                   <button
@@ -7590,7 +7699,7 @@ export const App = () => {
                     disabled={
                       isExportingMeetingTranscript ||
                       !meetingSession ||
-                      meetingSession.segments.length === 0
+                      !meetingSession.segments.some(isMeetingTranscriptSegmentExportable)
                     }
                     onClick={() => void exportMeetingTranscription('md')}
                     type="button"
@@ -7602,7 +7711,7 @@ export const App = () => {
                     className="secondary-button"
                     disabled={
                       !meetingSession ||
-                      meetingSession.segments.length === 0
+                      !meetingSession.segments.some(isMeetingTranscriptSegmentExportable)
                     }
                     onClick={() => void copyMeetingTranscriptMarkdown()}
                     type="button"
@@ -7615,7 +7724,7 @@ export const App = () => {
                     disabled={
                       isExportingMeetingTranscript ||
                       !meetingSession ||
-                      meetingSession.segments.length === 0
+                      !meetingSession.segments.some(isMeetingTranscriptSegmentExportable)
                     }
                     onClick={() => void exportMeetingTranscription('txt')}
                     type="button"
@@ -7625,20 +7734,96 @@ export const App = () => {
                   </button>
                 </div>
               </div>
+              <div className="transcript-filter-row" aria-label="Transcript segment filter">
+                {([
+                  ['all', 'All', meetingTranscriptSegments.length],
+                  ['exported', 'Exported', meetingExportedSegmentCount],
+                  ['excluded', 'Excluded', meetingExcludedSegmentCount]
+                ] as const).map(([value, label, count]) => (
+                  <button
+                    className={meetingTranscriptFilter === value ? 'filter-chip-active' : ''}
+                    disabled={!meetingSession || count === 0}
+                    key={value}
+                    onClick={() => setMeetingTranscriptFilter(value)}
+                    type="button"
+                  >
+                    {label} <span>{count}</span>
+                  </button>
+                ))}
+              </div>
               {!meetingSession || meetingSession.segments.length === 0 ? (
                 <div className="empty-state">No finalized transcript yet.</div>
+              ) : filteredMeetingTranscriptSegments.length === 0 ? (
+                <div className="empty-state">No transcript segments in this filter.</div>
               ) : (
                 <div className="meeting-transcript-list">
-                  {meetingSession.segments.map((segment) => (
-                    <article className="transcript-item" key={segment.id}>
-                      <div className="transcript-item-meta">
-                        <span>{formatTranscriptTime(segment.startTime)}</span>
-                        <span>{segment.speaker ?? segment.source?.toUpperCase() ?? 'UNKNOWN'}</span>
-                        <span>Final</span>
-                      </div>
-                      <p className="transcript-item-text">{segment.text}</p>
-                    </article>
-                  ))}
+                  {filteredMeetingTranscriptSegments.map((segment) => {
+                    const originalIndex = meetingTranscriptSegments.findIndex(
+                      (item) => item.id === segment.id
+                    )
+                    const recovered = isRecoveredMeetingTranscriptSegment(segment)
+                    const exportable = isMeetingTranscriptSegmentExportable(segment)
+                    const canMerge = recovered && exportable && originalIndex > 0
+                    const segmentRange = segment.endTime
+                      ? `${formatTranscriptTime(segment.startTime)}-${formatTranscriptTime(segment.endTime)}`
+                      : formatTranscriptTime(segment.startTime)
+
+                    return (
+                      <article
+                        className={`transcript-item ${
+                          recovered ? 'transcript-item-recovered' : ''
+                        } ${exportable ? '' : 'transcript-item-excluded'}`}
+                        key={segment.id}
+                      >
+                        <div className="transcript-item-meta transcript-item-meta-row">
+                          <span>{formatTranscriptTime(segment.startTime)}</span>
+                          <span>{segment.speaker ?? segment.source?.toUpperCase() ?? 'UNKNOWN'}</span>
+                          <span>{exportable ? 'Final' : 'Excluded'}</span>
+                          {recovered ? (
+                            <span className="transcript-recovery-badge">
+                              Recovered · {segment.recovery?.source ?? segment.source ?? 'unknown'} · {segmentRange}
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="transcript-item-text">{segment.text}</p>
+                        {recovered ? (
+                          <div className="transcript-review-actions">
+                            {exportable ? (
+                              <>
+                                <button
+                                  className="secondary-button compact-button"
+                                  onClick={() => excludeRecoveredTranscriptSegment(segment.id)}
+                                  title="Keep this recovered text visible here, but leave it out of Markdown/TXT export."
+                                  type="button"
+                                >
+                                  Exclude
+                                </button>
+                                <button
+                                  className="secondary-button compact-button"
+                                  disabled={!canMerge}
+                                  onClick={() => mergeRecoveredTranscriptSegment(segment.id)}
+                                  title="Append this recovered text to the previous segment before export."
+                                  type="button"
+                                >
+                                  <Merge aria-hidden="true" size={13} />
+                                  <span>Merge up</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                className="secondary-button compact-button"
+                                onClick={() => restoreRecoveredTranscriptSegment(segment.id)}
+                                title="Put this recovered segment back into Markdown/TXT export."
+                                type="button"
+                              >
+                                Restore
+                              </button>
+                            )}
+                          </div>
+                        ) : null}
+                      </article>
+                    )
+                  })}
                   <div ref={meetingTranscriptEndRef} />
                 </div>
               )}

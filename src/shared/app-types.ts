@@ -1054,7 +1054,7 @@ export interface MeetingTranscriptionSaveResult {
 
 export interface MeetingAudioBackupStartRequest {
   sessionId: string
-  source: 'microphone'
+  source: import('./meeting-transcription').MeetingAudioBackupSource
   sampleRate: number
   channelCount: number
   now: string
@@ -1068,13 +1068,13 @@ export interface MeetingAudioBackupStartResult {
 
 export interface MeetingAudioBackupChunkRequest {
   sessionId: string
-  source: 'microphone'
+  source: import('./meeting-transcription').MeetingAudioBackupSource
   pcm16: ArrayBuffer
 }
 
 export interface MeetingAudioBackupStopRequest {
   sessionId: string
-  source: 'microphone'
+  source: import('./meeting-transcription').MeetingAudioBackupSource
   now: string
 }
 
@@ -1088,11 +1088,30 @@ export interface MeetingTranscriptionRecoveryRequest {
   sessionId: string
 }
 
+export interface MeetingTranscriptionRecoveryReport {
+  totalChunks: number
+  recoveredSegments: number
+  failedChunks: number
+  skippedChunks: number
+  emptyChunks: number
+  recoveredTextChars: number
+  sources: Array<{
+    source: import('./meeting-transcription').MeetingAudioBackupSource
+    chunks: number
+    recoveredSegments: number
+    failedChunks: number
+    skippedChunks: number
+    emptyChunks: number
+    textChars: number
+  }>
+}
+
 export interface MeetingTranscriptionRecoveryResult {
   ok: true
   session: import('./meeting-transcription').MeetingTranscriptionSession
   addedSegments: number
   recoveredTextChars: number
+  report: MeetingTranscriptionRecoveryReport
   message: string
 }
 

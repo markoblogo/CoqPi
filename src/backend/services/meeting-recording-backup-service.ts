@@ -33,6 +33,9 @@ const activeWriters = new Map<string, AudioBackupWriter>()
 const writerKey = (sessionId: string, source: MeetingAudioBackupSource) =>
   `${sessionId}:${source}`
 
+const getActiveSessionWriters = (sessionId: string) =>
+  [...activeWriters.values()].filter((writer) => writer.sessionId === sessionId)
+
 const writeAtomic = async (filePath: string, content: string) => {
   const temporaryPath = `${filePath}.tmp`
   const handle = await fs.open(temporaryPath, 'w', 0o600)
@@ -208,26 +211,63 @@ export const startMeetingAudioBackup = async ({
   if (source !== 'microphone' && source !== 'system') {
     throw new Error('Unsupported audio backup source.')
   }
+  if (activeWriters.has(writerKey(id, source))) {
+    throw new Error('Audio backup writer is already active for this source.')
+  }
   const safeSampleRate = Number.isFinite(sampleRate) && sampleRate > 0
     ? Math.round(sampleRate)
     : 48000
   const safeChannelCount = channelCount === 2 ? 2 : 1
-  const claim = await acquireMeetingRecordingClaim({
-    sessionId: id,
-    stage: 'recording',
-    now
-  })
+  const existingSessionWriter = getActiveSessionWriters(id)[0]
+  const claim = existingSessionWriter
+    ? { acquired: true as const, reason: 'already-held' as const, claim: existingSessionWriter.claim }
+    : await acquireMeetingRecordingClaim({
+        sessionId: id,
+        stage: 'recording',
+        now
+      })
   if (!claim.acquired) throw new Error('Audio backup recording is already active.')
 
   try {
     const directory = backupDirectory(id)
     await fs.mkdir(directory, { recursive: true })
-    const manifest = await createMeetingAudioBackupManifest({
-      sessionId: id,
-      now,
-      sources: [source],
-      format: 'wav_pcm'
-    })
+    const existingManifest = await readMeetingAudioBackupManifest(id)
+    const manifest = existingManifest
+      ? await updateManifest(id, (current) => {
+          const hasSource = current.files.some((file) => file.source === source)
+          return {
+            ...current,
+            updatedAt: now,
+            status: 'recording',
+            files: hasSource
+              ? current.files.map((file) =>
+                  file.source === source
+                    ? {
+                        ...file,
+                        status: 'open',
+                        startedAt: file.startedAt || now,
+                        endedAt: undefined,
+                        error: undefined
+                      }
+                    : file
+                )
+              : [
+                  ...current.files,
+                  {
+                    source,
+                    relativePath: `${source}.wav`,
+                    status: 'open',
+                    startedAt: now
+                  }
+                ]
+          }
+        })
+      : await createMeetingAudioBackupManifest({
+          sessionId: id,
+          now,
+          sources: [source],
+          format: 'wav_pcm'
+        })
     const file = manifest.files.find((entry) => entry.source === source)
     if (!file) throw new Error('Audio backup manifest did not include source file.')
     const filePath = path.join(directory, file.relativePath)
@@ -245,7 +285,9 @@ export const startMeetingAudioBackup = async ({
     })
     return { manifest, directory }
   } catch (error) {
-    await releaseMeetingRecordingClaim(claim.claim).catch(() => undefined)
+    if (!existingSessionWriter) {
+      await releaseMeetingRecordingClaim(claim.claim).catch(() => undefined)
+    }
     throw error
   }
 }
@@ -310,23 +352,29 @@ export const stopMeetingAudioBackup = async ({
   const content = await fs.readFile(writer.filePath)
   const sha256 = createHash('sha256').update(content).digest('hex')
   const byteLength = content.byteLength
-  const next = await updateManifest(id, (manifest) => ({
-    ...manifest,
-    updatedAt: now,
-    status: 'stopped',
-    files: manifest.files.map((file) =>
+  const next = await updateManifest(id, (manifest) => {
+    const files = manifest.files.map((file) =>
       file.source === source
         ? {
             ...file,
-            status: 'closed',
+            status: 'closed' as const,
             endedAt: now,
             byteLength,
             sha256
           }
         : file
     )
-  }))
-  await releaseMeetingRecordingClaim(writer.claim)
+    const hasOpenFiles = files.some((file) => file.status === 'open')
+    return {
+      ...manifest,
+      updatedAt: now,
+      status: hasOpenFiles ? 'recording' : 'stopped',
+      files
+    }
+  })
+  if (getActiveSessionWriters(id).length === 0) {
+    await releaseMeetingRecordingClaim(writer.claim)
+  }
   return next
 }
 

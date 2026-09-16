@@ -73,16 +73,24 @@ summarize, suggest answers, call Ollama, or call
 
 An Amanu-inspired recording backup layer sits next to this path:
 
-`cloned microphone stream -> Web Audio PCM16 chunks -> Electron main WAV writer -> audio-backups/<sha256(session_id)>/manifest.json + microphone.wav + stage claim files -> optional Recover transcript from backup -> STT -> transcript journal`
+`cloned audio stream(s) -> Web Audio PCM16 chunks -> Electron main WAV writer -> audio-backups/<sha256(session_id)>/manifest.json + microphone.wav/system.wav + stage claim files -> optional Recover transcript from backup -> STT -> transcript journal`
 
-The manifest records the local microphone backup contract (`wav_pcm`). Stage
+The manifest records the local multi-source backup contract (`wav_pcm`). Stage
 claims are exclusive local JSON locks for recording, transcribing, and
 finalizing work. They avoid duplicate workers and recover from corrupt or
-dead-owner claims. Manual recovery can retranscribe a stopped `microphone.wav`
-backup in speech-aware bounded chunks and append deduplicated recovered
-segments with approximate timestamps to the transcript journal. If no nearby
-low-energy pause is found, recovery keeps the fixed-window boundary. This layer
-writes microphone audio only and does not yet capture separate system audio.
+dead-owner claims. Manual recovery can retranscribe stopped `microphone.wav`
+and `system.wav` backups in speech-aware bounded chunks and append deduplicated
+recovered segments with approximate timestamps to the transcript journal. If no
+nearby low-energy pause is found, recovery keeps the fixed-window boundary.
+`system` recovered chunks are labeled as `OTHER`; microphone chunks remain
+`UNKNOWN` unless manual speaker state is available. The renderer currently
+starts microphone backup by default; wiring a real system-audio route remains a
+separate integration step.
+Recovered segments carry review metadata. The UI can filter transcript review
+by all/exported/excluded chunks, restore an accidentally excluded recovered
+chunk, mark a chunk as excluded from export, or merge it into the previous
+segment. These actions update the local session journal and keep the original
+recovered item visible for review instead of silently deleting it.
 
 ### Assistant analysis path
 
@@ -157,9 +165,9 @@ Shared cost constants live in:
 - **Stored encrypted Monitor token**: separate file under `app.getPath("userData")/secrets/`; never exposed to the renderer.
 - **Governance receipts**: `data/governance/receipts.jsonl`
 - **Meeting audio backup**: `data/sessions/audio-backups/<sha256(session_id)>/manifest.json`,
-  `microphone.wav`, and stage claim files. It is local-only, microphone-only,
-  and can be manually retranscribed into deduplicated recovered transcript
-  chunks after Stop.
+  `microphone.wav`, optional `system.wav`, and stage claim files. It is
+  local-only and can be manually retranscribed into deduplicated recovered
+  transcript chunks after Stop.
 
 Transcript persistence is enabled for the standalone Transcribe path and for
 Live sessions. It remains local-only and is cleared only by an explicit user

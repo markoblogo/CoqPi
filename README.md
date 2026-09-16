@@ -37,6 +37,7 @@ CoqPi is local-first, but OpenAI-backed transcription and assistant features sen
 - Secrets stay in the Electron main process and may be stored with macOS secure storage.
 - Runtime profiles, transcripts, context packs, receipts, and OAuth tokens stay outside the Git repository.
 - Assistant requests pass through a local privacy gate that redacts recognized contact/tracking data and blocks secret-like material.
+- Recovered transcript chunks are visibly marked before export; weak chunks can be excluded/restored for Markdown/TXT or merged into the previous segment without deleting the local session record.
 - Gmail sending and Calendar creation require explicit, hash-bound user approval.
 - The Monitor bridge is disabled by default, requires explicit client-speech permission, keeps its token in macOS secure storage, and never sends `ME`, partial, or system transcript items.
 - CoqPi cannot autonomously join calls, control other apps, send messages, or publish content.
@@ -140,10 +141,13 @@ pnpm test:pass2-live-smoke-readiness
 ## Current limits
 
 - Apple Silicon macOS build only; the app is unsigned and not notarized.
-- Microphone input only; no system-audio capture.
-- Microphone raw-audio backup writes local WAV/PCM files next to the transcript
-  manifest. Stopped sessions can be manually recovered from `microphone.wav`
-  into timestamped journal chunks without duplicating a previous recovery.
+- Microphone input is the default capture path. The backup/recovery contract
+  now supports separate `microphone.wav` and `system.wav` sources, but a real
+  system-audio route must still be explicitly configured in a later pass.
+- Raw-audio backup writes local WAV/PCM files next to the transcript manifest.
+  Stopped sessions can be manually recovered into timestamped journal chunks
+  without duplicating a previous recovery, and recovery reports show recovered,
+  failed, skipped, and empty chunks.
 - Speaker attribution is manual and cannot split one mixed speech item.
 - Monitor live preview depends on a selected client, an authenticated Monitor account, and correct manual `ME`/`OTHER` marking; it never creates or sends an operational BID/OFFER/TRADE.
 - Live quality and p50/p95 response latency still need repeated real-call measurement.

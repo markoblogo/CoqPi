@@ -206,6 +206,130 @@ test('microphone backup writes a playable wav file and finalizes manifest', asyn
   })
 })
 
+test('audio backup can record microphone and system sources in one session manifest', async () => {
+  await withBackupWorkspace(async ({ backupService }) => {
+    const sessionId = 'multi-source-backup-session'
+    const startedAt = '2026-09-16T09:00:00.000Z'
+    const microphone = await backupService.startMeetingAudioBackup({
+      sessionId,
+      source: 'microphone',
+      sampleRate: 16000,
+      channelCount: 1,
+      now: startedAt
+    })
+    const system = await backupService.startMeetingAudioBackup({
+      sessionId,
+      source: 'system',
+      sampleRate: 16000,
+      channelCount: 1,
+      now: startedAt
+    })
+
+    assert.equal(microphone.manifest.files.some((file) => file.source === 'microphone'), true)
+    assert.equal(system.manifest.files.some((file) => file.source === 'system'), true)
+
+    await backupService.appendMeetingAudioBackupChunk({
+      sessionId,
+      source: 'microphone',
+      pcm16: Int16Array.from([0, 1000]).buffer
+    })
+    await backupService.appendMeetingAudioBackupChunk({
+      sessionId,
+      source: 'system',
+      pcm16: Int16Array.from([0, 2000, -2000]).buffer
+    })
+
+    await backupService.stopMeetingAudioBackup({
+      sessionId,
+      source: 'microphone',
+      now: '2026-09-16T09:00:04.000Z'
+    })
+    const stopped = await backupService.stopMeetingAudioBackup({
+      sessionId,
+      source: 'system',
+      now: '2026-09-16T09:00:04.000Z'
+    })
+
+    const micFile = stopped.files.find((file) => file.source === 'microphone')
+    const systemFile = stopped.files.find((file) => file.source === 'system')
+    assert.equal(stopped.status, 'stopped')
+    assert.equal(micFile.status, 'closed')
+    assert.equal(systemFile.status, 'closed')
+    assert.equal(micFile.relativePath, 'microphone.wav')
+    assert.equal(systemFile.relativePath, 'system.wav')
+    assert.match(micFile.sha256, /^[a-f0-9]{64}$/)
+    assert.match(systemFile.sha256, /^[a-f0-9]{64}$/)
+  })
+})
+
+test('recovery appends system audio backup with OTHER speaker labels', async () => {
+  await withBackupWorkspace(async ({ backupService, transcriptionService, recoveryService, shared }) => {
+    const originalFetch = global.fetch
+    let fetchCount = 0
+    global.fetch = async (_url, request) => {
+      const file = request.body.get('file')
+      assert.match(file.name, /system-/)
+      fetchCount += 1
+      return new Response(
+        JSON.stringify({ text: 'The other speaker asks a question.' }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    }
+
+    try {
+      const sessionId = 'recover-system-session'
+      const startedAt = '2026-09-16T10:00:00.000Z'
+      await backupService.startMeetingAudioBackup({
+        sessionId,
+        source: 'system',
+        sampleRate: 16000,
+        channelCount: 1,
+        now: startedAt
+      })
+      await backupService.appendMeetingAudioBackupChunk({
+        sessionId,
+        source: 'system',
+        pcm16: Int16Array.from([0, 256, -256, 512, -512]).buffer
+      })
+      const manifest = await backupService.stopMeetingAudioBackup({
+        sessionId,
+        source: 'system',
+        now: '2026-09-16T10:00:04.000Z'
+      })
+      await transcriptionService.saveCurrentMeetingTranscriptionSession({
+        ...shared.createMeetingTranscriptionSession({
+          id: sessionId,
+          language: 'en',
+          inputLabel: 'System audio',
+          now: startedAt,
+          mode: 'recorder'
+        }),
+        status: 'stopped',
+        stoppedAt: '2026-09-16T10:00:04.000Z',
+        endedAt: '2026-09-16T10:00:04.000Z',
+        audioBackup: {
+          manifestId: backupService.getMeetingAudioBackupManifestId(sessionId),
+          status: manifest.status,
+          updatedAt: manifest.updatedAt
+        }
+      })
+
+      const recovered = await recoveryService.recoverCurrentMeetingTranscriptFromBackup({ sessionId })
+      assert.equal(recovered.addedSegments, 1)
+      assert.equal(fetchCount, 1)
+      assert.equal(recovered.report.sources[0].source, 'system')
+      assert.equal(recovered.report.recoveredSegments, 1)
+      assert.equal(recovered.report.failedChunks, 0)
+      assert.equal(recovered.session.segments[0].source, 'system')
+      assert.equal(recovered.session.segments[0].speaker, 'OTHER')
+      assert.match(recovered.session.segments[0].sourceItemId, /^audio-recovery:system:/)
+      assert.equal(recovered.session.segments[0].recovery.source, 'system')
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+})
+
 test('recovery appends microphone backup transcript once without duplicate STT calls', async () => {
   await withBackupWorkspace(async ({ backupService, transcriptionService, recoveryService, shared }) => {
     const originalFetch = global.fetch
@@ -260,15 +384,22 @@ test('recovery appends microphone backup transcript once without duplicate STT c
 
       const recovered = await recoveryService.recoverCurrentMeetingTranscriptFromBackup({ sessionId })
       assert.equal(recovered.addedSegments, 1)
+      assert.equal(recovered.report.totalChunks, 1)
+      assert.equal(recovered.report.recoveredSegments, 1)
+      assert.equal(recovered.report.recoveredTextChars, 'Bonjour, pouvez-vous me parler de votre parcours ?'.length)
       assert.equal(recovered.session.segments.length, 1)
       assert.equal(recovered.session.segments[0].source, 'microphone')
       assert.equal(recovered.session.segments[0].speaker, 'UNKNOWN')
       assert.match(recovered.session.segments[0].sourceItemId, /^audio-recovery:microphone:/)
+      assert.equal(recovered.session.segments[0].recovery.status, 'active')
+      assert.equal(recovered.session.segments[0].recovery.source, 'microphone')
+      assert.equal(recovered.session.segments[0].recovery.chunkIndex, 0)
       assert.equal(recovered.session.segments[0].text, 'Bonjour, pouvez-vous me parler de votre parcours ?')
 
       const second = await recoveryService.recoverCurrentMeetingTranscriptFromBackup({ sessionId })
       assert.equal(second.addedSegments, 0)
       assert.equal(second.session.segments.length, 1)
+      assert.equal(second.report.skippedChunks, 1)
       assert.equal(fetchCount, 1)
     } finally {
       global.fetch = originalFetch
@@ -341,6 +472,8 @@ test('recovery prefers silence boundaries near chunk edges', async () => {
 
       const recovered = await recoveryService.recoverCurrentMeetingTranscriptFromBackup({ sessionId })
       assert.equal(recovered.addedSegments, 3)
+      assert.equal(recovered.report.totalChunks, 3)
+      assert.equal(recovered.report.recoveredSegments, 3)
       assert.deepEqual(recovered.session.segments.map((segment) => segment.text), recoveredTexts)
       assert.deepEqual(recovered.session.segments.map((segment) => segment.startTime), [
         '2026-09-15T15:00:00.000Z',
@@ -418,6 +551,8 @@ test('recovery splits longer microphone backup into timestamped chunks', async (
 
       const recovered = await recoveryService.recoverCurrentMeetingTranscriptFromBackup({ sessionId })
       assert.equal(recovered.addedSegments, 3)
+      assert.equal(recovered.report.totalChunks, 3)
+      assert.equal(recovered.report.failedChunks, 0)
       assert.deepEqual(recovered.session.segments.map((segment) => segment.text), recoveredTexts)
       assert.deepEqual(recovered.session.segments.map((segment) => segment.startTime), [
         '2026-09-15T14:00:00.000Z',
@@ -433,7 +568,80 @@ test('recovery splits longer microphone backup into timestamped chunks', async (
 
       const second = await recoveryService.recoverCurrentMeetingTranscriptFromBackup({ sessionId })
       assert.equal(second.addedSegments, 0)
+      assert.equal(second.report.skippedChunks, 3)
       assert.equal(fetchCount, 3)
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+})
+
+test('recovery report records failed chunks without losing successful chunks', async () => {
+  await withBackupWorkspace(async ({ backupService, transcriptionService, recoveryService, shared }) => {
+    const originalFetch = global.fetch
+    let fetchCount = 0
+    process.env.COQPI_AUDIO_RECOVERY_CHUNK_SECONDS = '1'
+    global.fetch = async () => {
+      fetchCount += 1
+      if (fetchCount === 2) {
+        return new Response(
+          JSON.stringify({ error: { message: 'temporary STT failure' } }),
+          { status: 500, headers: { 'content-type': 'application/json' } }
+        )
+      }
+      return new Response(
+        JSON.stringify({ text: `recovered chunk ${fetchCount}` }),
+        { status: 200, headers: { 'content-type': 'application/json' } }
+      )
+    }
+
+    try {
+      const sessionId = 'recover-partial-failure-session'
+      const startedAt = '2026-09-16T11:00:00.000Z'
+      await backupService.startMeetingAudioBackup({
+        sessionId,
+        source: 'microphone',
+        sampleRate: 16000,
+        channelCount: 1,
+        now: startedAt
+      })
+      await backupService.appendMeetingAudioBackupChunk({
+        sessionId,
+        source: 'microphone',
+        pcm16: new Int16Array(16000 * 3).buffer
+      })
+      const manifest = await backupService.stopMeetingAudioBackup({
+        sessionId,
+        source: 'microphone',
+        now: '2026-09-16T11:00:03.000Z'
+      })
+      await transcriptionService.saveCurrentMeetingTranscriptionSession({
+        ...shared.createMeetingTranscriptionSession({
+          id: sessionId,
+          language: 'en',
+          inputLabel: 'Mic',
+          now: startedAt,
+          mode: 'recorder'
+        }),
+        status: 'stopped',
+        stoppedAt: '2026-09-16T11:00:03.000Z',
+        endedAt: '2026-09-16T11:00:03.000Z',
+        audioBackup: {
+          manifestId: backupService.getMeetingAudioBackupManifestId(sessionId),
+          status: manifest.status,
+          updatedAt: manifest.updatedAt
+        }
+      })
+
+      const recovered = await recoveryService.recoverCurrentMeetingTranscriptFromBackup({ sessionId })
+      assert.equal(recovered.addedSegments, 2)
+      assert.equal(recovered.report.totalChunks, 3)
+      assert.equal(recovered.report.recoveredSegments, 2)
+      assert.equal(recovered.report.failedChunks, 1)
+      assert.deepEqual(recovered.session.segments.map((segment) => segment.text), [
+        'recovered chunk 1',
+        'recovered chunk 3'
+      ])
     } finally {
       global.fetch = originalFetch
     }

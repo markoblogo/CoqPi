@@ -86,6 +86,16 @@ export interface MeetingTranscriptionSegment {
   confidence?: number
   isFinal: true
   sourceItemId?: string
+  recovery?: {
+    status: 'active' | 'excluded_from_export'
+    source: MeetingAudioBackupSource
+    recoveredAt: string
+    chunkIndex?: number
+    startOffsetMs?: number
+    endOffsetMs?: number
+    mergedSegmentIds?: string[]
+    reviewNote?: string
+  }
 }
 
 export interface MeetingTranscriptionInterim {
@@ -168,6 +178,140 @@ const formatSegmentOffset = (
   }
 
   return formatMeetingDuration(current - start)
+}
+
+export const isRecoveredMeetingTranscriptSegment = (
+  segment: MeetingTranscriptionSegment
+) =>
+  Boolean(segment.recovery) ||
+  segment.sourceItemId?.startsWith('audio-recovery:') === true
+
+export const isMeetingTranscriptSegmentExportable = (
+  segment: MeetingTranscriptionSegment
+) => segment.recovery?.status !== 'excluded_from_export'
+
+const getSegmentSourceLabel = (segment: MeetingTranscriptionSegment) =>
+  segment.speaker ?? segment.source?.toUpperCase() ?? 'UNKNOWN'
+
+const getExportSegmentLabel = (
+  session: MeetingTranscriptionSession,
+  segment: MeetingTranscriptionSegment
+) => {
+  const base = getSegmentSourceLabel(segment)
+
+  if (!isRecoveredMeetingTranscriptSegment(segment)) {
+    return base
+  }
+
+  const source = segment.recovery?.source ?? segment.source ?? 'unknown'
+  const range = segment.endTime
+    ? `, approx ${formatSegmentOffset(session, segment.startTime)}-${formatSegmentOffset(session, segment.endTime)}`
+    : `, approx ${formatSegmentOffset(session, segment.startTime)}`
+
+  return `${base} (recovered ${source}${range})`
+}
+
+export const excludeMeetingTranscriptSegmentFromExport = (
+  session: MeetingTranscriptionSession,
+  segmentId: string,
+  reviewNote?: string
+): MeetingTranscriptionSession => ({
+  ...session,
+  segments: session.segments.map((segment) =>
+    segment.id === segmentId
+      ? {
+          ...segment,
+          recovery: {
+            status: 'excluded_from_export',
+            source: segment.recovery?.source ?? (segment.source === 'system' ? 'system' : 'microphone'),
+            recoveredAt: segment.recovery?.recoveredAt ?? new Date().toISOString(),
+            chunkIndex: segment.recovery?.chunkIndex,
+            startOffsetMs: segment.recovery?.startOffsetMs,
+            endOffsetMs: segment.recovery?.endOffsetMs,
+            mergedSegmentIds: segment.recovery?.mergedSegmentIds,
+            reviewNote: reviewNote ?? segment.recovery?.reviewNote
+          }
+        }
+      : segment
+  )
+})
+
+export const restoreMeetingTranscriptSegmentToExport = (
+  session: MeetingTranscriptionSession,
+  segmentId: string
+): MeetingTranscriptionSession => ({
+  ...session,
+  segments: session.segments.map((segment) =>
+    segment.id === segmentId && segment.recovery?.status === 'excluded_from_export'
+      ? {
+          ...segment,
+          recovery: {
+            ...segment.recovery,
+            status: 'active',
+            reviewNote: 'restored_in_review'
+          }
+        }
+      : segment
+  )
+})
+
+export const mergeMeetingTranscriptSegmentIntoPrevious = (
+  session: MeetingTranscriptionSession,
+  segmentId: string
+): MeetingTranscriptionSession => {
+  const segmentIndex = session.segments.findIndex(
+    (segment) => segment.id === segmentId
+  )
+
+  if (segmentIndex <= 0) {
+    return session
+  }
+
+  const sourceSegment = session.segments[segmentIndex]
+  if (!sourceSegment || !isMeetingTranscriptSegmentExportable(sourceSegment)) {
+    return session
+  }
+
+  const previousSegment = session.segments[segmentIndex - 1]
+  if (!previousSegment || !isMeetingTranscriptSegmentExportable(previousSegment)) {
+    return session
+  }
+
+  const nextSegments = [...session.segments]
+  const previousRecovery = previousSegment.recovery
+  nextSegments[segmentIndex - 1] = {
+    ...previousSegment,
+    text: `${previousSegment.text.trimEnd()}\n${sourceSegment.text.trimStart()}`,
+    endTime: sourceSegment.endTime ?? previousSegment.endTime,
+    recovery: previousRecovery
+      ? {
+          ...previousRecovery,
+          endOffsetMs: sourceSegment.recovery?.endOffsetMs ?? previousRecovery.endOffsetMs,
+          mergedSegmentIds: [
+            ...(previousRecovery.mergedSegmentIds ?? []),
+            sourceSegment.id
+          ]
+        }
+      : previousSegment.recovery
+  }
+  nextSegments[segmentIndex] = {
+    ...sourceSegment,
+    recovery: {
+      status: 'excluded_from_export',
+      source: sourceSegment.recovery?.source ?? (sourceSegment.source === 'system' ? 'system' : 'microphone'),
+      recoveredAt: sourceSegment.recovery?.recoveredAt ?? new Date().toISOString(),
+      chunkIndex: sourceSegment.recovery?.chunkIndex,
+      startOffsetMs: sourceSegment.recovery?.startOffsetMs,
+      endOffsetMs: sourceSegment.recovery?.endOffsetMs,
+      mergedSegmentIds: sourceSegment.recovery?.mergedSegmentIds,
+      reviewNote: 'merged_into_previous'
+    }
+  }
+
+  return {
+    ...session,
+    segments: nextSegments
+  }
 }
 
 export const createMeetingTranscriptionSession = ({
@@ -358,9 +502,11 @@ export const exportMeetingTranscriptMarkdown = (
   ]
 
   for (const segment of session.segments) {
-    const source = segment.speaker ?? segment.source?.toUpperCase() ?? 'UNKNOWN'
+    if (!isMeetingTranscriptSegmentExportable(segment)) {
+      continue
+    }
     lines.push(
-      `[${formatSegmentOffset(session, segment.startTime)}] ${source}`,
+      `[${formatSegmentOffset(session, segment.startTime)}] ${getExportSegmentLabel(session, segment)}`,
       segment.text
     )
   }
@@ -393,10 +539,10 @@ export const exportMeetingTranscriptText = (
 
   return `${[
     ...header,
-    ...session.segments.map(
+    ...session.segments.filter(isMeetingTranscriptSegmentExportable).map(
       (segment) =>
         `[${formatSegmentOffset(session, segment.startTime)}] ${
-          segment.speaker ?? segment.source?.toUpperCase() ?? 'UNKNOWN'
+          getExportSegmentLabel(session, segment)
         }\n${segment.text}`
     ),
     ...Object.values(session.interim).map(

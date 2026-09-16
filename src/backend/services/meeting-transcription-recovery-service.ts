@@ -2,9 +2,13 @@ import fs from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import type {
   MeetingTranscriptionRecoveryRequest,
+  MeetingTranscriptionRecoveryReport,
   MeetingTranscriptionRecoveryResult
 } from '../../shared/app-types'
-import type { MeetingTranscriptionSession } from '../../shared/meeting-transcription'
+import type {
+  MeetingAudioBackupSource,
+  MeetingTranscriptionSession
+} from '../../shared/meeting-transcription'
 import {
   acquireMeetingRecordingClaim,
   getMeetingAudioBackupFilePath,
@@ -43,24 +47,31 @@ const getRecoverySilenceThreshold = () => {
     : DEFAULT_RECOVERY_SILENCE_THRESHOLD
 }
 
-const recoverySegmentId = (sha256: string, index: number) =>
-  `recovered-microphone-${sha256.slice(0, 16)}-${index}`
+const recoverySegmentId = (
+  source: MeetingAudioBackupSource,
+  sha256: string,
+  index: number
+) => `recovered-${source}-${sha256.slice(0, 16)}-${index}`
 
 const recoverySourceItemId = ({
+  source,
   sha256,
   index,
   startOffsetMs,
   endOffsetMs
 }: {
+  source: MeetingAudioBackupSource
   sha256: string
   index: number
   startOffsetMs: number
   endOffsetMs: number
 }) =>
-  `audio-recovery:microphone:${sha256}:chunk:${index}:${startOffsetMs}-${endOffsetMs}`
+  `audio-recovery:${source}:${sha256}:chunk:${index}:${startOffsetMs}-${endOffsetMs}`
 
-const legacyRecoverySourceItemId = (sha256: string) =>
-  `audio-recovery:microphone:${sha256}`
+const legacyRecoverySourceItemId = (
+  source: MeetingAudioBackupSource,
+  sha256: string
+) => `audio-recovery:${source}:${sha256}`
 
 type RecoveryAudioChunk = {
   audio: Buffer
@@ -201,7 +212,11 @@ const findSpeechAwareBoundary = ({
   return best ?? preferredEnd
 }
 
-const buildRecoveryAudioChunks = (audio: Buffer, sha256: string) => {
+const buildRecoveryAudioChunks = (
+  audio: Buffer,
+  sha256: string,
+  source: MeetingAudioBackupSource
+) => {
   const metadata = readWavMetadata(audio)
   if (!metadata) {
     return [{
@@ -209,6 +224,7 @@ const buildRecoveryAudioChunks = (audio: Buffer, sha256: string) => {
       endOffsetMs: 0,
       index: 0,
       sourceItemId: recoverySourceItemId({
+        source,
         sha256,
         index: 0,
         startOffsetMs: 0,
@@ -253,6 +269,7 @@ const buildRecoveryAudioChunks = (audio: Buffer, sha256: string) => {
       endOffsetMs,
       index,
       sourceItemId: recoverySourceItemId({
+        source,
         sha256,
         index,
         startOffsetMs,
@@ -270,6 +287,33 @@ const addMs = (timestamp: string, offsetMs: number) => {
   const date = new Date(timestamp)
   if (Number.isNaN(date.getTime())) return timestamp
   return new Date(date.getTime() + offsetMs).toISOString()
+}
+
+const emptyRecoveryReport = (): MeetingTranscriptionRecoveryReport => ({
+  totalChunks: 0,
+  recoveredSegments: 0,
+  failedChunks: 0,
+  skippedChunks: 0,
+  emptyChunks: 0,
+  recoveredTextChars: 0,
+  sources: []
+})
+
+const addSourceRecoveryReport = (
+  report: MeetingTranscriptionRecoveryReport,
+  source: MeetingAudioBackupSource
+) => {
+  const sourceReport = {
+    source,
+    chunks: 0,
+    recoveredSegments: 0,
+    failedChunks: 0,
+    skippedChunks: 0,
+    emptyChunks: 0,
+    textChars: 0
+  }
+  report.sources.push(sourceReport)
+  return sourceReport
 }
 
 const readRecoveryTranscript = async ({
@@ -325,15 +369,23 @@ const readRecoveryTranscript = async ({
 const appendRecoveredSegment = ({
   session,
   text,
+  source,
   sourceItemId,
   segmentId,
+  chunkIndex,
+  startOffsetMs,
+  endOffsetMs,
   startTime,
   endTime
 }: {
   session: MeetingTranscriptionSession
   text: string
+  source: MeetingAudioBackupSource
   sourceItemId: string
   segmentId: string
+  chunkIndex: number
+  startOffsetMs: number
+  endOffsetMs: number
   startTime: string
   endTime: string
 }): MeetingTranscriptionSession => ({
@@ -346,10 +398,18 @@ const appendRecoveredSegment = ({
       endTime,
       text,
       language: session.language,
-      source: 'microphone',
-      speaker: 'UNKNOWN',
+      source,
+      speaker: source === 'system' ? 'OTHER' : 'UNKNOWN',
       isFinal: true,
-      sourceItemId
+      sourceItemId,
+      recovery: {
+        status: 'active',
+        source,
+        recoveredAt: new Date().toISOString(),
+        chunkIndex,
+        startOffsetMs,
+        endOffsetMs
+      }
     }
   ],
   interim: {}
@@ -363,28 +423,24 @@ export const recoverCurrentMeetingTranscriptFromBackup = async (
     throw new Error('Current meeting transcription session was not found.')
   }
 
-  const backup = await getMeetingAudioBackupFilePath({
-    sessionId: request.sessionId,
-    source: 'microphone'
-  })
-  if (!backup || backup.file.status !== 'closed' || !backup.file.sha256) {
-    throw new Error('Closed microphone audio backup was not found.')
-  }
+  const backups = (
+    await Promise.all(
+      (['microphone', 'system'] as const).map(async (source) => {
+        const backup = await getMeetingAudioBackupFilePath({
+          sessionId: request.sessionId,
+          source
+        })
+        return backup &&
+          backup.file.status === 'closed' &&
+          backup.file.sha256
+          ? { ...backup, source }
+          : null
+      })
+    )
+  ).filter((backup): backup is NonNullable<typeof backup> => Boolean(backup))
 
-  const content = await fs.readFile(backup.filePath)
-  const sha256 = createHash('sha256').update(content).digest('hex')
-  if (sha256 !== backup.file.sha256) {
-    throw new Error('Microphone audio backup hash does not match its manifest.')
-  }
-
-  if (session.segments.some((segment) => segment.sourceItemId === legacyRecoverySourceItemId(sha256))) {
-    return {
-      ok: true,
-      session,
-      addedSegments: 0,
-      recoveredTextChars: 0,
-      message: 'Backup transcript was already recovered.'
-    }
+  if (backups.length === 0) {
+    throw new Error('Closed audio backup was not found.')
   }
 
   const now = new Date().toISOString()
@@ -399,58 +455,101 @@ export const recoverCurrentMeetingTranscriptFromBackup = async (
 
   try {
     const model = getRecoveryModel()
-    const chunks = buildRecoveryAudioChunks(content, sha256).filter(
-      (chunk) => !session.segments.some((segment) => segment.sourceItemId === chunk.sourceItemId)
-    )
+    let next = session
+    const report = emptyRecoveryReport()
 
-    if (chunks.length === 0) {
+    for (const backup of backups) {
+      const content = await fs.readFile(backup.filePath)
+      const sha256 = createHash('sha256').update(content).digest('hex')
+      if (sha256 !== backup.file.sha256) {
+        throw new Error(`${backup.source} audio backup hash does not match its manifest.`)
+      }
+
+      if (
+        session.segments.some(
+          (segment) =>
+            segment.sourceItemId === legacyRecoverySourceItemId(backup.source, sha256)
+        )
+      ) {
+        continue
+      }
+
+      const sourceReport = addSourceRecoveryReport(report, backup.source)
+      const allChunks = buildRecoveryAudioChunks(content, sha256, backup.source)
+      const chunks = allChunks.filter(
+        (chunk) => !next.segments.some((segment) => segment.sourceItemId === chunk.sourceItemId)
+      )
+      sourceReport.chunks = allChunks.length
+      sourceReport.skippedChunks = allChunks.length - chunks.length
+      report.totalChunks += allChunks.length
+      report.skippedChunks += sourceReport.skippedChunks
+
+      for (const chunk of chunks) {
+        let text = ''
+        try {
+          text = await runGovernedProviderAction(
+            {
+              kind: 'realtime_transcription',
+              provider: 'openai',
+              model,
+              external: true,
+              toolRisk: 'read_only'
+            },
+            () => readRecoveryTranscript({
+              audio: chunk.audio,
+              filename: `${backup.source}-${String(chunk.index + 1).padStart(3, '0')}.wav`,
+              model
+            })
+          )
+        } catch {
+          sourceReport.failedChunks += 1
+          report.failedChunks += 1
+          continue
+        }
+
+        if (!text) {
+          sourceReport.emptyChunks += 1
+          report.emptyChunks += 1
+          continue
+        }
+
+        sourceReport.recoveredSegments += 1
+        sourceReport.textChars += text.length
+        report.recoveredSegments += 1
+        report.recoveredTextChars += text.length
+        next = appendRecoveredSegment({
+          session: next,
+          text,
+          source: backup.source,
+          sourceItemId: chunk.sourceItemId,
+          segmentId: recoverySegmentId(backup.source, sha256, chunk.index),
+          chunkIndex: chunk.index,
+          startOffsetMs: chunk.startOffsetMs,
+          endOffsetMs: chunk.endOffsetMs,
+          startTime: addMs(backup.file.startedAt || session.startedAt, chunk.startOffsetMs),
+          endTime: addMs(backup.file.startedAt || session.startedAt, chunk.endOffsetMs)
+        })
+      }
+    }
+
+    if (report.totalChunks === 0 || report.skippedChunks === report.totalChunks) {
       return {
         ok: true,
         session,
         addedSegments: 0,
         recoveredTextChars: 0,
+        report,
         message: 'Backup transcript was already recovered.'
       }
     }
 
-    let next = session
-    let addedSegments = 0
-    let recoveredTextChars = 0
-    for (const chunk of chunks) {
-      const text = await runGovernedProviderAction(
-        {
-          kind: 'realtime_transcription',
-          provider: 'openai',
-          model,
-          external: true,
-          toolRisk: 'read_only'
-        },
-        () => readRecoveryTranscript({
-          audio: chunk.audio,
-          filename: `microphone-${String(chunk.index + 1).padStart(3, '0')}.wav`,
-          model
-        })
-      )
-      if (!text) continue
-
-      addedSegments += 1
-      recoveredTextChars += text.length
-      next = appendRecoveredSegment({
-        session: next,
-        text,
-        sourceItemId: chunk.sourceItemId,
-        segmentId: recoverySegmentId(sha256, chunk.index),
-        startTime: addMs(backup.file.startedAt || session.startedAt, chunk.startOffsetMs),
-        endTime: addMs(backup.file.startedAt || session.startedAt, chunk.endOffsetMs)
-      })
-    }
-
-    if (addedSegments === 0) {
+    if (report.recoveredSegments === 0) {
       return {
         ok: true,
         session,
         addedSegments: 0,
         recoveredTextChars: 0,
+        report,
         message: 'Backup retranscription returned no text.'
       }
     }
@@ -460,9 +559,10 @@ export const recoverCurrentMeetingTranscriptFromBackup = async (
     return {
       ok: true,
       session: next,
-      addedSegments,
-      recoveredTextChars,
-      message: 'Recovered transcript from microphone audio backup.'
+      addedSegments: report.recoveredSegments,
+      recoveredTextChars: report.recoveredTextChars,
+      report,
+      message: `Recovered ${report.recoveredSegments} segment${report.recoveredSegments === 1 ? '' : 's'} from ${backups.map((backup) => backup.source).join(' + ')} audio backup${report.failedChunks > 0 ? `; ${report.failedChunks} chunk${report.failedChunks === 1 ? '' : 's'} failed` : ''}.`
     }
   } finally {
     await releaseMeetingRecordingClaim(claim.claim).catch(() => undefined)

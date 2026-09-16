@@ -29,24 +29,26 @@ errors. WebRTC transport interruptions have three bounded reconnect attempts.
 The first Amanu-inspired foundation is also in place: per-session audio-backup
 manifests are stored under a hash directory, and exclusive claim files prevent
 duplicate recording/transcription/recovery workers from processing the same
-session while allowing recovery from corrupt or dead-owner claims. A local
-microphone WAV/PCM writer is now connected to that manifest through the same
-recording lifecycle, using a cloned microphone stream so it can keep the backup
-separate from the OpenAI realtime transport. A manual recovery command can take
-a stopped `microphone.wav`, split it into speech-aware bounded chunks when
-nearby low-energy pauses exist, run those chunks through STT, and append
-hash-deduplicated recovered segments with approximate timestamps to the local
-transcript journal.
+session while allowing recovery from corrupt or dead-owner claims. Local
+WAV/PCM writers are now represented as source-specific backup files
+(`microphone.wav`, optional `system.wav`) under one manifest. The default
+renderer path still starts microphone backup only, but the backend contract and
+recovery path can already handle a separate `system` source. A manual recovery
+command can take stopped backup WAV files, split them into speech-aware bounded
+chunks when nearby low-energy pauses exist, run those chunks through STT, and
+append hash-deduplicated recovered segments with approximate timestamps to the
+local transcript journal.
 
 Each recording has a local archive under `sessions/recordings/<sha256(id)>.json`.
 Clear resets the current workspace and retains the archive. Transcribe exposes
 saved conversations and export. Live suggestions, model and latency are stored
 with their originating recording. No API keys or system prompts enter exports.
 
-Limits: saved microphone audio is not automatically retranscribed in the
-background, and it does not include separate system audio. Hardware
-failure/power loss and real 15-minute RU/UK sessions still need observed tests.
-No claim of zero loss across network outages is made.
+Limits: saved audio is not automatically retranscribed in the background.
+System-audio backup requires a real routed system stream; CoqPi does not infer
+or fake it from microphone input. Hardware failure/power loss and real
+15-minute RU/UK sessions still need observed tests. No claim of zero loss
+across network outages is made.
 
 ## 2. Follow language switches and keep answers short
 
@@ -120,10 +122,10 @@ Measure speech-end to meaning and answer at p50/p95 before changing models or
 debounce values. Target budgets must be set from actual device/network results.
 
 Further work: make recovered chunk boundaries phrase-aware rather than only
-energy-aware, add optional system-audio routing with reliable source labels, add
-automatic multi-source company research, and deepen longitudinal language error
-mastery and spaced repetition. These are not represented as completed by the
-current fixture tests.
+energy-aware, connect a real system-audio route to the prepared backup source
+contract, add automatic multi-source company research, and deepen longitudinal
+language error mastery and spaced repetition. These are not represented as
+completed by the current fixture tests.
 
 ## Commands
 

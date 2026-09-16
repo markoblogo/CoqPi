@@ -131,6 +131,113 @@ test('meeting transcription service autosaves restores exports and clears sessio
   })
 })
 
+test('recovered segment review state survives save and restore', async () => {
+  await withMeetingWorkspace(async ({ service, shared }) => {
+    let session = shared.createMeetingTranscriptionSession({
+      id: 'review-state',
+      language: 'fr',
+      inputLabel: 'Mic',
+      now: '2026-09-16T10:00:00.000Z'
+    })
+
+    session = {
+      ...session,
+      segments: [
+        {
+          id: 'base',
+          startTime: '2026-09-16T10:00:01.000Z',
+          endTime: '2026-09-16T10:00:03.000Z',
+          text: 'Bonjour.',
+          source: 'microphone',
+          speaker: 'UNKNOWN',
+          isFinal: true,
+          sourceItemId: 'audio-recovery:microphone:hash:chunk:0:0-2000',
+          recovery: {
+            status: 'active',
+            source: 'microphone',
+            recoveredAt: '2026-09-16T10:05:00.000Z',
+            chunkIndex: 0,
+            startOffsetMs: 0,
+            endOffsetMs: 2000
+          }
+        },
+        {
+          id: 'merge-me',
+          startTime: '2026-09-16T10:00:03.000Z',
+          endTime: '2026-09-16T10:00:05.000Z',
+          text: 'Je continue.',
+          source: 'microphone',
+          speaker: 'UNKNOWN',
+          isFinal: true,
+          sourceItemId: 'audio-recovery:microphone:hash:chunk:1:2000-4000',
+          recovery: {
+            status: 'active',
+            source: 'microphone',
+            recoveredAt: '2026-09-16T10:05:01.000Z',
+            chunkIndex: 1,
+            startOffsetMs: 2000,
+            endOffsetMs: 4000
+          }
+        },
+        {
+          id: 'exclude-me',
+          startTime: '2026-09-16T10:00:05.000Z',
+          endTime: '2026-09-16T10:00:07.000Z',
+          text: 'Mauvais morceau.',
+          source: 'microphone',
+          speaker: 'UNKNOWN',
+          isFinal: true,
+          sourceItemId: 'audio-recovery:microphone:hash:chunk:2:4000-6000',
+          recovery: {
+            status: 'active',
+            source: 'microphone',
+            recoveredAt: '2026-09-16T10:05:02.000Z',
+            chunkIndex: 2,
+            startOffsetMs: 4000,
+            endOffsetMs: 6000
+          }
+        },
+        {
+          id: 'restore-me',
+          startTime: '2026-09-16T10:00:07.000Z',
+          endTime: '2026-09-16T10:00:09.000Z',
+          text: 'Bon morceau.',
+          source: 'microphone',
+          speaker: 'UNKNOWN',
+          isFinal: true,
+          sourceItemId: 'audio-recovery:microphone:hash:chunk:3:6000-8000',
+          recovery: {
+            status: 'excluded_from_export',
+            source: 'microphone',
+            recoveredAt: '2026-09-16T10:05:03.000Z',
+            chunkIndex: 3,
+            startOffsetMs: 6000,
+            endOffsetMs: 8000
+          }
+        }
+      ]
+    }
+
+    session = shared.mergeMeetingTranscriptSegmentIntoPrevious(session, 'merge-me')
+    session = shared.excludeMeetingTranscriptSegmentFromExport(session, 'exclude-me')
+    session = shared.restoreMeetingTranscriptSegmentToExport(session, 'restore-me')
+    await service.saveCurrentMeetingTranscriptionSession(session)
+
+    const restored = await service.getCurrentMeetingTranscriptionSession()
+    assert.equal(restored.segments.length, 4)
+    assert.match(restored.segments[0].text, /Bonjour\.\nJe continue\./)
+    assert.equal(restored.segments[1].recovery.status, 'excluded_from_export')
+    assert.equal(restored.segments[1].recovery.reviewNote, 'merged_into_previous')
+    assert.equal(restored.segments[2].recovery.status, 'excluded_from_export')
+    assert.equal(restored.segments[3].recovery.status, 'active')
+
+    const markdown = shared.exportMeetingTranscriptMarkdown(restored)
+    assert.match(markdown, /Je continue\./)
+    assert.doesNotMatch(markdown, /Mauvais morceau\./)
+    assert.match(markdown, /Bon morceau\./)
+  })
+})
+
 test('meeting transcription journal preserves interim text and recovers from a broken snapshot', async () => {
   await withMeetingWorkspace(async ({ service, shared, directory }) => {
     let session = shared.createMeetingTranscriptionSession({

@@ -6,7 +6,10 @@ const {
   createMeetingTranscriptionSession,
   exportMeetingTranscriptMarkdown,
   exportMeetingTranscriptText,
+  excludeMeetingTranscriptSegmentFromExport,
   generateMeetingTranscriptFilename,
+  mergeMeetingTranscriptSegmentIntoPrevious,
+  restoreMeetingTranscriptSegmentToExport,
   stopMeetingTranscriptionSession
 } = require('../dist-electron/shared/meeting-transcription.js')
 
@@ -182,4 +185,126 @@ test('transcribe event model does not invoke assistant callbacks', () => {
 
   assert.equal(session.segments.length, 1)
   assert.equal(assistantCalls, 0)
+})
+
+test('recovered transcript segments are labeled and excluded from export when rejected', () => {
+  const session = {
+    ...makeSession('fr'),
+    segments: [
+      {
+        id: 'recovered-1',
+        startTime: '2026-08-13T10:00:04.000Z',
+        endTime: '2026-08-13T10:00:10.000Z',
+        text: 'Bonjour depuis le backup.',
+        source: 'microphone',
+        speaker: 'UNKNOWN',
+        isFinal: true,
+        sourceItemId: 'audio-recovery:microphone:hash:chunk:0:0-6000',
+        recovery: {
+          status: 'active',
+          source: 'microphone',
+          recoveredAt: '2026-08-13T10:03:00.000Z',
+          chunkIndex: 0,
+          startOffsetMs: 0,
+          endOffsetMs: 6000
+        }
+      }
+    ]
+  }
+
+  const markdown = exportMeetingTranscriptMarkdown(session)
+  assert.match(markdown, /UNKNOWN \(recovered microphone, approx 00:00:04-00:00:10\)/)
+  assert.match(markdown, /Bonjour depuis le backup\./)
+
+  const excluded = excludeMeetingTranscriptSegmentFromExport(session, 'recovered-1')
+  assert.equal(excluded.segments[0].recovery.status, 'excluded_from_export')
+  assert.doesNotMatch(exportMeetingTranscriptMarkdown(excluded), /Bonjour depuis le backup/)
+  assert.doesNotMatch(exportMeetingTranscriptText(excluded), /Bonjour depuis le backup/)
+})
+
+test('recovered transcript chunks can be merged into the previous segment before export', () => {
+  const session = {
+    ...makeSession('en'),
+    segments: [
+      {
+        id: 'base',
+        startTime: '2026-08-13T10:00:04.000Z',
+        endTime: '2026-08-13T10:00:08.000Z',
+        text: 'First recovered phrase.',
+        source: 'microphone',
+        speaker: 'UNKNOWN',
+        isFinal: true,
+        sourceItemId: 'audio-recovery:microphone:hash:chunk:0:0-4000',
+        recovery: {
+          status: 'active',
+          source: 'microphone',
+          recoveredAt: '2026-08-13T10:03:00.000Z',
+          chunkIndex: 0,
+          startOffsetMs: 0,
+          endOffsetMs: 4000
+        }
+      },
+      {
+        id: 'next',
+        startTime: '2026-08-13T10:00:08.000Z',
+        endTime: '2026-08-13T10:00:12.000Z',
+        text: 'Second recovered phrase.',
+        source: 'microphone',
+        speaker: 'UNKNOWN',
+        isFinal: true,
+        sourceItemId: 'audio-recovery:microphone:hash:chunk:1:4000-8000',
+        recovery: {
+          status: 'active',
+          source: 'microphone',
+          recoveredAt: '2026-08-13T10:03:01.000Z',
+          chunkIndex: 1,
+          startOffsetMs: 4000,
+          endOffsetMs: 8000
+        }
+      }
+    ]
+  }
+
+  const merged = mergeMeetingTranscriptSegmentIntoPrevious(session, 'next')
+  assert.equal(merged.segments[0].text, 'First recovered phrase.\nSecond recovered phrase.')
+  assert.equal(merged.segments[0].endTime, '2026-08-13T10:00:12.000Z')
+  assert.equal(merged.segments[0].recovery.mergedSegmentIds.includes('next'), true)
+  assert.equal(merged.segments[1].recovery.status, 'excluded_from_export')
+
+  const markdown = exportMeetingTranscriptMarkdown(merged)
+  assert.equal((markdown.match(/Second recovered phrase/g) ?? []).length, 1)
+})
+
+test('excluded recovered transcript segments can be restored to export', () => {
+  const session = {
+    ...makeSession('en'),
+    segments: [
+      {
+        id: 'recovered-restore',
+        startTime: '2026-08-13T10:00:04.000Z',
+        endTime: '2026-08-13T10:00:08.000Z',
+        text: 'Restored phrase.',
+        source: 'microphone',
+        speaker: 'UNKNOWN',
+        isFinal: true,
+        sourceItemId: 'audio-recovery:microphone:hash:chunk:0:0-4000',
+        recovery: {
+          status: 'excluded_from_export',
+          source: 'microphone',
+          recoveredAt: '2026-08-13T10:03:00.000Z',
+          chunkIndex: 0,
+          startOffsetMs: 0,
+          endOffsetMs: 4000,
+          reviewNote: 'excluded_in_review'
+        }
+      }
+    ]
+  }
+
+  assert.doesNotMatch(exportMeetingTranscriptMarkdown(session), /Restored phrase/)
+
+  const restored = restoreMeetingTranscriptSegmentToExport(session, 'recovered-restore')
+  assert.equal(restored.segments[0].recovery.status, 'active')
+  assert.equal(restored.segments[0].recovery.reviewNote, 'restored_in_review')
+  assert.match(exportMeetingTranscriptMarkdown(restored), /Restored phrase\./)
 })

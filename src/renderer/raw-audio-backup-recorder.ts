@@ -2,10 +2,11 @@ import type {
   MeetingAudioBackupStartResult,
   MeetingAudioBackupStopResult
 } from '@shared/app-types'
+import type { MeetingAudioBackupSource } from '@shared/meeting-transcription'
 
 type BackupRecorderState = {
   sessionId: string
-  source: 'microphone'
+  source: MeetingAudioBackupSource
   stream: MediaStream
   audioContext: AudioContext
   sourceNode: MediaStreamAudioSourceNode
@@ -48,10 +49,12 @@ export class RawAudioBackupRecorder {
 
   async start({
     sessionId,
+    source = 'microphone',
     stream,
     now
   }: {
     sessionId: string
+    source?: MeetingAudioBackupSource
     stream: MediaStream
     now: string
   }): Promise<MeetingAudioBackupStartResult> {
@@ -73,7 +76,7 @@ export class RawAudioBackupRecorder {
 
     const started = await window.coqpi.meetingTranscription.backupStart({
       sessionId,
-      source: 'microphone',
+      source,
       sampleRate: audioContext.sampleRate,
       channelCount: 1,
       now
@@ -81,7 +84,7 @@ export class RawAudioBackupRecorder {
 
     const state: BackupRecorderState = {
       sessionId,
-      source: 'microphone',
+      source,
       stream,
       audioContext,
       sourceNode,
@@ -97,7 +100,7 @@ export class RawAudioBackupRecorder {
         .then(() =>
           window.coqpi.meetingTranscription.backupChunk({
             sessionId,
-            source: 'microphone',
+            source,
             pcm16
           })
         )

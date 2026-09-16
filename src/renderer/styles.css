@@ -639,6 +639,24 @@ button:disabled {
   color: #cce4fb;
 }
 
+.recovery-report {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid rgba(88, 166, 255, 0.28);
+  border-radius: 5px;
+  background: rgba(17, 29, 39, 0.82);
+  color: #b9c7d6;
+  font-size: var(--font-xs);
+}
+
+.recovery-report strong {
+  color: #e5edf5;
+  font-size: var(--font-sm);
+}
+
 .warning-box {
   border: 1px solid #795a2c;
   background: #241d14;
@@ -1015,6 +1033,21 @@ button:disabled {
   opacity: 0.78;
 }
 
+.transcript-item-recovered {
+  border-color: rgba(69, 143, 214, 0.42);
+  background: rgba(21, 37, 52, 0.9);
+}
+
+.transcript-item-excluded {
+  opacity: 0.62;
+}
+
+.transcript-item-excluded .transcript-item-text {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(207, 219, 231, 0.55);
+}
+
 .transcript-item-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1023,6 +1056,65 @@ button:disabled {
   color: #94a5b6;
   font-size: var(--font-xs);
   text-transform: uppercase;
+}
+
+.transcript-item-meta-row {
+  align-items: center;
+}
+
+.transcript-recovery-badge {
+  border: 1px solid rgba(88, 166, 255, 0.42);
+  border-radius: 999px;
+  padding: 1px 6px;
+  background: rgba(18, 47, 74, 0.72);
+  color: #b9d8f7;
+  text-transform: none;
+}
+
+.transcript-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.transcript-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.transcript-filter-row button {
+  border: 1px solid rgba(139, 160, 181, 0.24);
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: rgba(16, 23, 31, 0.76);
+  color: #b9c7d6;
+  font-size: var(--font-xs);
+  cursor: pointer;
+}
+
+.transcript-filter-row button:disabled {
+  cursor: default;
+  opacity: 0.48;
+}
+
+.transcript-filter-row .filter-chip-active {
+  border-color: rgba(88, 166, 255, 0.58);
+  background: rgba(32, 70, 105, 0.72);
+  color: #e5f2ff;
+}
+
+.transcript-filter-row span {
+  color: #d7e6f4;
+  font-weight: 700;
+}
+
+.compact-button {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: var(--font-xs);
 }
 
 .language-badge {

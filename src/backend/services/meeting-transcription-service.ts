@@ -10,6 +10,7 @@ import {
   exportMeetingTranscriptMarkdown,
   exportMeetingTranscriptText,
   generateMeetingTranscriptFilename,
+  type MeetingAudioBackupSource,
   type MeetingTranscriptionLanguage,
   type MeetingTranscriptionMode,
   type MeetingTranscriptionSource,
@@ -57,6 +58,47 @@ const sanitizeText = (value: unknown) =>
 const sanitizeSource = (value: unknown): MeetingTranscriptionSource =>
   value === 'microphone' || value === 'system' ? value : 'unknown'
 
+const sanitizeBackupSource = (value: unknown): MeetingAudioBackupSource =>
+  value === 'system' ? 'system' : 'microphone'
+
+const sanitizeRecovery = (
+  value: unknown
+): MeetingTranscriptionSession['segments'][number]['recovery'] | undefined => {
+  if (!value || typeof value !== 'object') return undefined
+  const recovery = value as NonNullable<
+    MeetingTranscriptionSession['segments'][number]['recovery']
+  >
+  const recoveredAt = sanitizeText(recovery.recoveredAt)
+  if (!recoveredAt) return undefined
+
+  const mergedSegmentIds = Array.isArray(recovery.mergedSegmentIds)
+    ? recovery.mergedSegmentIds.map(sanitizeText).filter(Boolean)
+    : undefined
+
+  return {
+    status:
+      recovery.status === 'excluded_from_export'
+        ? 'excluded_from_export'
+        : 'active',
+    source: sanitizeBackupSource(recovery.source),
+    recoveredAt,
+    chunkIndex:
+      typeof recovery.chunkIndex === 'number' && Number.isFinite(recovery.chunkIndex)
+        ? recovery.chunkIndex
+        : undefined,
+    startOffsetMs:
+      typeof recovery.startOffsetMs === 'number' && Number.isFinite(recovery.startOffsetMs)
+        ? recovery.startOffsetMs
+        : undefined,
+    endOffsetMs:
+      typeof recovery.endOffsetMs === 'number' && Number.isFinite(recovery.endOffsetMs)
+        ? recovery.endOffsetMs
+        : undefined,
+    mergedSegmentIds,
+    reviewNote: sanitizeText(recovery.reviewNote) || undefined
+  }
+}
+
 const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => {
   if (!value || typeof value !== 'object') {
     return null
@@ -97,7 +139,8 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
             : undefined,
         speaker: sanitizeText(entry.speaker) || undefined,
         isFinal: true as const,
-        sourceItemId: sanitizeText(entry.sourceItemId) || undefined
+        sourceItemId: sanitizeText(entry.sourceItemId) || undefined,
+        recovery: sanitizeRecovery(entry.recovery)
       })
     }
   }
