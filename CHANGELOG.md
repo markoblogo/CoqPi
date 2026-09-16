@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Monitor Live market options now show whether a hint is matched by Client Preferences or is only a market-similar option.
+
 ## 0.3.1 — 2026-09-14
 
 - Added the optional MN7R Monitor Live bridge: client-card setup handoff, normal Monitor sign-in with secure token storage, finalized-`OTHER`-only live previews, temporary BID/OFFER drafts, scrollable opposite-side market options, stale-response protection, and explicit save to Monitor Draft Inbox.

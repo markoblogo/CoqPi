@@ -925,6 +925,25 @@ button:disabled {
   gap: var(--space-2);
 }
 
+.monitor-live-hint-fit {
+  width: fit-content;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: var(--font-xs);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.monitor-live-hint-fit-client_preferences {
+  color: #bdf4cc;
+  background: rgba(35, 134, 78, 0.28);
+}
+
+.monitor-live-hint-fit-market_only {
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.12);
+}
+
 .mini-main {
   display: grid;
   grid-template-rows: auto 1fr;

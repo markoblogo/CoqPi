@@ -5,6 +5,7 @@ const { readFileSync } = require('node:fs')
 const {
   MONITOR_LIVE_COPILOT_DEBOUNCE_MS,
   buildMonitorLiveCopilotRequest,
+  getMonitorLiveHintPreferenceFit,
   parseMonitorLiveCopilotSetup,
   shouldApplyMonitorLiveCopilotResponse
 } = require('../dist-electron/shared/monitor-live-copilot.js')
@@ -56,6 +57,25 @@ test('stale live Monitor responses cannot replace the latest request', () => {
   assert.equal(MONITOR_LIVE_COPILOT_DEBOUNCE_MS, 900)
 })
 
+test('live Monitor hints expose whether the option matched client preferences', () => {
+  assert.deepEqual(
+    getMonitorLiveHintPreferenceFit(['commodity', 'client preference: basis']),
+    {
+      kind: 'client_preferences',
+      label: 'matched by Client Preferences',
+      title: 'This market option matches the selected client preference profile.'
+    }
+  )
+  assert.deepEqual(
+    getMonitorLiveHintPreferenceFit(['commodity', 'basis']),
+    {
+      kind: 'market_only',
+      label: 'market-only hint',
+      title: 'This option is similar by market parameters, without a client preference match.'
+    }
+  )
+})
+
 test('Monitor setup copied from a client card is parsed without auth data', () => {
   const setup = parseMonitorLiveCopilotSetup(JSON.stringify({
     version: 1,
@@ -78,6 +98,7 @@ test('Live cockpit keeps preview and explicit Draft Inbox save as separate actio
   assert.equal(app.includes('MONITOR_LIVE_COPILOT_DEBOUNCE_MS'), true)
   assert.equal(panel.includes('Live preview · not saved'), true)
   assert.equal(panel.includes('Save to Monitor Draft Inbox'), true)
+  assert.equal(panel.includes('monitor-live-hint-fit'), true)
   assert.equal(service.includes("segment.speaker !== 'OTHER'"), true)
   assert.equal(service.includes('/negotiations/live-preview'), true)
   assert.equal(service.includes('/negotiations/import'), true)

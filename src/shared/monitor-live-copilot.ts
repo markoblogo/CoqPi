@@ -51,6 +51,23 @@ export const shouldApplyMonitorLiveCopilotResponse = (
   latestSequence: number
 ) => responseSequence === latestSequence
 
+export const getMonitorLiveHintPreferenceFit = (reasons: readonly string[] = []) => {
+  const matchedByClientPreferences = reasons.some(reason =>
+    String(reason).toLowerCase().includes('client preference')
+  )
+  return matchedByClientPreferences
+    ? {
+        kind: 'client_preferences' as const,
+        label: 'matched by Client Preferences',
+        title: 'This market option matches the selected client preference profile.'
+      }
+    : {
+        kind: 'market_only' as const,
+        label: 'market-only hint',
+        title: 'This option is similar by market parameters, without a client preference match.'
+      }
+}
+
 export const parseMonitorLiveCopilotSetup = (value: string) => {
   let parsed: unknown
   try {

@@ -1,5 +1,6 @@
 import { RefreshCw, Save } from 'lucide-react'
 import type { MonitorLiveCopilotResponse } from '@shared/app-types'
+import { getMonitorLiveHintPreferenceFit } from '@shared/monitor-live-copilot'
 
 type Props = {
   enabled: boolean
@@ -87,18 +88,27 @@ export const MonitorLiveCopilotPanel = ({
           <section>
             <div className="monitor-live-hints-title">Possible counteroffers</div>
             <div className="monitor-live-hints" aria-label="Monitor market options">
-              {result.hints.map(hint => (
-                <article className="monitor-live-hint" key={hint.entryId}>
-                  <div className="monitor-live-hint-head">
-                    <strong>{hint.type.toUpperCase()} {hint.publicSerial ? `#${hint.publicSerial}` : ''}</strong>
-                    <span>{hint.price}</span>
-                  </div>
-                  <p>{hint.commodity} · {hint.quantity}</p>
-                  <p>{hint.basis} {hint.destination}</p>
-                  <p>{hint.deliveryPeriod}</p>
-                  <small>{hint.brokerName || hint.brokerCode} · {hint.reasons.join(', ')}</small>
-                </article>
-              ))}
+              {result.hints.map(hint => {
+                const preferenceFit = getMonitorLiveHintPreferenceFit(hint.reasons)
+                return (
+                  <article className="monitor-live-hint" key={hint.entryId}>
+                    <div className="monitor-live-hint-head">
+                      <strong>{hint.type.toUpperCase()} {hint.publicSerial ? `#${hint.publicSerial}` : ''}</strong>
+                      <span>{hint.price}</span>
+                    </div>
+                    <span
+                      className={`monitor-live-hint-fit monitor-live-hint-fit-${preferenceFit.kind}`}
+                      title={preferenceFit.title}
+                    >
+                      {preferenceFit.label}
+                    </span>
+                    <p>{hint.commodity} · {hint.quantity}</p>
+                    <p>{hint.basis} {hint.destination}</p>
+                    <p>{hint.deliveryPeriod}</p>
+                    <small>{hint.brokerName || hint.brokerCode} · {hint.reasons.join(', ')}</small>
+                  </article>
+                )
+              })}
             </div>
           </section>
         ) : null}
