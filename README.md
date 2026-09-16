@@ -141,9 +141,9 @@ pnpm test:pass2-live-smoke-readiness
 ## Current limits
 
 - Apple Silicon macOS build only; the app is unsigned and not notarized.
-- Microphone input is the default capture path. The backup/recovery contract
-  now supports separate `microphone.wav` and `system.wav` sources, but a real
-  system-audio route must still be explicitly configured in a later pass.
+- Microphone input is the default capture path. A separate **System backup**
+  input can be selected when macOS exposes a virtual/routed call-audio device
+  such as BlackHole or Loopback; CoqPi stores that source as `system.wav`.
 - Raw-audio backup writes local WAV/PCM files next to the transcript manifest.
   Stopped sessions can be manually recovered into timestamped journal chunks
   without duplicating a previous recovery, and recovery reports show recovered,

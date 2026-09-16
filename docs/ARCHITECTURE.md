@@ -83,9 +83,9 @@ and `system.wav` backups in speech-aware bounded chunks and append deduplicated
 recovered segments with approximate timestamps to the transcript journal. If no
 nearby low-energy pause is found, recovery keeps the fixed-window boundary.
 `system` recovered chunks are labeled as `OTHER`; microphone chunks remain
-`UNKNOWN` unless manual speaker state is available. The renderer currently
-starts microphone backup by default; wiring a real system-audio route remains a
-separate integration step.
+`UNKNOWN` unless manual speaker state is available. The renderer starts
+microphone backup by default and can start a second `system` backup stream when
+the operator selects an explicit virtual/routed call-audio input.
 Recovered segments carry review metadata. The UI can filter transcript review
 by all/exported/excluded chunks, restore an accidentally excluded recovered
 chunk, mark a chunk as excluded from export, or merge it into the previous

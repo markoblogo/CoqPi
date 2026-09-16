@@ -7,6 +7,8 @@ import type {
 import { buildAudioInputConstraints } from '@shared/audio-input-config'
 
 const AUDIO_INPUT_STORAGE_KEY = 'coqpi.selectedAudioInputId'
+const SYSTEM_AUDIO_BACKUP_INPUT_STORAGE_KEY =
+  'coqpi.selectedSystemAudioBackupInputId'
 
 const AUDIO_LEVEL_THRESHOLDS: Array<{
   max: number
@@ -105,6 +107,27 @@ export const storeSelectedAudioInputId = (deviceId: string) => {
     }
 
     window.localStorage.removeItem(AUDIO_INPUT_STORAGE_KEY)
+  } catch {
+    // Ignore storage failures and keep the UI usable.
+  }
+}
+
+export const getStoredSelectedSystemAudioBackupInputId = () => {
+  try {
+    return window.localStorage.getItem(SYSTEM_AUDIO_BACKUP_INPUT_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+export const storeSelectedSystemAudioBackupInputId = (deviceId: string) => {
+  try {
+    if (deviceId) {
+      window.localStorage.setItem(SYSTEM_AUDIO_BACKUP_INPUT_STORAGE_KEY, deviceId)
+      return
+    }
+
+    window.localStorage.removeItem(SYSTEM_AUDIO_BACKUP_INPUT_STORAGE_KEY)
   } catch {
     // Ignore storage failures and keep the UI usable.
   }

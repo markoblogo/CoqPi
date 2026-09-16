@@ -53,9 +53,8 @@ separate from assistant suggestions and is kept local.
 - no summary during the call;
 - no reliable speaker labels unless the audio route provides them; otherwise
   exports use `UNKNOWN`;
-- no automatic system-audio routing yet; the backend accepts a separate
-  `system` backup source, but the default UI path still starts microphone
-  backup only;
+- no automatic system-audio device discovery; to capture the other side
+  separately, select an explicit virtual/routed input in `System backup`;
 - no automatic background retranscription from the saved WAV backup yet;
 - no automatic Monitor write: a live brokerage preview stays temporary until
   the broker explicitly saves it to Draft Inbox.
@@ -95,12 +94,16 @@ Use this when the call is in Google Meet or another app on the same Mac:
 2. Open `Transcribe`.
 3. Select the language of the meeting.
 4. Select the mic or leave `System default (macOS)`.
-5. Keep call audio on Mac speakers if you need both sides captured by the mic.
-6. Press `Start Transcription` before the important part begins.
-7. Press `Stop` after the call.
-8. If the transcript missed a section after an STT interruption, press
+5. If you use BlackHole/Loopback or another virtual route for call audio,
+   select it in `System backup`. Leave this `Off` if you only want microphone
+   backup.
+6. Keep call audio on Mac speakers if you need both sides captured by the mic
+   and no virtual route is configured.
+7. Press `Start Transcription` before the important part begins.
+8. Press `Stop` after the call.
+9. If the transcript missed a section after an STT interruption, press
    `Recover` before export.
-9. Export Markdown, or use `Copy Markdown` if the file dialog is not convenient.
+10. Export Markdown, or use `Copy Markdown` if the file dialog is not convenient.
 
 If status becomes `interrupted - transcript preserved`, realtime transcription
 failed but the finalized text and any saved interim checkpoint remain in the
@@ -109,9 +112,7 @@ then `Save Markdown` or `Copy Markdown`. `Clear` asks for confirmation when the
 current transcript has not been exported/copied yet.
 
 If headphones are used, CoqPi will usually capture only your own voice unless
-the headset leaks enough audio into the microphone. Dedicated system-audio
-routing is prepared in the backup contract, but still needs a real routed audio
-source in the UI/runtime.
+the call audio is also routed into the selected `System backup` input.
 
 ## Launch Without Terminal
 
@@ -158,7 +159,7 @@ Session data is stored under the app sessions directory (development:
 - `audio-backups/<sha256(session_id)>/microphone.wav` stores the local
   microphone audio backup when available;
 - `audio-backups/<sha256(session_id)>/system.wav` stores a separate system
-  audio backup when an explicit system route is connected;
+  audio backup when an explicit `System backup` input is selected;
 - `audio-backups/<sha256(session_id)>/*.claim.json` prevents duplicate
   recording/transcription/recovery workers from processing the same session;
 - `Clear` removes the current snapshot and journal after explicit confirmation

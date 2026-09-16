@@ -247,13 +247,18 @@ import {
   AudioLevelMonitor,
   defaultAudioLevelReading,
   getStoredSelectedAudioInputId,
+  getStoredSelectedSystemAudioBackupInputId,
   isAudioInputApiAvailable,
   listAudioInputDevices,
   queryAudioInputPermissionStatus,
   requestAudioInputPermission,
-  storeSelectedAudioInputId
+  storeSelectedAudioInputId,
+  storeSelectedSystemAudioBackupInputId
 } from '@renderer/audio-device-service'
-import { resolveAudioInputSelection } from '@shared/audio-input-config'
+import {
+  buildAudioInputConstraints,
+  resolveAudioInputSelection
+} from '@shared/audio-input-config'
 import {
   getNextMockTranscriptLine,
   mockTranscriptScenarios,
@@ -819,8 +824,14 @@ export const App = () => {
   const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null)
   const interimCheckpointRef = useRef(0)
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
-  const rawAudioBackupRecorderRef = useRef<RawAudioBackupRecorder | null>(null)
-  const rawAudioBackupSessionIdRef = useRef<string | null>(null)
+  const rawAudioBackupRecordersRef = useRef<{
+    microphone: RawAudioBackupRecorder
+    system: RawAudioBackupRecorder
+  } | null>(null)
+  const rawAudioBackupSessionIdsRef = useRef<{
+    microphone: string | null
+    system: string | null
+  }>({ microphone: null, system: null })
   const noEventTimeoutRef = useRef<number | null>(null)
   const autoAnalysisTimeoutRef = useRef<number | null>(null)
   const monitorLiveTimeoutRef = useRef<number | null>(null)
@@ -841,8 +852,11 @@ export const App = () => {
     realtimeClientRef.current = new RealtimeTranscriptionClient()
   }
 
-  if (!rawAudioBackupRecorderRef.current) {
-    rawAudioBackupRecorderRef.current = new RawAudioBackupRecorder()
+  if (!rawAudioBackupRecordersRef.current) {
+    rawAudioBackupRecordersRef.current = {
+      microphone: new RawAudioBackupRecorder(),
+      system: new RawAudioBackupRecorder()
+    }
   }
 
   const [activeTab, setActiveTab] = useState<
@@ -1259,6 +1273,10 @@ export const App = () => {
   const [selectedAudioDeviceId, setSelectedAudioDeviceId] = useState(
     () => getStoredSelectedAudioInputId() ?? ''
   )
+  const [
+    selectedSystemAudioBackupDeviceId,
+    setSelectedSystemAudioBackupDeviceId
+  ] = useState(() => getStoredSelectedSystemAudioBackupInputId() ?? '')
   const [audioLevel, setAudioLevel] = useState<AudioLevelReading>(
     defaultAudioLevelReading
   )
@@ -1329,42 +1347,51 @@ export const App = () => {
       })
   }, [])
 
-  const stopRawAudioBackup = useCallback(async () => {
-    const sessionId = rawAudioBackupSessionIdRef.current
-    rawAudioBackupSessionIdRef.current = null
-    if (!sessionId) return
+  const stopRawAudioBackup = useCallback(async (source?: 'microphone' | 'system') => {
+    const sources = source ? [source] : (['system', 'microphone'] as const)
 
-    const result = await rawAudioBackupRecorderRef.current?.stop(
-      new Date().toISOString()
-    )
-    if (!result) return
+    for (const currentSource of sources) {
+      const sessionId = rawAudioBackupSessionIdsRef.current[currentSource]
+      rawAudioBackupSessionIdsRef.current[currentSource] = null
+      if (!sessionId) continue
 
-    persistAudioBackupMetadata({
-      sessionId,
-      manifestId: result.manifestId,
-      status: result.manifest.status,
-      updatedAt: result.manifest.updatedAt
-    })
+      const result = await rawAudioBackupRecordersRef.current?.[currentSource].stop(
+        new Date().toISOString()
+      )
+      if (!result) continue
+
+      persistAudioBackupMetadata({
+        sessionId,
+        manifestId: result.manifestId,
+        status: result.manifest.status,
+        updatedAt: result.manifest.updatedAt
+      })
+    }
   }, [persistAudioBackupMetadata])
 
-  const startRawAudioBackup = useCallback(async (sessionId: string, stream: MediaStream) => {
-    if (rawAudioBackupSessionIdRef.current === sessionId) {
+  const startRawAudioBackup = useCallback(async (
+    sessionId: string,
+    stream: MediaStream,
+    source: 'microphone' | 'system' = 'microphone'
+  ) => {
+    if (rawAudioBackupSessionIdsRef.current[source] === sessionId) {
       stream.getTracks().forEach((track) => track.stop())
       return
     }
 
-    if (rawAudioBackupSessionIdRef.current) {
-      await stopRawAudioBackup().catch(() => undefined)
+    if (rawAudioBackupSessionIdsRef.current[source]) {
+      await stopRawAudioBackup(source).catch(() => undefined)
     }
 
-    const result = await rawAudioBackupRecorderRef.current?.start({
+    const result = await rawAudioBackupRecordersRef.current?.[source].start({
       sessionId,
+      source,
       stream,
       now: new Date().toISOString()
     })
     if (!result) return
 
-    rawAudioBackupSessionIdRef.current = sessionId
+    rawAudioBackupSessionIdsRef.current[source] = sessionId
     persistAudioBackupMetadata({
       sessionId,
       manifestId: result.manifestId,
@@ -1372,6 +1399,38 @@ export const App = () => {
       updatedAt: result.manifest.updatedAt
     })
   }, [persistAudioBackupMetadata, stopRawAudioBackup])
+
+  const startSystemAudioBackup = useCallback(async (sessionId: string) => {
+    if (!selectedSystemAudioBackupDeviceId) return
+
+    if (selectedSystemAudioBackupDeviceId === selectedAudioDeviceId) {
+      setRecordingSaveError(
+        'System audio backup skipped because it uses the same input as Mic.'
+      )
+      return
+    }
+
+    let stream: MediaStream | null = null
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: buildAudioInputConstraints(selectedSystemAudioBackupDeviceId),
+        video: false
+      })
+      await startRawAudioBackup(sessionId, stream, 'system')
+      stream = null
+    } catch (error) {
+      stream?.getTracks().forEach((track) => track.stop())
+      setRecordingSaveError(
+        error instanceof Error
+          ? `System audio backup unavailable: ${error.message}`
+          : 'System audio backup unavailable.'
+      )
+    }
+  }, [
+    selectedAudioDeviceId,
+    selectedSystemAudioBackupDeviceId,
+    startRawAudioBackup
+  ])
   const [meetingError, setMeetingError] = useState<string | null>(null)
   const [meetingNotice, setMeetingNotice] = useState<string | null>(null)
   const [isExportingMeetingTranscript, setIsExportingMeetingTranscript] =
@@ -1624,6 +1683,8 @@ export const App = () => {
       ])
 
       const storedDeviceId = getStoredSelectedAudioInputId() ?? ''
+      const storedSystemBackupDeviceId =
+        getStoredSelectedSystemAudioBackupInputId() ?? ''
       const matchedStoredDevice = devices.find(
         (device) => device.deviceId === storedDeviceId
       )
@@ -1631,14 +1692,20 @@ export const App = () => {
         storedDeviceId,
         devices.map((device) => device.deviceId)
       )
+      const nextSystemBackupDeviceId = resolveAudioInputSelection(
+        storedSystemBackupDeviceId,
+        devices.map((device) => device.deviceId)
+      )
 
       startTransition(() => {
         setAudioPermissionStatus(permissionStatus)
         setAudioDevices(devices)
         setSelectedAudioDeviceId(nextSelectedDeviceId)
+        setSelectedSystemAudioBackupDeviceId(nextSystemBackupDeviceId)
       })
 
       storeSelectedAudioInputId(nextSelectedDeviceId)
+      storeSelectedSystemAudioBackupInputId(nextSystemBackupDeviceId)
 
       if (devices.length === 0) {
         setAudioError('No audio input devices found.')
@@ -4345,13 +4412,19 @@ export const App = () => {
         selectedAudioDeviceId,
         devices.map((device) => device.deviceId)
       )
+      const nextSystemBackupDeviceId = resolveAudioInputSelection(
+        selectedSystemAudioBackupDeviceId,
+        devices.map((device) => device.deviceId)
+      )
 
       startTransition(() => {
         setAudioDevices(devices)
         setSelectedAudioDeviceId(nextSelectedDeviceId)
+        setSelectedSystemAudioBackupDeviceId(nextSystemBackupDeviceId)
       })
 
       storeSelectedAudioInputId(nextSelectedDeviceId)
+      storeSelectedSystemAudioBackupInputId(nextSystemBackupDeviceId)
 
       if (devices.length === 0) {
         setAudioLevel(defaultAudioLevelReading)
@@ -4376,6 +4449,14 @@ export const App = () => {
     } finally {
       setIsRefreshingDevices(false)
     }
+  }
+
+  const handleSystemAudioBackupDeviceChange = (
+    event: ChangeEvent<HTMLSelectElement>
+  ) => {
+    const nextDeviceId = event.target.value
+    setSelectedSystemAudioBackupDeviceId(nextDeviceId)
+    storeSelectedSystemAudioBackupInputId(nextDeviceId)
   }
 
   const requestAudioPermission = async () => {
@@ -4637,8 +4718,10 @@ export const App = () => {
         onIceConnectionStateChange: setIceConnectionState,
         onIceGatheringStateChange: setIceGatheringState,
         onDataChannelStateChange: setDataChannelState,
-        onAudioBackupStream: (stream) =>
-          startRawAudioBackup(copilotSession.id, stream),
+        onAudioBackupStream: async (stream) => {
+          await startRawAudioBackup(copilotSession.id, stream, 'microphone')
+          await startSystemAudioBackup(copilotSession.id)
+        },
         onEvent: handleRealtimeEvent,
         onError: (message) => {
           setRealtimeStatus('error')
@@ -4773,8 +4856,10 @@ export const App = () => {
         onIceConnectionStateChange: setIceConnectionState,
         onIceGatheringStateChange: setIceGatheringState,
         onDataChannelStateChange: setDataChannelState,
-        onAudioBackupStream: (stream) =>
-          startRawAudioBackup(session.id, stream),
+        onAudioBackupStream: async (stream) => {
+          await startRawAudioBackup(session.id, stream, 'microphone')
+          await startSystemAudioBackup(session.id)
+        },
         onEvent: handleMeetingRealtimeEvent,
         onError: (message) => {
           setRealtimeStatus('error')
@@ -5715,6 +5800,11 @@ export const App = () => {
   const selectedDeviceLabel =
     audioDevices.find((device) => device.deviceId === selectedAudioDeviceId)
       ?.label || 'System default (macOS)'
+  const selectedSystemAudioBackupDeviceLabel = selectedSystemAudioBackupDeviceId
+    ? audioDevices.find(
+        (device) => device.deviceId === selectedSystemAudioBackupDeviceId
+      )?.label || 'Unavailable system backup input'
+    : 'Off'
   const meetingElapsedMs = meetingSession
     ? new Date(
         meetingSession.stoppedAt ??
@@ -7285,6 +7375,21 @@ export const App = () => {
                 ))}
               </select>
             </label>
+            <label>
+              System backup input
+              <select
+                onChange={handleSystemAudioBackupDeviceChange}
+                value={selectedSystemAudioBackupDeviceId}
+              >
+                <option value="">Off</option>
+                {audioDevices.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || 'Unnamed input'}{' '}
+                    {device.isDefault ? '(Default)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="button-row">
             <button
@@ -7306,6 +7411,10 @@ export const App = () => {
             <div className="audio-meter-header">
               <strong>Selected input</strong>
               <span>{selectedDeviceLabel}</span>
+            </div>
+            <div className="audio-meter-header">
+              <strong>System backup</strong>
+              <span>{selectedSystemAudioBackupDeviceLabel}</span>
             </div>
             <div className="audio-meter-track">
               <div
@@ -7599,6 +7708,22 @@ export const App = () => {
                   value={selectedAudioDeviceId}
                 >
                   <option value="">System default (macOS)</option>
+                  {audioDevices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || 'Unnamed input'}{' '}
+                      {device.isDefault ? '(Default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="compact-field">
+                <span>System backup</span>
+                <select
+                  disabled={meetingSession?.status === 'recording'}
+                  onChange={handleSystemAudioBackupDeviceChange}
+                  value={selectedSystemAudioBackupDeviceId}
+                >
+                  <option value="">Off</option>
                   {audioDevices.map((device) => (
                     <option key={device.deviceId} value={device.deviceId}>
                       {device.label || 'Unnamed input'}{' '}
@@ -8001,6 +8126,23 @@ export const App = () => {
                       value={selectedAudioDeviceId}
                     >
                       <option value="">System default (macOS)</option>
+                      {audioDevices.map((device) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || 'Unnamed input'}{' '}
+                          {device.isDefault ? '(Default)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="popover-title">System backup</div>
+                    <select
+                      disabled={canStopListening}
+                      onChange={(event) => {
+                        handleSystemAudioBackupDeviceChange(event)
+                        setActivePopover(null)
+                      }}
+                      value={selectedSystemAudioBackupDeviceId}
+                    >
+                      <option value="">Off</option>
                       {audioDevices.map((device) => (
                         <option key={device.deviceId} value={device.deviceId}>
                           {device.label || 'Unnamed input'}{' '}
