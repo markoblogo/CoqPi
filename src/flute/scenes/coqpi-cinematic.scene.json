@@ -1,0 +1,270 @@
+{
+  "version": 1,
+  "id": "coqpi-cinematic",
+  "title": "CoqPi \u2014 Prepare. Practise. Speak.",
+  "description": "Real CoqPi React panels, synthetic demonstration, no microphone or provider activity.",
+  "definition": {
+    "width": 1920,
+    "height": 1080,
+    "scene": {
+      "version": 3,
+      "camera": {
+        "perspective": 1800,
+        "x": -280,
+        "y": 30,
+        "z": -120,
+        "rotateY": -14,
+        "rotateX": 6,
+        "rotateZ": -1
+      },
+      "focus": {
+        "distance": 1750,
+        "fStop": 8,
+        "focalLength": 90,
+        "maxBlur": 3
+      },
+      "nodes": [
+        {
+          "id": "brand",
+          "transform": {
+            "x": 130,
+            "y": 75,
+            "z": 0
+          }
+        },
+        {
+          "id": "prepare",
+          "transform": {
+            "x": 100,
+            "y": 345,
+            "z": 90,
+            "rotateY": -5
+          }
+        },
+        {
+          "id": "practice",
+          "transform": {
+            "x": 900,
+            "y": 235,
+            "z": -130
+          }
+        },
+        {
+          "id": "conversation",
+          "transform": {
+            "x": 1750,
+            "y": 350,
+            "z": -20,
+            "rotateY": 5
+          }
+        },
+        {
+          "id": "footer",
+          "transform": {
+            "x": 130,
+            "y": 1000,
+            "z": 0
+          }
+        }
+      ]
+    },
+    "motion": {
+      "durationMs": 23000,
+      "speed": 1,
+      "tracks": [
+        {
+          "target": {
+            "kind": "camera"
+          },
+          "property": "x",
+          "keyframes": [
+            {
+              "timeMs": 0,
+              "value": -280,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 2500,
+              "value": -280,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 7500,
+              "value": 400,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 10000,
+              "value": 400,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 15500,
+              "value": 1250,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 18000,
+              "value": 1250,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 22000,
+              "value": 350,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 23000,
+              "value": 350,
+              "easing": "cinematic"
+            }
+          ]
+        },
+        {
+          "target": {
+            "kind": "camera"
+          },
+          "property": "y",
+          "keyframes": [
+            {
+              "timeMs": 0,
+              "value": 30,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 2500,
+              "value": 30,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 7500,
+              "value": 40,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 10000,
+              "value": 40,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 15500,
+              "value": 35,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 18000,
+              "value": 35,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 22000,
+              "value": -40,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 23000,
+              "value": -40,
+              "easing": "cinematic"
+            }
+          ]
+        },
+        {
+          "target": {
+            "kind": "camera"
+          },
+          "property": "z",
+          "keyframes": [
+            {
+              "timeMs": 0,
+              "value": -120,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 2500,
+              "value": -120,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 7500,
+              "value": 100,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 10000,
+              "value": 100,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 15500,
+              "value": 30,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 18000,
+              "value": 30,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 22000,
+              "value": 850,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 23000,
+              "value": 850,
+              "easing": "cinematic"
+            }
+          ]
+        },
+        {
+          "target": {
+            "kind": "focus"
+          },
+          "property": "distance",
+          "keyframes": [
+            {
+              "timeMs": 0,
+              "value": 1740,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 2500,
+              "value": 1740,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 7500,
+              "value": 2020,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 10000,
+              "value": 2020,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 15500,
+              "value": 1870,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 18000,
+              "value": 1870,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 22000,
+              "value": 2630,
+              "easing": "cinematic"
+            },
+            {
+              "timeMs": 23000,
+              "value": 2630,
+              "easing": "cinematic"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

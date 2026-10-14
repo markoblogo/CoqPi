@@ -47,7 +47,8 @@
     "local-model:smoke": "node scripts/local-model-context-smoke.cjs",
     "test": "pnpm build:electron && node --test --test-concurrency=1 tests/*.test.cjs",
     "test:public-boundary": "node scripts/check-public-repository-boundary.cjs",
-    "check": "pnpm test:public-boundary && pnpm typecheck && pnpm lint && pnpm test && pnpm build:renderer && pnpm audit --audit-level high"
+    "check": "pnpm test:public-boundary && pnpm typecheck && pnpm lint && pnpm test && pnpm build:renderer && pnpm audit --audit-level high",
+    "check:flute": "tsc --noEmit -p tsconfig.flute.json && pnpm build:renderer && node scripts/check-flute-production-boundary.mjs"
   },
   "build": {
     "appId": "local.coqpi.app",
@@ -91,6 +92,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.5.2",
+    "@webprodigies/flute": "0.1.2",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "^44.3.0",
