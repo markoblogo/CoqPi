@@ -11,3 +11,8 @@ tmp
 dist-packages/
 build/
 .lazyweb/
+
+# Local Flute experiment media and capture caches
+flute-output/
+.flute/pending.json
+.flute/integration-pending.json

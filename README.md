@@ -179,3 +179,11 @@ pnpm test:pass2-live-smoke-readiness
 
 _This block is generated from the reviewed ABVX ecosystem registry._
 <!-- ABVX:ECOSYSTEM:END -->
+
+## Video-production experiment
+
+A development-only [Flute scene](docs/FLUTE_EXPERIMENT.md) reuses three real CoqPi
+React panels with visibly labelled synthetic content. It runs in an isolated browser
+preview and exports an MP4; it does not start the Electron backend or validate
+real-call performance. The video methods and evidence live in
+[Framewright](https://github.com/markoblogo/framewright).

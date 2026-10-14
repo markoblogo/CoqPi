@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.renderer.json",
+  "include": [
+    "src/renderer/**/*",
+    "src/flute/**/*.tsx",
+    "vite.config.ts"
+  ]
+}

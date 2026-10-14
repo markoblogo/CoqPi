@@ -1,0 +1,19 @@
+.coqpi-film-leaf { color: #e8f0f2; font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+.coqpi-film-title { display: flex; gap: 28px; align-items: center; }
+.coqpi-film-title img { width: 116px; height: 116px; object-fit: contain; }
+.coqpi-film-title h1 { font-size: 64px; letter-spacing: -2px; margin: 0; line-height: 1; }
+.coqpi-film-title p { font-size: 29px; color: #b9d4d9; margin: 16px 0 0; }
+.coqpi-film-frame { padding: 26px; background: var(--surface-0); border: 1px solid var(--surface-border-strong); border-radius: 14px; box-sizing: border-box; }
+.coqpi-film-label { font-size: 18px; color: #76d3df; letter-spacing: 2px; margin-bottom: 18px; font-weight: 650; }
+.coqpi-film-demo { font-size: 14px; color: #a5b6bd; margin-top: 18px; }
+.coqpi-film-footer { font-size: 27px; color: #b9d4d9; letter-spacing: 1px; }
+.coqpi-film-frame .training-layout { margin: 0; }
+
+/* Presentation spacing around original controls; host component files are unchanged. */
+.coqpi-film-frame .training-layout { display: grid; gap: 14px; }
+.coqpi-film-frame .training-input-panel { display: grid; gap: 8px; }
+.coqpi-film-frame .lesson-question { display: flex; gap: 12px; align-items: center; }
+.coqpi-film-frame .lesson-question p { margin: 0; }
+.coqpi-film-frame .training-input-panel textarea { height: 85px; }
+.coqpi-film-frame .training-layout h1 { font-size: 28px; margin: 6px 0 14px; }
+.coqpi-film-demo { color: #cadade; }
