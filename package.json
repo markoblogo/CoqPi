@@ -1,7 +1,7 @@
 {
   "name": "coqpi",
   "productName": "CoqPi",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "private": true,
   "description": "Personal communication cockpit for interviews and professional calls.",
   "main": "dist-electron/main/index.js",

@@ -960,6 +960,7 @@ export interface AssistantAnalysisRequest {
   streamId?: string
   responseStyle?: 'brief' | 'coaching' | 'review' | 'preparation'
   transcriptText: string
+  latestIncomingUtterance?: string
   callLanguage: AssistantCallLanguage
   answerLanguage: AssistantAnswerLanguage
   mode: AssistantAnalysisMode

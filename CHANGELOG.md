@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.5 — 2026-10-23
+
+- Live requests explicitly separate the latest finalized incoming utterance from conversation history, avoiding repeated old questions after language switches.
+- Answer instructions preserve the latest turn's amounts, deadlines, negations and exclusions; no extra model request is added.
+- Verified EN -> FR -> EN through real audio/STT, including transcript survival after Stop and reopening. Full isolated checks: 373 tests passed.
+- Response quality and latency remain variable; see the [bilingual test report](docs/audits/2026-10-23/V034_BILINGUAL_CHECK.md).
+
 ## 0.3.4 — 2026-10-23
 
 - Compact Conversation/Recorder/Learning entry, audio-route setup, grouped settings and answer-first 640x320 call window.

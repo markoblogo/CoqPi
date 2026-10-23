@@ -5465,6 +5465,7 @@ export const App = () => {
       streamId: crypto.randomUUID(),
       responseStyle: 'brief',
       transcriptText: transcriptToSend,
+      latestIncomingUtterance: transcriptWindowUtterances.filter(utterance => utterance.isFinal).at(-1)?.text,
       callLanguage: assistantCallLanguage,
       answerLanguage: detectedLanguageRef.current,
       mode: effectiveMode,
