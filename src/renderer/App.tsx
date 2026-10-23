@@ -822,8 +822,15 @@ export const App = () => {
   const [trainingPurpose, setTrainingPurpose] = useState<'coach' | 'rehearsal'>('coach')
   const [recordingSavedAt, setRecordingSavedAt] = useState<string | null>(null)
   const [recordingSaveError, setRecordingSaveError] = useState<string | null>(null)
+  const [localRecordingActive, setLocalRecordingActive] = useState(false)
   const interimCheckpointRef = useRef(0)
   const realtimeClientRef = useRef<RealtimeTranscriptionClient | null>(null)
+  const microphoneClientRef = useRef<RealtimeTranscriptionClient | null>(null)
+  const captureGenerationRef = useRef(0)
+  const recordingStartSequenceRef = useRef(0)
+  const captureStreamsRef = useRef<Partial<Record<'microphone' | 'system', MediaStream>>>({})
+  const assistantGenerationRef = useRef(0)
+  const autoAnalysisAllowedRef = useRef(true)
   const rawAudioBackupRecordersRef = useRef<{
     microphone: RawAudioBackupRecorder
     system: RawAudioBackupRecorder
@@ -850,12 +857,13 @@ export const App = () => {
 
   if (!realtimeClientRef.current) {
     realtimeClientRef.current = new RealtimeTranscriptionClient()
+    microphoneClientRef.current = new RealtimeTranscriptionClient()
   }
 
   if (!rawAudioBackupRecordersRef.current) {
     rawAudioBackupRecordersRef.current = {
-      microphone: new RawAudioBackupRecorder(),
-      system: new RawAudioBackupRecorder()
+      microphone: new RawAudioBackupRecorder(message => setRecordingSaveError(`Microphone backup: ${message}`)),
+      system: new RawAudioBackupRecorder(message => setRecordingSaveError(`System backup: ${message}`))
     }
   }
 
@@ -1338,7 +1346,6 @@ export const App = () => {
       .saveCurrent(next)
       .then(() => {
         setRecordingSavedAt(new Date().toISOString())
-        setRecordingSaveError(null)
       })
       .catch((error) => {
         setRecordingSaveError(
@@ -1348,24 +1355,34 @@ export const App = () => {
   }, [])
 
   const stopRawAudioBackup = useCallback(async (source?: 'microphone' | 'system') => {
+    if (!source) {
+      captureGenerationRef.current += 1
+      await microphoneClientRef.current?.stop().catch(error => {
+        setRecordingSaveError(error instanceof Error ? error.message : 'Microphone STT did not close cleanly.')
+      })
+      for (const stream of Object.values(captureStreamsRef.current)) stream?.getTracks().forEach(track => track.stop())
+      captureStreamsRef.current = {}
+      setLocalRecordingActive(false)
+    }
     const sources = source ? [source] : (['system', 'microphone'] as const)
 
     for (const currentSource of sources) {
       const sessionId = rawAudioBackupSessionIdsRef.current[currentSource]
       rawAudioBackupSessionIdsRef.current[currentSource] = null
-      if (!sessionId) continue
-
-      const result = await rawAudioBackupRecordersRef.current?.[currentSource].stop(
-        new Date().toISOString()
-      )
-      if (!result) continue
-
-      persistAudioBackupMetadata({
-        sessionId,
-        manifestId: result.manifestId,
-        status: result.manifest.status,
-        updatedAt: result.manifest.updatedAt
-      })
+      try {
+        const result = await rawAudioBackupRecordersRef.current?.[currentSource].stop(
+          new Date().toISOString()
+        )
+        if (!result || !sessionId) continue
+        persistAudioBackupMetadata({
+          sessionId,
+          manifestId: result.manifestId,
+          status: result.manifest.status,
+          updatedAt: result.manifest.updatedAt
+        })
+      } catch (error) {
+        setRecordingSaveError(`${currentSource} backup: ${error instanceof Error ? error.message : 'Unable to finish recording'}`)
+      }
     }
   }, [persistAudioBackupMetadata])
 
@@ -1383,6 +1400,7 @@ export const App = () => {
       await stopRawAudioBackup(source).catch(() => undefined)
     }
 
+    rawAudioBackupSessionIdsRef.current[source] = sessionId
     const result = await rawAudioBackupRecordersRef.current?.[source].start({
       sessionId,
       source,
@@ -1391,7 +1409,6 @@ export const App = () => {
     })
     if (!result) return
 
-    rawAudioBackupSessionIdsRef.current[source] = sessionId
     persistAudioBackupMetadata({
       sessionId,
       manifestId: result.manifestId,
@@ -1400,37 +1417,37 @@ export const App = () => {
     })
   }, [persistAudioBackupMetadata, stopRawAudioBackup])
 
-  const startSystemAudioBackup = useCallback(async (sessionId: string) => {
-    if (!selectedSystemAudioBackupDeviceId) return
-
-    if (selectedSystemAudioBackupDeviceId === selectedAudioDeviceId) {
-      setRecordingSaveError(
-        'System audio backup skipped because it uses the same input as Mic.'
-      )
-      return
-    }
-
-    let stream: MediaStream | null = null
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: buildAudioInputConstraints(selectedSystemAudioBackupDeviceId),
-        video: false
+  const startLocalAudioCapture = async (sessionId: string, startSequence: number) => {
+    await stopRawAudioBackup()
+    if (startSequence !== recordingStartSequenceRef.current) return null
+    const generation = captureGenerationRef.current
+    setRecordingSaveError(null)
+    const sources = selectedSystemAudioBackupDeviceId ? ['microphone', 'system'] as const : ['microphone'] as const
+    if (selectedSystemAudioBackupDeviceId && selectedSystemAudioBackupDeviceId === selectedAudioDeviceId) throw new Error('Choose a separate loopback input for the other side of the call.')
+    for (const source of sources) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: buildAudioInputConstraints(source === 'system' ? selectedSystemAudioBackupDeviceId : selectedAudioDeviceId), video: false
       })
-      await startRawAudioBackup(sessionId, stream, 'system')
-      stream = null
-    } catch (error) {
-      stream?.getTracks().forEach((track) => track.stop())
-      setRecordingSaveError(
-        error instanceof Error
-          ? `System audio backup unavailable: ${error.message}`
-          : 'System audio backup unavailable.'
-      )
+      if (generation !== captureGenerationRef.current || startSequence !== recordingStartSequenceRef.current) {
+        stream.getTracks().forEach(track => track.stop())
+        return null
+      }
+      const deviceId = stream.getAudioTracks()[0]?.getSettings().deviceId
+      const microphoneDeviceId = captureStreamsRef.current.microphone?.getAudioTracks()[0]?.getSettings().deviceId
+      if (source === 'system' && deviceId && deviceId === microphoneDeviceId) {
+        stream.getTracks().forEach(track => track.stop())
+        throw new Error('Mic and loopback resolve to the same device. Choose separate inputs.')
+      }
+      captureStreamsRef.current[source] = stream
+      stream.getAudioTracks().forEach(track => track.addEventListener('ended', () => {
+        if (generation === captureGenerationRef.current) setRecordingSaveError(`${source} input disconnected. Recording may have a gap.`)
+      }))
+      await startRawAudioBackup(sessionId, stream.clone(), source)
+      if (generation !== captureGenerationRef.current || startSequence !== recordingStartSequenceRef.current) return null
+      setLocalRecordingActive(true)
     }
-  }, [
-    selectedAudioDeviceId,
-    selectedSystemAudioBackupDeviceId,
-    startRawAudioBackup
-  ])
+    return { generation, stream: captureStreamsRef.current.system ?? captureStreamsRef.current.microphone!, system: Boolean(captureStreamsRef.current.system) }
+  }
   const [meetingError, setMeetingError] = useState<string | null>(null)
   const [meetingNotice, setMeetingNotice] = useState<string | null>(null)
   const [isExportingMeetingTranscript, setIsExportingMeetingTranscript] =
@@ -1543,8 +1560,10 @@ export const App = () => {
   }, [stopRawAudioBackup])
 
   useEffect(() => window.coqpi.meetingTranscription.onShutdown(async () => {
-    await realtimeClientRef.current?.stop()
-    await stopRawAudioBackup().catch(() => undefined)
+    recordingStartSequenceRef.current += 1
+    assistantGenerationRef.current += 1
+    try { await realtimeClientRef.current?.stop() }
+    finally { await stopRawAudioBackup() }
     const current = meetingSessionRef.current
     if (current) {
       const stopped = stopMeetingTranscriptionSession(current, new Date().toISOString())
@@ -1621,7 +1640,9 @@ export const App = () => {
         setSettingsMeta(initialLoadState.settingsMeta)
         setSmokeNotes(initialLoadState.smokeNotes)
         if (meetingTranscriptionSession) {
-          setMeetingSession(meetingTranscriptionSession)
+          setMeetingSession(meetingTranscriptionSession.status === 'recording'
+            ? { ...meetingTranscriptionSession, status: 'error' }
+            : meetingTranscriptionSession)
           setMeetingLanguage(meetingTranscriptionSession.language)
           setHasExportedMeetingTranscript(false)
           setMeetingNotice('Restored autosaved meeting transcript.')
@@ -2001,7 +2022,7 @@ export const App = () => {
   })
 
   const handleRealtimeEvent = (event: Record<string, unknown>) => {
-    const speaker = manualSpeaker.tracker.current.observe(event) === 'self' ? 'me' : 'other'
+    const speaker = event.speaker === 'ME' ? 'me' : event.source === 'system' ? 'other' : manualSpeaker.tracker.current.observe(event) === 'self' ? 'me' : 'other'
     persistMeetingRealtimeEvent({ ...event, speaker: speaker === 'me' ? 'ME' : 'OTHER' })
     setRealtimeEventCounters((current) => ({
       ...current,
@@ -2087,6 +2108,9 @@ export const App = () => {
 
       const language = detectConversationLanguage(transcript, detectedLanguageRef.current)
       if (speaker === 'other') {
+        assistantGenerationRef.current += 1
+        setAssistantState(current => current === 'analyzing' ? 'idle' : current)
+        autoAnalysisAllowedRef.current = true
         detectedLanguageRef.current = language
         setDetectedLanguage(language)
       }
@@ -2167,7 +2191,6 @@ export const App = () => {
       .saveCurrent(session)
       .then(() => {
         setRecordingSavedAt(new Date().toISOString())
-        setRecordingSaveError(null)
       })
       .catch((error) => {
         setRecordingSaveError(error instanceof Error ? error.message : 'Recording save failed')
@@ -2203,13 +2226,14 @@ export const App = () => {
   }
 
   const markMeetingSessionInterrupted = (message: string) => {
-    if (realtimeStartedAt !== null) {
+    const captureContinues = Object.keys(captureStreamsRef.current).length > 0
+    if (!captureContinues && realtimeStartedAt !== null) {
       setAccumulatedRealtimeMs(
         (currentValue) => currentValue + (Date.now() - realtimeStartedAt)
       )
     }
 
-    setRealtimeStartedAt(null)
+    if (!captureContinues) setRealtimeStartedAt(null)
     setMeetingSession((currentSession) => {
       if (!currentSession) {
         return currentSession
@@ -2218,15 +2242,15 @@ export const App = () => {
       const interrupted: MeetingTranscriptionSession = {
         ...currentSession,
         status: 'error',
-        stoppedAt: currentSession.stoppedAt ?? new Date().toISOString(),
-        endedAt: currentSession.endedAt ?? new Date().toISOString(),
+        stoppedAt: captureContinues ? undefined : currentSession.stoppedAt ?? new Date().toISOString(),
+        endedAt: captureContinues ? undefined : currentSession.endedAt ?? new Date().toISOString(),
         interim: currentSession.interim
       }
       autosaveMeetingSession(interrupted)
       return interrupted
     })
     setMeetingNotice(
-      'Realtime interrupted. Finalized transcript is preserved; use Stop, Save, or Copy.'
+      captureContinues ? 'Transcription interrupted. Local audio capture continues; Stop then Recover to transcribe the missing speech.' : 'Realtime interrupted. Finalized transcript is preserved; use Stop, Save, or Copy.'
     )
     setMeetingError(message)
   }
@@ -4608,6 +4632,8 @@ export const App = () => {
     clearTranscriptState?: boolean
     lastAnalyzedUtteranceId?: string | null
   } = {}) => {
+    assistantGenerationRef.current += 1
+    autoAnalysisAllowedRef.current = false
     if (autoAnalysisTimeoutRef.current !== null) {
       window.clearTimeout(autoAnalysisTimeoutRef.current)
       autoAnalysisTimeoutRef.current = null
@@ -4643,6 +4669,7 @@ export const App = () => {
   }
 
   const startRealtimeListening = async () => {
+    resetAssistantConversationState({ clearTranscriptState: true })
     manualSpeaker.reset()
     if (!configStatus.effectiveKeyAvailable) {
       const message =
@@ -4670,7 +4697,16 @@ export const App = () => {
       )
     }
 
-    if (meetingSession) await window.coqpi.meetingTranscription.saveCurrent(meetingSession)
+    const startSequence = ++recordingStartSequenceRef.current
+    setRealtimeStatus('connecting')
+    try {
+      if (meetingSession) await window.coqpi.meetingTranscription.saveCurrent(meetingSession)
+    } catch (error) {
+      setRealtimeStatus('error')
+      setRecordingSaveError(error instanceof Error ? error.message : 'Previous recording could not be saved.')
+      return
+    }
+    if (startSequence !== recordingStartSequenceRef.current) return
 
     const copilotSession = createMeetingTranscriptionSession({
       id: createTranscriptId(),
@@ -4708,8 +4744,11 @@ export const App = () => {
 
     try {
       setRealtimeStartedAt(Date.now())
+      const capture = await startLocalAudioCapture(copilotSession.id, startSequence)
+      if (!capture) return
       await realtimeClientRef.current?.start({
         selectedAudioDeviceId,
+        inputStream: capture.stream,
         callLanguage: 'auto',
         onStatusChange: handleRecordingStatus,
         onDebugEventType: handleRealtimeEventType,
@@ -4718,11 +4757,7 @@ export const App = () => {
         onIceConnectionStateChange: setIceConnectionState,
         onIceGatheringStateChange: setIceGatheringState,
         onDataChannelStateChange: setDataChannelState,
-        onAudioBackupStream: async (stream) => {
-          await startRawAudioBackup(copilotSession.id, stream, 'microphone')
-          await startSystemAudioBackup(copilotSession.id)
-        },
-        onEvent: handleRealtimeEvent,
+        onEvent: event => handleRealtimeEvent(capture.system ? { ...event, item_id: `system:${event.item_id}`, source: 'system', speaker: 'OTHER' } : event),
         onError: (message) => {
           setRealtimeStatus('error')
           setRealtimeError(message)
@@ -4730,10 +4765,21 @@ export const App = () => {
           setLastSanitizedRealtimeError(message)
         }
       })
+      if (capture.generation !== captureGenerationRef.current) return
+      if (capture.system) {
+        await microphoneClientRef.current?.start({
+          selectedAudioDeviceId, inputStream: captureStreamsRef.current.microphone,
+          callLanguage: 'auto', onStatusChange: () => undefined,
+          onDebugEventType: handleRealtimeEventType, onLifecycleLog: pushRealtimeLifecycleLog,
+          onPeerConnectionStateChange: () => undefined, onIceConnectionStateChange: () => undefined,
+          onIceGatheringStateChange: () => undefined, onDataChannelStateChange: () => undefined,
+          onEvent: event => handleRealtimeEvent({ ...event, item_id: `microphone:${event.item_id}`, source: 'microphone', speaker: 'ME' }),
+          onError: message => setRecordingSaveError(`Microphone transcription: ${message}. Local audio recording continues.`)
+        })
+      }
       armNoEventTimeout()
     } catch (error) {
-      await stopRawAudioBackup().catch(() => undefined)
-      setRealtimeStartedAt(null)
+      // STT failure must not stop independent local audio capture.
       setRealtimeStatus('error')
       const message =
         error instanceof Error
@@ -4746,14 +4792,16 @@ export const App = () => {
   }
 
   const stopRealtimeListening = async () => {
+    recordingStartSequenceRef.current += 1
+    resetAssistantConversationState()
     setRealtimeStatus('stopping')
     setRealtimeError(null)
     clearNoEventTimeout()
     pushRealtimeLifecycleLog('Stop Listening clicked')
 
     try {
-      await realtimeClientRef.current?.stop()
-      await stopRawAudioBackup().catch(() => undefined)
+      try { await realtimeClientRef.current?.stop() }
+      finally { await stopRawAudioBackup() }
       if (realtimeStartedAt !== null) {
         setAccumulatedRealtimeMs(
           (currentValue) => currentValue + (Date.now() - realtimeStartedAt)
@@ -4791,15 +4839,7 @@ export const App = () => {
   }
 
   const startMeetingTranscription = async () => {
-    if (!configStatus.effectiveKeyAvailable) {
-      const message =
-        'Missing OpenAI API key. Save a secure local key in Settings or set OPENAI_API_KEY in .env.'
-      setMeetingError(message)
-      setRealtimeStatus('error')
-      setActiveTab('settings')
-      return
-    }
-
+    resetAssistantConversationState()
     if (audioPermissionStatus === 'denied') {
       const message =
         'Microphone permission was denied. Allow microphone access and try again.'
@@ -4808,7 +4848,16 @@ export const App = () => {
       return
     }
 
-    if (meetingSession) await window.coqpi.meetingTranscription.saveCurrent(meetingSession)
+    const startSequence = ++recordingStartSequenceRef.current
+    setRealtimeStatus('connecting')
+    try {
+      if (meetingSession) await window.coqpi.meetingTranscription.saveCurrent(meetingSession)
+    } catch (error) {
+      setRealtimeStatus('error')
+      setRecordingSaveError(error instanceof Error ? error.message : 'Previous recording could not be saved.')
+      return
+    }
+    if (startSequence !== recordingStartSequenceRef.current) return
 
     const now = new Date().toISOString()
     const session = createMeetingTranscriptionSession({
@@ -4846,8 +4895,16 @@ export const App = () => {
 
     try {
       setRealtimeStartedAt(Date.now())
+      const capture = await startLocalAudioCapture(session.id, startSequence)
+      if (!capture) return
+      if (!configStatus.effectiveKeyAvailable) {
+        setRealtimeStatus('listening')
+        setMeetingNotice('Recording audio locally. Add an API key later to recover the transcript.')
+        return
+      }
       await realtimeClientRef.current?.start({
         selectedAudioDeviceId,
+        inputStream: capture.stream,
         callLanguage: 'auto',
         onStatusChange: handleRecordingStatus,
         onDebugEventType: handleRealtimeEventType,
@@ -4856,21 +4913,27 @@ export const App = () => {
         onIceConnectionStateChange: setIceConnectionState,
         onIceGatheringStateChange: setIceGatheringState,
         onDataChannelStateChange: setDataChannelState,
-        onAudioBackupStream: async (stream) => {
-          await startRawAudioBackup(session.id, stream, 'microphone')
-          await startSystemAudioBackup(session.id)
-        },
-        onEvent: handleMeetingRealtimeEvent,
+        onEvent: event => handleMeetingRealtimeEvent(capture.system ? { ...event, item_id: `system:${event.item_id}`, source: 'system', speaker: 'OTHER' } : event),
         onError: (message) => {
           setRealtimeStatus('error')
           markMeetingSessionInterrupted(message)
           setLastSanitizedRealtimeError(message)
         }
       })
+      if (capture.generation !== captureGenerationRef.current) return
+      if (capture.system) {
+        await microphoneClientRef.current?.start({
+          selectedAudioDeviceId, inputStream: captureStreamsRef.current.microphone, callLanguage: 'auto',
+          onStatusChange: () => undefined, onDebugEventType: handleRealtimeEventType, onLifecycleLog: pushRealtimeLifecycleLog,
+          onPeerConnectionStateChange: () => undefined, onIceConnectionStateChange: () => undefined,
+          onIceGatheringStateChange: () => undefined, onDataChannelStateChange: () => undefined,
+          onEvent: event => handleMeetingRealtimeEvent({ ...event, item_id: `microphone:${event.item_id}`, source: 'microphone', speaker: 'ME' }),
+          onError: message => setRecordingSaveError(`Microphone transcription: ${message}. Local audio recording continues.`)
+        })
+      }
       armNoEventTimeout()
     } catch (error) {
-      await stopRawAudioBackup().catch(() => undefined)
-      setRealtimeStartedAt(null)
+      // Keep local capture running when the transcription service is unavailable.
       setRealtimeStatus('error')
       const message =
         error instanceof Error
@@ -4882,14 +4945,16 @@ export const App = () => {
   }
 
   const stopMeetingTranscription = async () => {
+    recordingStartSequenceRef.current += 1
+    assistantGenerationRef.current += 1
     setRealtimeStatus('stopping')
     setMeetingError(null)
     clearNoEventTimeout()
     pushRealtimeLifecycleLog('Stop Meeting Transcription clicked')
 
     try {
-      await realtimeClientRef.current?.stop()
-      await stopRawAudioBackup().catch(() => undefined)
+      try { await realtimeClientRef.current?.stop() }
+      finally { await stopRawAudioBackup() }
       if (realtimeStartedAt !== null) {
         setAccumulatedRealtimeMs(
           (currentValue) => currentValue + (Date.now() - realtimeStartedAt)
@@ -5086,6 +5151,8 @@ export const App = () => {
           ? error.message
           : 'Unable to recover transcript from audio backup.'
       )
+      const saved = await window.coqpi.meetingTranscription.getCurrent().catch(() => null)
+      if (saved?.id === meetingSession.id) setMeetingSession(saved)
     } finally {
       setIsRecoveringMeetingTranscript(false)
     }
@@ -5320,7 +5387,7 @@ export const App = () => {
       setAssistantErrorSource(source)
     }
 
-    if (manualSpeaker.isSpeaking() || assistantState === 'analyzing') {
+    if ((trigger === 'auto' && !autoAnalysisAllowedRef.current) || manualSpeaker.isSpeaking() || assistantState === 'analyzing') {
       return false
     }
 
@@ -5432,10 +5499,13 @@ export const App = () => {
     setLastAnalyzePayloadInspector(normalizedForAnalysis.payloadInspector)
     setLastAnalyzeTranscriptText(transcriptToSend)
     const recordingSessionId = meetingSessionRef.current?.id
+    const requestGeneration = ++assistantGenerationRef.current
 
     try {
       const response =
         await window.coqpi.assistant.analyzeRecentTranscript(request)
+
+      if (requestGeneration !== assistantGenerationRef.current) return false
 
       if (!response.ok) {
         setErrorState(
@@ -5476,6 +5546,7 @@ export const App = () => {
 
       return true
     } catch (error) {
+      if (requestGeneration !== assistantGenerationRef.current) return false
       setErrorState(
         error instanceof Error
           ? error.message
@@ -5516,7 +5587,12 @@ export const App = () => {
   runAssistantAnalysisRef.current = runAssistantAnalysis
 
   useEffect(() => {
-    if (manualSpeaker.speaking) return
+    assistantGenerationRef.current += 1
+    setAssistantState(current => current === 'analyzing' ? 'idle' : current)
+  }, [sessionContext, counterpartyPacks, finderOutreachDrafts, includeProfileContext, profileContext, detectedLanguage])
+
+  useEffect(() => {
+    if (manualSpeaker.speaking || !autoAnalysisAllowedRef.current) return
     const assistantCallLanguage = detectedLanguage
     const latestFinalUtterance = getLatestAutoAnalysisUtterance(
       transcriptUtterances,
@@ -5766,12 +5842,13 @@ export const App = () => {
     assistantErrorSource
   )
   const canStartListening =
+    !localRecordingActive &&
     realtimeStatus !== 'connecting' &&
     realtimeStatus !== 'connected' &&
     realtimeStatus !== 'listening' &&
     realtimeStatus !== 'stopping'
   const canStopListening =
-    realtimeStatus === 'connecting' ||
+    localRecordingActive || realtimeStatus === 'connecting' ||
     realtimeStatus === 'connected' ||
     realtimeStatus === 'listening' ||
     realtimeStatus === 'error'
@@ -7376,7 +7453,7 @@ export const App = () => {
               </select>
             </label>
             <label>
-              System backup input
+              Other side input (loopback)
               <select
                 onChange={handleSystemAudioBackupDeviceChange}
                 value={selectedSystemAudioBackupDeviceId}
@@ -7544,7 +7621,7 @@ export const App = () => {
         </div>
         <p className="privacy-note">
           Audio only while Start is active. Transcript analysis sends text and
-          optional profile context. Audio is not saved.
+          optional profile context. Audio is saved locally while recording.
         </p>
       </article>
     )
@@ -7772,6 +7849,7 @@ export const App = () => {
           </section>
 
           {meetingError ? <div className="error-box">{meetingError}</div> : null}
+          {recordingSaveError ? <div className="error-box" role="alert">{recordingSaveError}</div> : null}
           {meetingNotice ? <div className="info-box">{meetingNotice}</div> : null}
           {meetingRecoveryReport ? (
             <div className="recovery-report" aria-label="Recovery report">
@@ -7810,8 +7888,8 @@ export const App = () => {
                     disabled={
                       isRecoveringMeetingTranscript ||
                       !meetingSession ||
-                      meetingSession.status === 'recording' ||
-                      meetingSession.audioBackup?.status !== 'stopped'
+                      localRecordingActive ||
+                      !meetingSession.audioBackup
                     }
                     onClick={() => void recoverMeetingTranscriptFromBackup()}
                     type="button"

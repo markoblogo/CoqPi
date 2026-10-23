@@ -14,6 +14,7 @@ type RealtimeServerEvent = {
 
 export interface StartRealtimeTranscriptionOptions {
   selectedAudioDeviceId: string
+  inputStream?: MediaStream
   callLanguage: RealtimeTranscriptionStartRequest['callLanguage']
   onStatusChange: (status: RealtimeConnectionStatus) => void
   onEvent: (event: RealtimeServerEvent) => void
@@ -100,7 +101,7 @@ export class RealtimeTranscriptionClient {
     options.onLifecycleLog('Start Listening clicked')
 
     try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
+      const mediaStream = options.inputStream ? options.inputStream.clone() : await navigator.mediaDevices.getUserMedia({
         audio: buildAudioInputConstraints(options.selectedAudioDeviceId),
         video: false
       })

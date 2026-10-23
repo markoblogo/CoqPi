@@ -127,6 +127,7 @@ export interface MeetingTranscriptionSession {
 }
 
 export interface MeetingRealtimeEvent {
+  source?: MeetingTranscriptionSource
   speaker?: 'ME' | 'OTHER'
   type?: string
   item_id?: string
@@ -440,7 +441,7 @@ export const applyMeetingTranscriptionRealtimeEvent = ({
           endTime: now,
           text,
           language: detectConversationLanguage(text, session.segments.at(-1)?.language ?? session.language),
-          source: 'unknown',
+          source: event.source ?? 'unknown',
           speaker: event.speaker ?? interim?.speaker,
           isFinal: true,
           sourceItemId: itemId

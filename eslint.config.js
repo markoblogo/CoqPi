@@ -10,6 +10,7 @@ module.exports = tseslint.config(
       'dist',
       'dist-electron',
       'node_modules',
+      '.pnpm-store',
       'coverage',
       'data',
       'tmp',

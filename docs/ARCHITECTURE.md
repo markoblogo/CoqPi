@@ -57,6 +57,13 @@ This path is on-demand only. It is read-only, does not use microphone/audio, and
 
 ### Realtime transcription path
 
+Since 0.3.3, local capture owns the physical streams independently of WebRTC.
+Both sources write local PCM first; WebRTC uses clones so reconnect/failure does
+not end backup. An explicit system/loopback input uses the primary STT connection
+as OTHER; a second microphone STT connection records ME without assistant analysis.
+Without loopback, the single input retains manual speaker marking. See
+[recording lifecycle](RECORDING_RELIABILITY_033.md).
+
 `selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> durable transcript checkpoint -> completed utterance -> per-utterance EN/FR/RU/UK language resolution -> local auto-analysis guard -> 900 ms debounce -> assistant analysis -> answer-first cockpit`
 
 ### Meeting transcription path

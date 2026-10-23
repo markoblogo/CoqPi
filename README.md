@@ -17,6 +17,15 @@
 
 > **MVP:** CoqPi is useful for local preparation and transcription, but it has not yet completed repeated real-call latency and speaker-attribution validation.
 
+### Local reliability update (0.3.3)
+
+- Stop/Reset invalidates pending assistant responses; delayed answers cannot reappear in the next conversation.
+- Audio capture starts before cloud transcription and continues through STT failures. Transcribe also records locally without an API key; use Recover later for text.
+- An explicitly selected loopback input now feeds Live as `OTHER`; the separate microphone feeds `ME`, which is recorded but excluded from suggestions. With both sources enabled, two cloud transcription streams are used.
+- Each acknowledged PCM chunk is synced locally with a usable WAV header. Recover can repair interrupted recordings and saves recovered text chunk by chunk.
+
+See [recording reliability and setup](docs/RECORDING_RELIABILITY_033.md). Hardware routing, actual recognition accuracy and real-call latency still require a human check. This local update is not a GitHub release.
+
 ## What it does
 
 CoqPi keeps the communication loop in one desktop app:

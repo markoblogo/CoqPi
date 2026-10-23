@@ -1,0 +1,15 @@
+const test = require('node:test')
+const assert = require('node:assert/strict')
+const { spawnSync } = require('node:child_process')
+
+test('SIGKILL retains transcript and repairable audio; later-source failure retains recovered text', () => {
+  const result = spawnSync(process.execPath, ['scripts/audit-recording-reliability.cjs'], { encoding: 'utf8', timeout: 60000 })
+  assert.equal(result.status, 0, result.stderr)
+  const report = JSON.parse(result.stdout)
+  assert.equal(report.crash.signal, 'SIGKILL')
+  assert.equal(report.crash.persistedSegments, 1)
+  assert.equal(report.crash.wavDeclaredBytes, 32000)
+  assert.equal(report.crash.repairedStatus, 'closed')
+  assert.equal(report.partialRecovery.completedSttCalls, 1)
+  assert.equal(report.partialRecovery.persistedSegments, 1)
+})

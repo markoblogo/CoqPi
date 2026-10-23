@@ -20,6 +20,8 @@ type AudioBackupWriter = {
   channelCount: number
   bytesWritten: number
   claim: MeetingRecordingClaim
+  writeQueue: Promise<unknown>
+  stopping?: boolean
 }
 
 const backupRoot = () => path.join(getAppInfo().sessionsDirectory, 'audio-backups')
@@ -37,7 +39,7 @@ const getActiveSessionWriters = (sessionId: string) =>
   [...activeWriters.values()].filter((writer) => writer.sessionId === sessionId)
 
 const writeAtomic = async (filePath: string, content: string) => {
-  const temporaryPath = `${filePath}.tmp`
+  const temporaryPath = `${filePath}.${randomUUID()}.tmp`
   const handle = await fs.open(temporaryPath, 'w', 0o600)
   try {
     await handle.writeFile(content, 'utf8')
@@ -232,6 +234,13 @@ export const startMeetingAudioBackup = async ({
     const directory = backupDirectory(id)
     await fs.mkdir(directory, { recursive: true })
     const existingManifest = await readMeetingAudioBackupManifest(id)
+    // A new session is required to restart capture: never truncate an archive.
+    try {
+      await fs.stat(path.join(directory, `${source}.wav`))
+      throw new Error('Audio backup already exists. Start a new recording session.')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
     const manifest = existingManifest
       ? await updateManifest(id, (current) => {
           const hasSource = current.files.some((file) => file.source === source)
@@ -271,7 +280,7 @@ export const startMeetingAudioBackup = async ({
     const file = manifest.files.find((entry) => entry.source === source)
     if (!file) throw new Error('Audio backup manifest did not include source file.')
     const filePath = path.join(directory, file.relativePath)
-    const handle = await fs.open(filePath, 'w+', 0o600)
+    const handle = await fs.open(filePath, 'wx+', 0o600)
     await handle.write(makeWavHeader({ sampleRate: safeSampleRate, channelCount: safeChannelCount, dataBytes: 0 }), 0, 44, 0)
     activeWriters.set(writerKey(id, source), {
       sessionId: id,
@@ -281,7 +290,8 @@ export const startMeetingAudioBackup = async ({
       sampleRate: safeSampleRate,
       channelCount: safeChannelCount,
       bytesWritten: 0,
-      claim: claim.claim
+      claim: claim.claim,
+      writeQueue: Promise.resolve()
     })
     return { manifest, directory }
   } catch (error) {
@@ -302,15 +312,26 @@ export const appendMeetingAudioBackupChunk = async ({
   pcm16: ArrayBuffer | Uint8Array | Buffer
 }): Promise<{ ok: true; bytesWritten: number }> => {
   const writer = activeWriters.get(writerKey(sanitizeSessionId(sessionId), source))
-  if (!writer) throw new Error('Audio backup writer is not active.')
+  if (!writer || writer.stopping) throw new Error('Audio backup writer is not active.')
   const chunk = Buffer.isBuffer(pcm16)
     ? pcm16
     : pcm16 instanceof Uint8Array
       ? Buffer.from(pcm16)
       : Buffer.from(new Uint8Array(pcm16))
   if (chunk.byteLength === 0) return { ok: true, bytesWritten: writer.bytesWritten }
-  await writer.handle.write(chunk, 0, chunk.byteLength, 44 + writer.bytesWritten)
-  writer.bytesWritten += chunk.byteLength
+  if (chunk.byteLength % (writer.channelCount * 2) !== 0) throw new Error('Incomplete PCM frame.')
+  writer.writeQueue = writer.writeQueue.then(async () => {
+    let offset = 0
+    while (offset < chunk.length) {
+      const result = await writer.handle.write(chunk, offset, chunk.length - offset, 44 + writer.bytesWritten + offset)
+      if (!result.bytesWritten) throw new Error('Audio backup write made no progress.')
+      offset += result.bytesWritten
+    }
+    writer.bytesWritten += chunk.length
+    await writer.handle.write(makeWavHeader({ sampleRate: writer.sampleRate, channelCount: writer.channelCount, dataBytes: writer.bytesWritten }), 0, 44, 0)
+    await writer.handle.sync()
+  })
+  await writer.writeQueue
   return { ok: true, bytesWritten: writer.bytesWritten }
 }
 
@@ -332,7 +353,9 @@ export const stopMeetingAudioBackup = async ({
     return existing
   }
 
+  writer.stopping = true
   try {
+    await writer.writeQueue
     await writer.handle.write(
       makeWavHeader({
         sampleRate: writer.sampleRate,
@@ -347,6 +370,7 @@ export const stopMeetingAudioBackup = async ({
   } finally {
     await writer.handle.close().catch(() => undefined)
     activeWriters.delete(key)
+    if (getActiveSessionWriters(id).length === 0) await releaseMeetingRecordingClaim(writer.claim)
   }
 
   const content = await fs.readFile(writer.filePath)
@@ -390,6 +414,43 @@ export const readMeetingAudioBackupManifest = async (
 
 export const getMeetingAudioBackupManifestId = (sessionId: string) =>
   backupId(sanitizeSessionId(sessionId))
+
+export const repairInterruptedMeetingAudioBackup = async (sessionId: string) => {
+  const id = sanitizeSessionId(sessionId)
+  if (getActiveSessionWriters(id).length) throw new Error('Audio recording is still active.')
+  const claim = await acquireMeetingRecordingClaim({ sessionId: id, stage: 'recording', now: new Date().toISOString(), staleAfterMs: Infinity })
+  if (!claim.acquired) throw new Error('Audio recording is still active.')
+  try {
+    const manifest = await readMeetingAudioBackupManifest(id)
+    if (!manifest) return null
+    for (const file of manifest.files) {
+      if (file.status !== 'open') continue
+      if (file.relativePath !== `${file.source}.wav`) throw new Error('Unexpected backup path.')
+      const filePath = path.join(backupDirectory(id), file.relativePath)
+      const handle = await fs.open(filePath, 'r+')
+      try {
+        const header = Buffer.alloc(44)
+        await handle.read(header, 0, 44, 0)
+        const channels = header.readUInt16LE(22)
+        const sampleRate = header.readUInt32LE(24)
+        if (header.toString('ascii', 0, 4) !== 'RIFF' || header.toString('ascii', 8, 12) !== 'WAVE' || header.toString('ascii', 36, 40) !== 'data' || header.readUInt16LE(20) !== 1 || header.readUInt16LE(34) !== 16 || ![1, 2].includes(channels) || !sampleRate) throw new Error('Invalid PCM backup header.')
+        const size = (await handle.stat()).size
+        const dataBytes = Math.max(0, Math.floor((size - 44) / (channels * 2)) * channels * 2)
+        await handle.write(makeWavHeader({ sampleRate, channelCount: channels, dataBytes }), 0, 44, 0)
+        await handle.sync()
+        file.endedAt = new Date(Date.parse(file.startedAt) + dataBytes / (sampleRate * channels * 2) * 1000).toISOString()
+      } finally { await handle.close() }
+      const content = await fs.readFile(filePath)
+      file.status = 'closed'
+      file.byteLength = content.length
+      file.sha256 = createHash('sha256').update(content).digest('hex')
+    }
+    manifest.status = 'stopped'
+    manifest.updatedAt = new Date().toISOString()
+    await writeAtomic(manifestPath(id), JSON.stringify(manifest, null, 2))
+    return manifest
+  } finally { await releaseMeetingRecordingClaim(claim.claim) }
+}
 
 export const getMeetingAudioBackupFilePath = async ({
   sessionId,

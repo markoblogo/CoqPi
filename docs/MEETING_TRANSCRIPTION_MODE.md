@@ -1,5 +1,9 @@
 # Meeting Transcription Mode
 
+For the 0.3.3 recording lifecycle and crash-recovery changes, see
+[Recording reliability](RECORDING_RELIABILITY_033.md). Local capture no longer
+requires a cloud key; when supplied, a key enables concurrent STT.
+
 Use this mode when the goal is only to record a meeting transcript.
 
 Path:
@@ -54,7 +58,7 @@ separate from assistant suggestions and is kept local.
 - no reliable speaker labels unless the audio route provides them; otherwise
   exports use `UNKNOWN`;
 - no automatic system-audio device discovery; to capture the other side
-  separately, select an explicit virtual/routed input in `System backup`;
+  separately, select an explicit virtual/routed input in Settings > Debug > `Other side input (loopback)` (also available in Live's input controls);
 - no automatic background retranscription from the saved WAV backup yet;
 - no automatic Monitor write: a live brokerage preview stays temporary until
   the broker explicitly saves it to Draft Inbox.
@@ -95,7 +99,7 @@ Use this when the call is in Google Meet or another app on the same Mac:
 3. Select the language of the meeting.
 4. Select the mic or leave `System default (macOS)`.
 5. If you use BlackHole/Loopback or another virtual route for call audio,
-   select it in `System backup`. Leave this `Off` if you only want microphone
+   select it in `Other side input (loopback)`. Leave this `Off` if you only want microphone
    backup.
 6. Keep call audio on Mac speakers if you need both sides captured by the mic
    and no virtual route is configured.
@@ -112,7 +116,9 @@ then `Save Markdown` or `Copy Markdown`. `Clear` asks for confirmation when the
 current transcript has not been exported/copied yet.
 
 If headphones are used, CoqPi will usually capture only your own voice unless
-the call audio is also routed into the selected `System backup` input.
+the call audio is also routed into the selected loopback input. With that route
+configured, Live now transcribes both streams separately: system as OTHER,
+microphone as ME. Both audio sources are saved locally before STT connects.
 
 ## Launch Without Terminal
 

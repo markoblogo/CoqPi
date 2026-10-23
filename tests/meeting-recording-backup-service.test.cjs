@@ -71,6 +71,43 @@ const withBackupWorkspace = async (run) => {
   }
 }
 
+test('interrupted WAV is repairable and a restarted writer never overwrites it', async () => {
+  await withBackupWorkspace(async ({ backupService, directory }) => {
+    const sessionId = 'interrupted-wav'
+    const now = '2026-10-23T10:00:00.000Z'
+    await backupService.createMeetingAudioBackupManifest({ sessionId, now, sources: ['microphone'] })
+    const hash = createHash('sha256').update(sessionId).digest('hex')
+    const filePath = path.join(directory, 'sessions', 'audio-backups', hash, 'microphone.wav')
+    const header = Buffer.alloc(44)
+    header.write('RIFF'); header.write('WAVE', 8); header.write('fmt ', 12)
+    header.writeUInt32LE(16, 16); header.writeUInt16LE(1, 20); header.writeUInt16LE(1, 22)
+    header.writeUInt32LE(16000, 24); header.writeUInt32LE(32000, 28)
+    header.writeUInt16LE(2, 32); header.writeUInt16LE(16, 34); header.write('data', 36)
+    await fs.writeFile(filePath, Buffer.concat([header, Buffer.alloc(32000, 7)]))
+    await assert.rejects(backupService.startMeetingAudioBackup({ sessionId, source: 'microphone', sampleRate: 16000, channelCount: 1, now }))
+    const repaired = await backupService.repairInterruptedMeetingAudioBackup(sessionId)
+    assert.equal(repaired.files[0].status, 'closed')
+    const content = await fs.readFile(filePath)
+    assert.equal(content.length, 32044)
+    assert.equal(content.readUInt32LE(40), 32000)
+    assert.equal(content[44], 7)
+    assert.equal(repaired.files[0].sha256, createHash('sha256').update(content).digest('hex'))
+  })
+})
+
+test('every acknowledged audio chunk has a synced usable WAV header', async () => {
+  await withBackupWorkspace(async ({ backupService }) => {
+    const sessionId = 'checkpoint-wav'
+    const now = new Date().toISOString()
+    await backupService.startMeetingAudioBackup({ sessionId, source: 'system', sampleRate: 16000, channelCount: 1, now })
+    await backupService.appendMeetingAudioBackupChunk({ sessionId, source: 'system', pcm16: Buffer.alloc(3200, 3) })
+    const backup = await backupService.getMeetingAudioBackupFilePath({ sessionId, source: 'system' })
+    assert.equal((await fs.readFile(backup.filePath)).readUInt32LE(40), 3200)
+    await assert.rejects(backupService.repairInterruptedMeetingAudioBackup(sessionId), /active/)
+    await backupService.stopMeetingAudioBackup({ sessionId, source: 'system', now })
+  })
+})
+
 test('audio backup manifest is stored under a session hash and survives session sanitize restore', async () => {
   await withBackupWorkspace(async ({ backupService, transcriptionService, shared, directory }) => {
     const sessionId = '../../unsafe-live-session'

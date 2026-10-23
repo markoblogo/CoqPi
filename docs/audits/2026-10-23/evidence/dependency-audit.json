@@ -1,0 +1,146 @@
+{
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 3,
+      "moderate": 9,
+      "high": 11,
+      "critical": 1
+    },
+    "dependencies": 219,
+    "devDependencies": 400,
+    "optionalDependencies": 74,
+    "totalDependencies": 620
+  },
+  "advisories": [
+    {
+      "module": "brace-expansion",
+      "severity": "high",
+      "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+      "patched": ">=1.1.20",
+      "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7",
+      "examplePaths": [
+        ".>electron-builder>app-builder-lib>@electron/asar>glob>minimatch>brace-expansion",
+        ".>electron-builder>app-builder-lib>@electron/asar>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "module": "brace-expansion",
+      "severity": "high",
+      "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+      "patched": ">=2.1.6",
+      "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7",
+      "examplePaths": [
+        ".>@crawlee/cheerio>@crawlee/http>@crawlee/basic>@crawlee/core>minimatch>brace-expansion",
+        ".>@crawlee/cheerio>@crawlee/http>@crawlee/core>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "module": "brace-expansion",
+      "severity": "high",
+      "title": "brace-expansion: DoS via uncontrolled recursion on nested brace groups causing stack exhaustion",
+      "patched": ">=5.0.11",
+      "url": "https://github.com/advisories/GHSA-qhr7-859c-m2p7",
+      "examplePaths": [
+        ".>electron-builder>app-builder-lib>minimatch>brace-expansion",
+        ".>electron-builder>dmg-builder>app-builder-lib>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "module": "brace-expansion",
+      "severity": "high",
+      "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+      "patched": ">=1.1.19",
+      "url": "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+      "examplePaths": [
+        ".>electron-builder>app-builder-lib>@electron/asar>glob>minimatch>brace-expansion",
+        ".>electron-builder>app-builder-lib>@electron/asar>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "module": "brace-expansion",
+      "severity": "high",
+      "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+      "patched": ">=2.1.5",
+      "url": "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+      "examplePaths": [
+        ".>@crawlee/cheerio>@crawlee/http>@crawlee/basic>@crawlee/core>minimatch>brace-expansion",
+        ".>@crawlee/cheerio>@crawlee/http>@crawlee/core>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "module": "brace-expansion",
+      "severity": "high",
+      "title": "brace-expansion: DoS via uncontrolled recursion in parseCommaParts causing stack exhaustion",
+      "patched": ">=5.0.10",
+      "url": "https://github.com/advisories/GHSA-6j4f-fj2g-mc7p",
+      "examplePaths": [
+        ".>electron-builder>app-builder-lib>minimatch>brace-expansion",
+        ".>electron-builder>dmg-builder>app-builder-lib>minimatch>brace-expansion"
+      ]
+    },
+    {
+      "module": "http-cache-semantics",
+      "severity": "high",
+      "title": "http-cache-semantics max-stale handling can disclose cross-user cached responses",
+      "patched": ">=4.2.1",
+      "url": "https://github.com/advisories/GHSA-ch52-4w7c-c8xp",
+      "examplePaths": [
+        ".>@crawlee/cheerio>@crawlee/http>@crawlee/basic>@crawlee/core>@crawlee/utils>got-scraping>got>cacheable-request>http-cache-semantics",
+        ".>@crawlee/cheerio>@crawlee/http>@crawlee/basic>@crawlee/core>got-scraping>got>cacheable-request>http-cache-semantics"
+      ]
+    },
+    {
+      "module": "source-map-js",
+      "severity": "high",
+      "title": "source-map-js allows event-loop denial of service through indexed source-map section offsets",
+      "patched": ">=1.2.2",
+      "url": "https://github.com/advisories/GHSA-68fv-2mgg-jv7q",
+      "examplePaths": [
+        ".>@vitejs/plugin-react>vite>postcss>source-map-js",
+        ".>vite>postcss>source-map-js"
+      ]
+    },
+    {
+      "module": "shell-quote",
+      "severity": "critical",
+      "title": "shell-quote: `quote()` command injection via a line terminator in a token after a `{ comment }` token",
+      "patched": ">=1.11.0",
+      "url": "https://github.com/advisories/GHSA-pqg4-j6r4-53mv",
+      "examplePaths": [
+        ".>concurrently>shell-quote"
+      ]
+    },
+    {
+      "module": "follow-redirects",
+      "severity": "high",
+      "title": "follow-redirects array-form headers bypass cross-origin credential stripping",
+      "patched": ">=1.16.1",
+      "url": "https://github.com/advisories/GHSA-q3jh-wrc6-jgq8",
+      "examplePaths": [
+        ".>wait-on>axios>follow-redirects"
+      ]
+    },
+    {
+      "module": "follow-redirects",
+      "severity": "high",
+      "title": "follow-redirects sensitiveHeaders regex escaping can expose credential headers",
+      "patched": ">=1.16.1",
+      "url": "https://github.com/advisories/GHSA-8r9p-f939-6h3c",
+      "examplePaths": [
+        ".>wait-on>axios>follow-redirects"
+      ]
+    },
+    {
+      "module": "vite",
+      "severity": "high",
+      "title": "launch-editor: `fs.existsSync()` existence check can be bypassed on Windows",
+      "patched": ">=6.4.4",
+      "url": "https://github.com/advisories/GHSA-587h-7wmj-h5pm",
+      "examplePaths": [
+        ".>@vitejs/plugin-react>vite",
+        ".>vite"
+      ]
+    }
+  ]
+}

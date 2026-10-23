@@ -13,6 +13,8 @@ type BackupRecorderState = {
   processorNode: ScriptProcessorNode
   muteNode: GainNode
   writeQueue: Promise<unknown>
+  error: Error | null
+  pendingChunks: number
 }
 
 const getAudioContextConstructor = () => {
@@ -46,8 +48,20 @@ const floatToPcm16 = (inputBuffer: AudioBuffer) => {
 
 export class RawAudioBackupRecorder {
   private state: BackupRecorderState | null = null
+  private lifecycle: Promise<unknown> = Promise.resolve()
 
-  async start({
+  constructor(private readonly onError: (message: string) => void = () => undefined) {}
+
+  start(options: { sessionId: string; source?: MeetingAudioBackupSource; stream: MediaStream; now: string }) {
+    const operation = this.lifecycle.then(() => this.startCapture(options)).catch(error => {
+      options.stream.getTracks().forEach(track => track.stop())
+      throw error
+    })
+    this.lifecycle = operation.catch(() => undefined)
+    return operation
+  }
+
+  private async startCapture({
     sessionId,
     source = 'microphone',
     stream,
@@ -58,7 +72,7 @@ export class RawAudioBackupRecorder {
     stream: MediaStream
     now: string
   }): Promise<MeetingAudioBackupStartResult> {
-    await this.stop(new Date().toISOString()).catch(() => undefined)
+    await this.stopCapture(new Date().toISOString())
     const AudioContextConstructor = getAudioContextConstructor()
     if (!AudioContextConstructor) {
       throw new Error('Web Audio API is unavailable for local audio backup.')
@@ -74,13 +88,23 @@ export class RawAudioBackupRecorder {
     processorNode.connect(muteNode)
     muteNode.connect(audioContext.destination)
 
-    const started = await window.coqpi.meetingTranscription.backupStart({
+    let started: MeetingAudioBackupStartResult
+    try {
+      started = await window.coqpi.meetingTranscription.backupStart({
       sessionId,
       source,
       sampleRate: audioContext.sampleRate,
       channelCount: 1,
       now
-    })
+      })
+    } catch (error) {
+      sourceNode.disconnect()
+      processorNode.disconnect()
+      muteNode.disconnect()
+      stream.getTracks().forEach(track => track.stop())
+      await audioContext.close()
+      throw error
+    }
 
     const state: BackupRecorderState = {
       sessionId,
@@ -90,20 +114,33 @@ export class RawAudioBackupRecorder {
       sourceNode,
       processorNode,
       muteNode,
-      writeQueue: Promise.resolve()
+      writeQueue: Promise.resolve(),
+      error: null,
+      pendingChunks: 0
     }
 
     processorNode.onaudioprocess = (event) => {
+      if (state.error) return
+      if (state.pendingChunks >= 128) {
+        state.error = new Error('Audio backup storage is too slow; recording has a gap. Stop and check available disk space.')
+        this.onError(state.error.message)
+        return
+      }
       const pcm16 = floatToPcm16(event.inputBuffer)
+      state.pendingChunks += 1
       state.writeQueue = state.writeQueue
-        .catch(() => undefined)
         .then(() =>
           window.coqpi.meetingTranscription.backupChunk({
             sessionId,
             source,
             pcm16
           })
-        )
+        ).catch(error => {
+          if (!state.error) {
+            state.error = error instanceof Error ? error : new Error('Audio backup write failed.')
+            this.onError(state.error.message)
+          }
+        }).finally(() => { state.pendingChunks -= 1 })
     }
 
     this.state = state
@@ -111,6 +148,12 @@ export class RawAudioBackupRecorder {
   }
 
   async stop(now: string): Promise<MeetingAudioBackupStopResult | null> {
+    const operation = this.lifecycle.then(() => this.stopCapture(now))
+    this.lifecycle = operation.catch(() => undefined)
+    return operation
+  }
+
+  private async stopCapture(now: string): Promise<MeetingAudioBackupStopResult | null> {
     const state = this.state
     this.state = null
     if (!state) return null
@@ -122,10 +165,12 @@ export class RawAudioBackupRecorder {
     state.stream.getTracks().forEach((track) => track.stop())
     await state.writeQueue.catch(() => undefined)
     await state.audioContext.close().catch(() => undefined)
-    return window.coqpi.meetingTranscription.backupStop({
+    const result = await window.coqpi.meetingTranscription.backupStop({
       sessionId: state.sessionId,
       source: state.source,
       now
     })
+    if (state.error) throw state.error
+    return result
   }
 }

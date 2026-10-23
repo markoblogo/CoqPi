@@ -1,0 +1,129 @@
+{
+  "environment": {
+    "node": "v22.14.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M4",
+    "storage": "os.tmpdir()",
+    "provider": "none"
+  },
+  "crash": {
+    "signal": "SIGKILL",
+    "persistedSegments": 1,
+    "backupStatus": "open",
+    "bytesOnDisk": 32044,
+    "wavDeclaredBytes": 0,
+    "recoveryError": "Closed audio backup was not found."
+  },
+  "mergeRestore": {
+    "exportableTexts": [
+      "First sentence.\nSecond sentence.",
+      "Second sentence."
+    ]
+  },
+  "persistence": [
+    {
+      "startingSegments": 10,
+      "n": 30,
+      "medianMs": 10.116874999999993,
+      "p95Ms": 12.09299999999999,
+      "worstMs": 12.366500000000002
+    },
+    {
+      "startingSegments": 100,
+      "n": 30,
+      "medianMs": 11.056916999999999,
+      "p95Ms": 12.111499999999978,
+      "worstMs": 14.191584000000034
+    },
+    {
+      "startingSegments": 1000,
+      "n": 30,
+      "medianMs": 12.143958999999995,
+      "p95Ms": 14.119707999999946,
+      "worstMs": 14.879458000000113
+    }
+  ],
+  "liveRecoveryOverlap": {
+    "original": 1,
+    "after": 3,
+    "uniqueTextCount": 1
+  },
+  "partialRecovery": {
+    "completedSttCalls": 1,
+    "error": "system audio backup hash does not match its manifest.",
+    "persistedSegments": 0
+  },
+  "languageHeuristic": [
+    {
+      "text": "Could you explain your approach?",
+      "previous": "fr",
+      "expected": "en",
+      "actual": "en"
+    },
+    {
+      "text": "Pouvez-vous expliquer votre approche ?",
+      "previous": "en",
+      "expected": "fr",
+      "actual": "fr"
+    },
+    {
+      "text": "Quels risques anticipez-vous ?",
+      "previous": "en",
+      "expected": "fr",
+      "actual": "fr"
+    },
+    {
+      "text": "Describe a challenging project.",
+      "previous": "fr",
+      "expected": "en",
+      "actual": "fr"
+    },
+    {
+      "text": "Quel budget faut-il ?",
+      "previous": "en",
+      "expected": "fr",
+      "actual": "en"
+    },
+    {
+      "text": "Давайте поговорим про продукт.",
+      "previous": "uk",
+      "expected": "ru",
+      "actual": "uk"
+    }
+  ],
+  "bilingualRetrieval": [
+    {
+      "query": "Tell me about customer research and pricing.",
+      "matches": [
+        {
+          "quality": "strong",
+          "fallbackUsed": false,
+          "matchedTerms": [
+            "customer",
+            "research",
+            "and",
+            "pricing"
+          ]
+        }
+      ]
+    },
+    {
+      "query": "Parlez-moi de vos recherches clients et de votre tarification.",
+      "matches": [
+        {
+          "quality": "weak",
+          "fallbackUsed": true,
+          "matchedTerms": []
+        }
+      ]
+    }
+  ],
+  "resources": {
+    "peakRssKiB": 79968,
+    "cpuMicros": {
+      "user": 186991,
+      "system": 104576
+    }
+  }
+}

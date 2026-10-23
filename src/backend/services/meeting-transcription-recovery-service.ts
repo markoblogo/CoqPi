@@ -12,6 +12,7 @@ import type {
 import {
   acquireMeetingRecordingClaim,
   getMeetingAudioBackupFilePath,
+  repairInterruptedMeetingAudioBackup,
   releaseMeetingRecordingClaim
 } from './meeting-recording-backup-service'
 import {
@@ -418,11 +419,18 @@ const appendRecoveredSegment = ({
 export const recoverCurrentMeetingTranscriptFromBackup = async (
   request: MeetingTranscriptionRecoveryRequest
 ): Promise<MeetingTranscriptionRecoveryResult> => {
-  const session = await getCurrentMeetingTranscriptionSession()
+  let session = await getCurrentMeetingTranscriptionSession()
   if (!session || session.id !== request.sessionId) {
     throw new Error('Current meeting transcription session was not found.')
   }
 
+  const repaired = await repairInterruptedMeetingAudioBackup(request.sessionId)
+  if (repaired && (session.status === 'recording' || session.status === 'error')) {
+    const endedAt = repaired.files.map(file => file.endedAt).filter((value): value is string => Boolean(value)).sort().at(-1) ?? new Date().toISOString()
+    session = { ...session, status: 'stopped', stoppedAt: endedAt, endedAt,
+      audioBackup: session.audioBackup ? { ...session.audioBackup, status: repaired.status, updatedAt: repaired.updatedAt } : undefined }
+    await saveCurrentMeetingTranscriptionSession(session)
+  }
   const backups = (
     await Promise.all(
       (['microphone', 'system'] as const).map(async (source) => {
@@ -529,6 +537,8 @@ export const recoverCurrentMeetingTranscriptFromBackup = async (
           startTime: addMs(backup.file.startedAt || session.startedAt, chunk.startOffsetMs),
           endTime: addMs(backup.file.startedAt || session.startedAt, chunk.endOffsetMs)
         })
+        // Commit progress before another source or provider call can fail.
+        await saveCurrentMeetingTranscriptionSession(next)
       }
     }
 
