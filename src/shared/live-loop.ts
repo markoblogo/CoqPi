@@ -4,7 +4,7 @@ import type {
   TranscriptUtterance
 } from './app-types'
 
-export const AUTO_ANALYSIS_DEBOUNCE_MS = 900
+export const AUTO_ANALYSIS_DEBOUNCE_MS = 250
 export const AUTO_ANALYSIS_RAPID_FOLLOW_UP_DELAY_MS = 1200
 
 export type AssistantState = 'idle' | 'analyzing' | 'error' | 'done'
@@ -1213,6 +1213,6 @@ export const buildAutoAnalysisSchedule = ({
     shouldRun: true,
     reason: decision.reason,
     fingerprint: decision.fingerprint,
-    delayMs: AUTO_ANALYSIS_DEBOUNCE_MS + cooldownDelay + rapidFollowUpDelay
+    delayMs: Math.max(cooldownDelay, AUTO_ANALYSIS_DEBOUNCE_MS + rapidFollowUpDelay)
   }
 }

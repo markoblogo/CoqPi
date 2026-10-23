@@ -44,7 +44,7 @@ const getTranscriptionPrompt = (
     return 'Transcribe spoken Russian only. Do not translate, summarize, or rewrite.'
   }
 
-  return 'Transcribe Russian, Ukrainian, English or French speech faithfully in the original language. Preserve language switches. Do not translate, summarize or invent speech during silence.'
+  return 'Verbatim multilingual transcription. The conversation may switch between English, French, Russian and Ukrainian. Detect the language independently for each spoken turn. French speech must remain French; English speech must remain English; Russian and Ukrainian speech must remain in their respective original languages. Never translate speech into Russian or any other language. Preserve numbers, dates, names, negations and corrections. Do not answer questions, summarize or invent speech during silence.'
 }
 
 const getApiKey = async () => {
@@ -60,7 +60,8 @@ const getApiKey = async () => {
 }
 
 export const buildRealtimeTranscriptionSessionConfigForTests = (
-  callLanguage: RealtimeTranscriptionStartRequest['callLanguage']
+  callLanguage: RealtimeTranscriptionStartRequest['callLanguage'],
+  latencyMode: RealtimeTranscriptionStartRequest['latencyMode'] = 'recording'
 ): RealtimeCallSessionConfig => {
   const transcriptionConfig: {
     model: string
@@ -89,7 +90,7 @@ export const buildRealtimeTranscriptionSessionConfigForTests = (
           type: 'server_vad',
           threshold: 0.5,
           prefix_padding_ms: 300,
-          silence_duration_ms: 800
+          silence_duration_ms: latencyMode === 'conversation' ? 500 : 800
         }
       }
     }
@@ -120,7 +121,7 @@ export const createRealtimeTranscriptionAnswer = async (
 
   const formData = buildRealtimeCallFormData(
     offerSdp,
-    buildRealtimeTranscriptionSessionConfigForTests(request.callLanguage)
+    buildRealtimeTranscriptionSessionConfigForTests(request.callLanguage, request.latencyMode)
   )
 
   const response = await runGovernedProviderAction(

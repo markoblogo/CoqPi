@@ -39,6 +39,20 @@ test('realtime auto preserves all four languages and language switches', () => {
   const config = buildRealtimeTranscriptionSessionConfigForTests('auto')
 
   assert.equal(config.audio.input.transcription.language, undefined)
-  assert.match(config.audio.input.transcription.prompt, /Russian, Ukrainian, English or French/)
-  assert.match(config.audio.input.transcription.prompt, /Preserve language switches/)
+  assert.match(config.audio.input.transcription.prompt, /English, French, Russian and Ukrainian/)
+  assert.match(config.audio.input.transcription.prompt, /independently for each spoken turn/)
+  assert.match(config.audio.input.transcription.prompt, /French speech must remain French/)
+  assert.match(config.audio.input.transcription.prompt, /Never translate speech into Russian/)
+  assert.match(config.audio.input.transcription.prompt, /numbers, dates, names, negations/)
+})
+
+test('conversation uses 500ms silence without lowering quality or restricting language switches', () => {
+  const recording = buildRealtimeTranscriptionSessionConfigForTests('auto')
+  const live = buildRealtimeTranscriptionSessionConfigForTests('auto', 'conversation')
+  assert.equal(recording.audio.input.turn_detection.silence_duration_ms, 800)
+  assert.equal(live.audio.input.turn_detection.silence_duration_ms, 500)
+  assert.equal(live.audio.input.turn_detection.prefix_padding_ms, 300)
+  assert.equal(live.audio.input.turn_detection.threshold, 0.5)
+  assert.deepEqual(live.audio.input.transcription, recording.audio.input.transcription)
+  assert.equal(live.audio.input.transcription.language, undefined)
 })

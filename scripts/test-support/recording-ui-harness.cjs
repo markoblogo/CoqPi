@@ -4,7 +4,7 @@ const fs = require('node:fs/promises')
 const { chromium } = require(process.env.COQPI_PLAYWRIGHT_MODULE || 'playwright')
 exports.start = async () => {
   const {createServer}=await import(path.join(process.cwd(),'node_modules/vite/dist/node/index.js'))
-  const server=await createServer({server:{host:'127.0.0.1',port:5191,strictPort:true}})
+  const server=await createServer({server:{host:'127.0.0.1',port:5191,strictPort:true,watch:{ignored:['**/dist-packages/**','**/tmp/**']}}})
   try { await server.listen() } catch (error) { await server.close(); throw error }
   let browser
   try { browser = await chromium.launch({headless:true}) } catch(e) { await server.close(); throw e }
@@ -15,7 +15,7 @@ exports.start = async () => {
     blocked.push(route.request().url()); return route.abort()
   })
   await context.addInitScript(() => {
-    window.__audit = {calls:[], requests:[], current:null, key:false, failAssistant:false}
+    window.__audit = {calls:[], requests:[], realtimeRequests:[], current:null, key:false, failAssistant:false}
     const a=window.__audit
     let session={company:'',role:'',context:'',goal:'',notes:'',selectedCounterpartyPackIds:[],selectedFinderOutreachDraftId:''}
     let settings={costMode:'balanced',defaultCallLanguage:'Auto',defaultAnswerLanguage:'Auto',includeProfileContextByDefault:true,saveTranscriptByDefault:false,monitorBaseUrl:'https://example.invalid',monitorCompanyId:'',monitorClientName:'',monitorLiveCopilotEnabled:false,monitorConsentConfirmed:false,monitorAllowAiProcessing:false}
@@ -38,6 +38,10 @@ exports.start = async () => {
       assistant:{analyzeRecentTranscript:async request=>{a.requests.push(request);await new Promise(r=>setTimeout(r,700));if(a.failAssistant)return {ok:false,error:{message:'Synthetic network interruption',code:'network_error'}};return {ok:true,data:{meaningRu:'Расскажите о вашем подходе к работе.',detectedQuestion:request.transcriptText,intent:'question',risk:'',suggestedAnswers:[{label:'short',text:request.answerLanguage==='fr'?'Je commencerais par clarifier les objectifs et les contraintes.':'I would first clarify the goals and constraints.',answerMeaningRu:'Я бы начал с уточнения целей и ограничений.'}],keywordsToRemember:[],model:'AUDIT FIXTURE',latencyMs:700}}}}
     }
     a.api=api
+    a.progressListeners = new Set()
+    a.cancelledStreams = []
+    api.assistant.onProgress = callback => { a.progressListeners.add(callback); return () => a.progressListeners.delete(callback) }
+    api.assistant.cancel = id => { a.cancelledStreams.push(id) }
     window.AudioContext=class {
       sampleRate=24000;destination={};state='running'
       async resume(){} async close(){}
@@ -53,7 +57,9 @@ exports.start = async () => {
         if(method==='then') return undefined
         return (...args) => {
           a.calls.push(`${String(group)}.${String(method)}`)
+          if(group==='realtime' && method==='createTranscriptionAnswer') a.realtimeRequests.push(args[0])
           if(method==='onShutdown') return ()=>{}
+          if(method==='onProgress') return methods[method](...args)
           if(methods[method]) return Promise.resolve(methods[method](...args))
           return Promise.reject(new Error(`AUDIT_UNIMPLEMENTED ${String(group)}.${String(method)}`))
         }
@@ -71,14 +77,26 @@ exports.start = async () => {
     }
   })
   const page=await context.newPage()
+  page.setDefaultTimeout(15000)
   page.on('pageerror',e=>errors.push(e.message))
-  await page.goto('http://127.0.0.1:5191')
-  await page.locator('.call-focus').waitFor()
+  try {
+    await page.goto('http://127.0.0.1:5191', {timeout:60000})
+    await page.locator('.mode-chooser').waitFor({timeout:60000})
+  } catch (error) {
+    await browser.close()
+    await server.close()
+    throw error
+  }
   const dir=path.join(process.cwd(),'tmp/recording-regression');await fs.mkdir(dir,{recursive:true})
   const snap=async name=>{
     await page.screenshot({path:path.join(dir,name+'.png')})
     const evidence=await page.evaluate(()=>({text:document.body.innerText,width:innerWidth,scrollWidth:document.documentElement.scrollWidth,calls:window.__audit.calls,requests:window.__audit.requests,overflow:[...document.querySelectorAll('main,section,article,button,select,input,textarea')].filter(el=>{const r=el.getBoundingClientRect();return r.width>0&&(r.right>innerWidth+2||r.left< -2)}).map(el=>({tag:el.tagName,class:el.className,text:el.textContent.slice(0,100),bounds:el.getBoundingClientRect().toJSON()}))}))
     await fs.writeFile(path.join(dir,name+'.json'),JSON.stringify(evidence,null,2));return {name,width:evidence.width,scrollWidth:evidence.scrollWidth,overflow:evidence.overflow.length,errors}
   }
-  return {page,browser,server,context,snap,blocked,errors,close:async()=>{await browser.close();await server.close()}}
+  const openMode = async title => {
+    if (!await page.locator('.mode-chooser').isVisible()) await page.getByRole('button', {name:'Choose mode',exact:true}).first().click()
+    await page.getByTitle(title,{exact:true}).click()
+    if (title === 'Live assistant') await page.getByRole('button',{name:'Продолжить',exact:true}).click()
+  }
+  return {page,browser,server,context,snap,openMode,blocked,errors,close:async()=>{await browser.close();await server.close()}}
 }

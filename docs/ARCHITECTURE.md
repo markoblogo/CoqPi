@@ -2,9 +2,10 @@
 
 ## UX modes
 
-- `Live Call`: default cockpit for active calls. It keeps only critical information visible by default.
+- Startup: choose Conversation, Recorder or Learning. Conversation setup selects separate-source headphones or shared speakerphone routing.
+- `Live Call`: compact 640x320 default window; only the small incoming meaning, large answer, Stop and (shared-input only) ME control remain visible.
 - `Prepare`: session prep, selected-pack review, outreach-draft handoff, payload inspection, and optional Cortex-backed preparation context review.
-- `Finder`: local opportunity pipeline for bounded discovery, preview, queue review, application packs, Gmail/Calendar approvals, and session handoff.
+- `Finder`: retained legacy opportunity pipeline, hidden from primary navigation; not the current product focus.
 - `Context`: local knowledge ingress, extraction preview, pack assembly, and lifecycle review.
 - `Settings / Debug`: local configuration, secure key handling, and collapsed diagnostics.
 
@@ -53,7 +54,7 @@ This path is on-demand only. It is read-only, does not use microphone/audio, and
 
 ### Mock transcript path
 
-`mock lines -> transcript state -> 900 ms debounce -> assistant analysis -> cockpit panels`
+`mock lines -> transcript state -> 250 ms settling overlapping cooldown -> assistant analysis -> compact answer`
 
 ### Realtime transcription path
 
@@ -64,7 +65,13 @@ as OTHER; a second microphone STT connection records ME without assistant analys
 Without loopback, the single input retains manual speaker marking. See
 [recording lifecycle](RECORDING_RELIABILITY_033.md).
 
-`selected microphone -> RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> durable transcript checkpoint -> completed utterance -> per-utterance EN/FR/RU/UK language resolution -> local auto-analysis guard -> 900 ms debounce -> assistant analysis -> answer-first cockpit`
+`selected input -> independent local PCM backup + cloned RTCPeerConnection -> backend SDP exchange -> OpenAI Realtime events -> durable transcript checkpoint -> completed OTHER utterance -> per-utterance EN/FR/RU/UK language resolution -> auto-analysis guard -> 250 ms settling overlapping cooldown -> streamed translation and answer`
+
+Conversation OTHER uses 500 ms server-VAD silence; recorder and separate ME retain
+800 ms. Explicit system input disables microphone echo/noise/gain processing.
+The STT model remains `gpt-4o-transcribe`. Stop/Reset/context changes cancel and
+invalidate assistant progress; only validated final output is saved. Streaming
+events are sender-scoped and contain no API key. See [latency evidence](audits/2026-10-23/STT_LATENCY.md).
 
 ### Meeting transcription path
 

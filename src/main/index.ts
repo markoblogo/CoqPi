@@ -200,10 +200,10 @@ loadLocalEnv()
 
 const createMainWindow = async () => {
   const window = new BrowserWindow({
-    width: 860,
-    height: 540,
-    minWidth: 720,
-    minHeight: 480,
+    width: 640,
+    height: 320,
+    minWidth: 400,
+    minHeight: 260,
     title: 'CoqPi',
     backgroundColor: '#0f1115',
     alwaysOnTop: true,
@@ -263,6 +263,10 @@ const createMainWindow = async () => {
 }
 
 const registerIpcHandlers = () => {
+  const assistantStreams = new Map<string, AbortController>()
+  ipcMain.on('coqpi:assistant:cancel', (event, streamId: unknown) => {
+    if (typeof streamId === 'string') assistantStreams.get(`${event.sender.id}:${streamId}`)?.abort()
+  })
   ipcMain.handle('coqpi:config:get-status', async () => {
     return getConfigStatus()
   })
@@ -760,8 +764,20 @@ const registerIpcHandlers = () => {
       _event,
       request: AssistantAnalysisRequest
     ): Promise<AssistantAnalysisResponse> => {
+      const streamId = typeof request.streamId === 'string' && request.streamId.length <= 100 ? request.streamId : undefined
+      const streamKey = `${_event.sender.id}:${streamId}`
+      const controller = new AbortController()
+      if (streamId) {
+        assistantStreams.get(streamKey)?.abort()
+        assistantStreams.set(streamKey, controller)
+      }
       try {
-        const data = await analyzeRecentTranscript(request)
+        const data = await analyzeRecentTranscript(request, {
+          signal: controller.signal,
+          onProgress: streamId ? progress => {
+            if (!_event.sender.isDestroyed() && !controller.signal.aborted) _event.sender.send('coqpi:assistant:progress', {streamId, ...progress})
+          } : undefined
+        })
 
         return {
           ok: true,
@@ -816,6 +832,9 @@ const registerIpcHandlers = () => {
                 : 'local policy / transport'
           }
         }
+      } finally {
+        controller.abort()
+        if (assistantStreams.get(streamKey) === controller) assistantStreams.delete(streamKey)
       }
     }
   )

@@ -16,6 +16,7 @@ export interface StartRealtimeTranscriptionOptions {
   selectedAudioDeviceId: string
   inputStream?: MediaStream
   callLanguage: RealtimeTranscriptionStartRequest['callLanguage']
+  latencyMode?: RealtimeTranscriptionStartRequest['latencyMode']
   onStatusChange: (status: RealtimeConnectionStatus) => void
   onEvent: (event: RealtimeServerEvent) => void
   onDebugEventType: (eventType: string) => void
@@ -217,7 +218,8 @@ export class RealtimeTranscriptionClient {
       options.onLifecycleLog('backend SDP answer requested')
       const response = await window.coqpi.realtime.createTranscriptionAnswer({
         offerSdp: localDescription,
-        callLanguage: options.callLanguage
+        callLanguage: options.callLanguage,
+        latencyMode: options.latencyMode
       })
       if (this.isStopping || generation !== this.generation) return
 

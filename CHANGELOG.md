@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased
+## 0.3.4 — 2026-10-23
+
+- Compact Conversation/Recorder/Learning entry, audio-route setup, grouped settings and answer-first 640x320 call window.
+- Streamed brief responses with Stop/Reset/context invalidation, shorter conversation VAD and preserved original-language transcription.
+- Stop cancellation reaches local Ollama as well as OpenAI, without starting a fallback after cancellation.
+- Independent microphone/system audio backup, durable transcript checkpoints and recovery safeguards from the local 0.3.3 reliability pass.
+- Fixed 12 dependency advisories through same-major Electron/Vite updates and targeted transitive overrides; updated example configuration and current product documentation.
+
+## 0.3.2 — 2026-09-16
+
+- Persisted recovery review/history, microphone/system backup manifests, deduplicated chunk recovery and recovery reports. See [release notes](docs/releases/v0.3.2.md).
 
 - Monitor Live market options now show whether a hint is matched by Client Preferences or is only a market-similar option.
 

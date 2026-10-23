@@ -1,5 +1,9 @@
 # Opportunity-to-Call Runbook
 
+> Legacy / optional: this is not the primary product roadmap. Conversation,
+> Recorder and Learning are the current modes. Stored Finder/mail/calendar data
+> and the original external-write approval boundaries are retained.
+
 ## Implemented path
 
 `Finder job -> provider discovery -> reviewed candidate -> application pack -> Gmail draft -> batch approval -> send -> linked reply -> Calendar proposal -> Prepare/Live`

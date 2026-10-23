@@ -2,6 +2,9 @@ export const SYSTEM_DEFAULT_AUDIO_INPUT_ID = ''
 
 export type AudioInputConstraints = {
   deviceId?: { exact: string }
+  echoCancellation?: boolean
+  noiseSuppression?: boolean
+  autoGainControl?: boolean
 }
 
 export const resolveAudioInputSelection = (
@@ -13,6 +16,10 @@ export const resolveAudioInputSelection = (
     : SYSTEM_DEFAULT_AUDIO_INPUT_ID
 
 export const buildAudioInputConstraints = (
-  deviceId: string
-): AudioInputConstraints =>
-  deviceId ? { deviceId: { exact: deviceId } } : {}
+  deviceId: string,
+  source: 'microphone' | 'system' = 'microphone'
+): AudioInputConstraints => ({
+  ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+  // A loopback is already mixed call audio, not acoustic microphone input.
+  ...(source === 'system' ? {echoCancellation:false, noiseSuppression:false, autoGainControl:false} : {})
+})

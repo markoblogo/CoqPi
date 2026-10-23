@@ -1,4 +1,5 @@
 import OpenAI from 'openai'
+import { BRIEF_ANALYSIS_SCHEMA, expandBriefAssistantOutput, readBriefProgress } from '../../shared/brief-assistant-output'
 import type {
   AssistantCostMode,
   AssistantAnalysisRequest,
@@ -191,25 +192,48 @@ const getOpenAIClient = async () => {
 const callOpenAI = async (
   input: string,
   model: string,
-  systemPrompt: string
+  systemPrompt: string,
+  brief = false,
+  onProgress?: (value: {meaningRu:string; answer:string}) => void,
+  signal?: AbortSignal
 ): Promise<AssistantTextResponse> => {
   const client = await getOpenAIClient()
-  const response = await client.responses.create({
+  const body = {
     model,
     instructions: systemPrompt,
     input,
     text: {
       format: {
-        type: 'json_schema',
+        type: 'json_schema' as const,
         name: 'assistant_analysis',
         description: 'Structured professional call assistant analysis result.',
         strict: true,
-        schema: ANALYSIS_SCHEMA
+        schema: brief ? BRIEF_ANALYSIS_SCHEMA : ANALYSIS_SCHEMA
       }
     }
-  })
+  }
+  let response
+  if (brief && onProgress) {
+    const stream = client.responses.stream(body, {signal})
+    let text = ''
+    let lastSent = 0
+    for await (const event of stream) {
+      if (event.type !== 'response.output_text.delta') continue
+      text += event.delta
+      if (text.length > 64000) { stream.abort(); throw new Error('Assistant stream exceeds text limit') }
+      if (Date.now() - lastSent >= 80 && !signal?.aborted) {
+        onProgress(readBriefProgress(text))
+        lastSent = Date.now()
+      }
+    }
+    response = await stream.finalResponse()
+  } else {
+    response = await client.responses.create(body, {signal})
+  }
 
-  const outputText = response.output_text?.trim()
+  const outputText = (response.output_text || response.output?.flatMap(item =>
+    item.type === 'message' ? item.content.flatMap(content => content.type === 'output_text' ? [content.text] : []) : []
+  ).join(''))?.trim()
 
   if (!outputText) {
     throw new Error('OpenAI returned an empty response.')
@@ -219,18 +243,20 @@ const callOpenAI = async (
   const tokenCount =
     typeof usage?.total_tokens === 'number' ? usage.total_tokens : undefined
 
-  return { outputText, tokenCount }
+  return { outputText: brief ? expandBriefAssistantOutput(outputText) : outputText, tokenCount }
 }
 
 const callOllama = async (
   input: string,
   model: string,
   baseUrl: string | undefined,
-  systemPrompt: string
+  systemPrompt: string,
+  signal?: AbortSignal
 ): Promise<AssistantTextResponse> => {
   const endpoint = `${(baseUrl || 'http://127.0.0.1:11434').replace(/\/+$/, '')}/api/chat`
   const response = await fetch(endpoint, {
     method: 'POST',
+    signal,
     headers: {
       'Content-Type': 'application/json'
     },
@@ -309,7 +335,9 @@ const analyzeWithProviderFailureAware = async (
     routeLabel: string
     budgetMs: number
     timeoutMs: number
-  }
+  },
+  onProgress?: (value: {meaningRu:string; answer:string}) => void,
+  signal?: AbortSignal
 ): Promise<AssistantTextResponse> => {
   const model =
     profile.provider === PatterLikeProviderKind.Ollama
@@ -318,6 +346,8 @@ const analyzeWithProviderFailureAware = async (
         ? getSimpleAssistantModel()
       : getAssistantModel(request.costMode, profile.model)
 
+  const controller = new AbortController()
+  const providerSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal
   const executeCall = () =>
     profile.provider === PatterLikeProviderKind.Ollama
       ? callOllama(
@@ -326,14 +356,18 @@ const analyzeWithProviderFailureAware = async (
           profile.baseUrl,
           request.assistantContextMode === 'simple'
             ? simpleAssistantSystemPrompt
-            : interviewAssistantSystemPrompt
+            : interviewAssistantSystemPrompt,
+          providerSignal
         )
       : callOpenAI(
           input,
           model,
           request.assistantContextMode === 'simple'
             ? simpleAssistantSystemPrompt
-            : interviewAssistantSystemPrompt
+            : interviewAssistantSystemPrompt,
+          request.responseStyle === 'brief',
+          onProgress,
+          providerSignal
         )
 
   const wrappedExecute = () =>
@@ -351,7 +385,7 @@ const analyzeWithProviderFailureAware = async (
       providerTimeoutMs: route.timeoutMs,
       providerBudgetMs: route.budgetMs
     },
-    wrappedExecute,
+    async () => { try { return await wrappedExecute() } finally { controller.abort() } },
     (result) => {
       const tokenCount = result.tokenCount
 
@@ -784,7 +818,8 @@ const attachAssistantFailureSource = (
 }
 
 export const analyzeRecentTranscript = async (
-  request: AssistantAnalysisRequest
+  request: AssistantAnalysisRequest,
+  options: { onProgress?: (value: {meaningRu:string; answer:string}) => void; signal?: AbortSignal } = {}
 ): Promise<AssistantAnalysisResult> => {
   const analysisStartedAt = performance.now()
   const requestStartedAt = new Date().toISOString()
@@ -818,9 +853,9 @@ export const analyzeRecentTranscript = async (
     `Reply in ${resolvedRequest.answerLanguage}. Earlier languages in the transcript are context only.`,
     resolvedRequest.answerLanguage === 'ru' || resolvedRequest.answerLanguage === 'uk'
       ? 'This is a native-language conversation. Do not translate it. Keep meaningRu as a short original-language restatement.'
-      : 'Give a concise Russian meaning of the incoming question, and the suggested answer in the requested conversation language.',
+      : 'In meaningRu translate the latest incoming utterance into Russian. Preserve its conditions, numbers, deadlines, negations and requested action; do not replace it with only a summary of the final question. Give the suggested answer in the requested conversation language.',
     request.responseStyle === 'brief'
-      ? 'Return exactly ONE ready-to-say answer, normally 15-40 words. Keep intent, risk and keywords minimal. If evidence is insufficient, ask one clarifying question rather than inventing a personal fact.'
+      ? 'Return exactly ONE ready-to-say answer, normally 15-40 words. Never include template placeholders, bracketed names or instructions to the reader. If a name is unknown, omit it. Keep intent, risk and keywords minimal. If evidence is insufficient, ask one clarifying question rather than inventing a personal fact.'
       : '',
     request.responseStyle === 'coaching'
       ? 'You are a language tutor. The transcript is the learner\'s answer. In meaningRu explain the most important language error in Russian (or say there is none). In detectedQuestion give the next short practice question in the requested language. In suggestedAnswers give one corrected natural version of the learner\'s answer. Put recurring error tags in keywordsToRemember. Do not invent biographical facts. Increase difficulty only if the supplied practice history shows success.'
@@ -840,6 +875,7 @@ export const analyzeRecentTranscript = async (
   let lastError: Error | null = null
 
   for (const [index, profile] of providerProfiles.entries()) {
+    options.signal?.throwIfAborted()
     if (remainingBudgetMs <= 0) {
       throw new Error(
         `Assistant analysis budget exhausted while routing: ${providerRoute}`
@@ -851,6 +887,7 @@ export const analyzeRecentTranscript = async (
     const profileSource = `${profile.provider}(${profile.model})`
 
     try {
+      options.onProgress?.({meaningRu:'', answer:''})
       const result = await analyzeWithProviderFailureAware(
         resolvedRequest,
         profile,
@@ -861,7 +898,9 @@ export const analyzeRecentTranscript = async (
           routeLabel: providerRoute,
           timeoutMs: attemptTimeoutMs,
           budgetMs: remainingBudgetMs
-        }
+        },
+        options.onProgress,
+        options.signal
       )
       const parsed = parseStructuredResponse(result.outputText)
       const responseCompletedAt = new Date().toISOString()
@@ -883,6 +922,7 @@ export const analyzeRecentTranscript = async (
         responseCompletedAt
       }
     } catch (error) {
+      options.signal?.throwIfAborted()
       remainingBudgetMs -= Math.round(performance.now() - attemptStartMs)
       lastError = attachAssistantFailureSource(
         error instanceof Error

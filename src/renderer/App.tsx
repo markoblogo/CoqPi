@@ -10,20 +10,13 @@ import {
   type ReactNode
 } from 'react'
 import {
-  ClipboardList,
+  ArrowLeft,
   Copy,
-  Database,
-  FileAudio,
-  Maximize2,
   Merge,
-  Minimize2,
   Play,
-  Radio,
   RefreshCw,
   RotateCcw,
   Save,
-  Search,
-  Settings,
   Sparkles,
   Square,
   Tags
@@ -269,6 +262,8 @@ import { RawAudioBackupRecorder } from '@renderer/raw-audio-backup-recorder'
 const TrainingPanel = lazy(() => import('./TrainingPanel').then(module => ({ default: module.TrainingPanel })))
 import { detectConversationLanguage, type ConversationLanguage } from '@shared/conversation-language'
 import { CallFocusPanel } from './CallFocusPanel'
+import { ModeChooser } from './ModeChooser'
+import { ConversationSetup } from './ConversationSetup'
 import { MonitorLiveCopilotPanel } from './MonitorLiveCopilotPanel'
 import { useManualSpeaker } from './useManualSpeaker'
 const RecordingHistory = lazy(() => import('./RecordingHistory').then(module => ({ default: module.RecordingHistory })))
@@ -653,27 +648,6 @@ const formatRealtimeHealthLabel = (
   return 'Not started'
 }
 
-const getHealthTone = (label: string) => {
-  if (label === 'Error') {
-    return 'danger'
-  }
-
-  if (
-    label === 'Connecting' ||
-    label === 'Connected, waiting for speech' ||
-    label === 'Receiving transcript' ||
-    label === 'Analyzing'
-  ) {
-    return 'active'
-  }
-
-  if (label === 'Ready') {
-    return 'ready'
-  }
-
-  return 'muted'
-}
-
 const getListeningStatus = (
   realtimeStatus: RealtimeConnectionStatus,
   isMockRunning: boolean,
@@ -830,6 +804,14 @@ export const App = () => {
   const recordingStartSequenceRef = useRef(0)
   const captureStreamsRef = useRef<Partial<Record<'microphone' | 'system', MediaStream>>>({})
   const assistantGenerationRef = useRef(0)
+  const activeAssistantStreamRef = useRef<string | null>(null)
+  const [assistantProgress, setAssistantProgress] = useState<{generation:number; meaningRu:string; answer:string} | null>(null)
+  const invalidateAssistant = useCallback(() => {
+    assistantGenerationRef.current += 1
+    const id = activeAssistantStreamRef.current
+    if (id) window.coqpi.assistant.cancel?.(id)
+    activeAssistantStreamRef.current = null
+  }, [])
   const autoAnalysisAllowedRef = useRef(true)
   const rawAudioBackupRecordersRef = useRef<{
     microphone: RawAudioBackupRecorder
@@ -868,6 +850,8 @@ export const App = () => {
   }
 
   const [activeTab, setActiveTab] = useState<
+    | 'home'
+    | 'conversation-setup'
     | 'live'
     | 'training'
     | 'transcribe'
@@ -875,7 +859,7 @@ export const App = () => {
     | 'finder'
     | 'context'
     | 'settings'
-  >('live')
+  >('home')
   const [controls, setControls] = useState<ControlState>(defaultControlState)
   const [configStatus, setConfigStatus] =
     useState<ConfigStatus>(missingConfigStatus)
@@ -1426,7 +1410,7 @@ export const App = () => {
     if (selectedSystemAudioBackupDeviceId && selectedSystemAudioBackupDeviceId === selectedAudioDeviceId) throw new Error('Choose a separate loopback input for the other side of the call.')
     for (const source of sources) {
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: buildAudioInputConstraints(source === 'system' ? selectedSystemAudioBackupDeviceId : selectedAudioDeviceId), video: false
+        audio: buildAudioInputConstraints(source === 'system' ? selectedSystemAudioBackupDeviceId : selectedAudioDeviceId, source), video: false
       })
       if (generation !== captureGenerationRef.current || startSequence !== recordingStartSequenceRef.current) {
         stream.getTracks().forEach(track => track.stop())
@@ -1533,9 +1517,9 @@ export const App = () => {
     'mic' | 'call' | 'answer' | null
   >(null)
   const [settingsSection, setSettingsSection] = useState<
-    'key' | 'monitor' | 'defaults' | 'test' | 'profile' | 'cost' | 'debug' | 'about'
+    'audio' | 'recording' | 'key' | 'monitor' | 'defaults' | 'test' | 'profile' | 'cost' | 'debug' | 'about'
   >('key')
-  const [interfaceDensity, setInterfaceDensity] = useState<
+  const [interfaceDensity] = useState<
     'compact' | 'comfortable'
   >(() => {
     const storedDensity = window.localStorage.getItem('coqpi:interface-density')
@@ -1561,7 +1545,7 @@ export const App = () => {
 
   useEffect(() => window.coqpi.meetingTranscription.onShutdown(async () => {
     recordingStartSequenceRef.current += 1
-    assistantGenerationRef.current += 1
+    invalidateAssistant()
     try { await realtimeClientRef.current?.stop() }
     finally { await stopRawAudioBackup() }
     const current = meetingSessionRef.current
@@ -1571,7 +1555,7 @@ export const App = () => {
       await window.coqpi.meetingTranscription.saveCurrent(stopped)
     }
     await window.coqpi.meetingTranscription.flush()
-  }), [stopRawAudioBackup])
+  }), [stopRawAudioBackup, invalidateAssistant])
 
   useEffect(() => {
     const loadInitialState = async () => {
@@ -2009,7 +1993,7 @@ export const App = () => {
   }
 
   const currentTranscriptLanguage = controls.callLanguage === 'Auto' ? detectedLanguage : toTranscriptLanguage(controls.callLanguage)
-  const manualSpeaker = useManualSpeaker(activeTab === 'live' && ['connecting', 'connected', 'listening'].includes(realtimeStatus), ids => {
+  const manualSpeaker = useManualSpeaker(activeTab === 'live' && !selectedSystemAudioBackupDeviceId && ['connecting', 'connected', 'listening'].includes(realtimeStatus), ids => {
     setTranscriptUtterances(current => current.map(item => item.sourceItemId && ids.includes(item.sourceItemId) ? { ...item, speaker: 'me' } : item))
     setMeetingSession(current => {
       if (!current) return current
@@ -2108,7 +2092,7 @@ export const App = () => {
 
       const language = detectConversationLanguage(transcript, detectedLanguageRef.current)
       if (speaker === 'other') {
-        assistantGenerationRef.current += 1
+        invalidateAssistant()
         setAssistantState(current => current === 'analyzing' ? 'idle' : current)
         autoAnalysisAllowedRef.current = true
         detectedLanguageRef.current = language
@@ -4632,7 +4616,7 @@ export const App = () => {
     clearTranscriptState?: boolean
     lastAnalyzedUtteranceId?: string | null
   } = {}) => {
-    assistantGenerationRef.current += 1
+    invalidateAssistant()
     autoAnalysisAllowedRef.current = false
     if (autoAnalysisTimeoutRef.current !== null) {
       window.clearTimeout(autoAnalysisTimeoutRef.current)
@@ -4750,6 +4734,7 @@ export const App = () => {
         selectedAudioDeviceId,
         inputStream: capture.stream,
         callLanguage: 'auto',
+        latencyMode: 'conversation',
         onStatusChange: handleRecordingStatus,
         onDebugEventType: handleRealtimeEventType,
         onLifecycleLog: pushRealtimeLifecycleLog,
@@ -4946,7 +4931,7 @@ export const App = () => {
 
   const stopMeetingTranscription = async () => {
     recordingStartSequenceRef.current += 1
-    assistantGenerationRef.current += 1
+    invalidateAssistant()
     setRealtimeStatus('stopping')
     setMeetingError(null)
     clearNoEventTimeout()
@@ -5477,6 +5462,7 @@ export const App = () => {
     }
 
     const request: AssistantAnalysisRequest = {
+      streamId: crypto.randomUUID(),
       responseStyle: 'brief',
       transcriptText: transcriptToSend,
       callLanguage: assistantCallLanguage,
@@ -5500,6 +5486,12 @@ export const App = () => {
     setLastAnalyzeTranscriptText(transcriptToSend)
     const recordingSessionId = meetingSessionRef.current?.id
     const requestGeneration = ++assistantGenerationRef.current
+    activeAssistantStreamRef.current = request.streamId ?? null
+    setAssistantProgress(null)
+    const unsubscribeProgress = window.coqpi.assistant.onProgress?.(progress => {
+      if (progress.streamId !== request.streamId || requestGeneration !== assistantGenerationRef.current) return
+      setAssistantProgress({generation:requestGeneration, meaningRu:progress.meaningRu, answer:progress.answer})
+    })
 
     try {
       const response =
@@ -5554,6 +5546,9 @@ export const App = () => {
         'assistant_error',
         'local / renderer failure'
       )
+    } finally {
+      unsubscribeProgress?.()
+      if (activeAssistantStreamRef.current === request.streamId) activeAssistantStreamRef.current = null
     }
 
     return false
@@ -5587,9 +5582,9 @@ export const App = () => {
   runAssistantAnalysisRef.current = runAssistantAnalysis
 
   useEffect(() => {
-    assistantGenerationRef.current += 1
+    invalidateAssistant()
     setAssistantState(current => current === 'analyzing' ? 'idle' : current)
-  }, [sessionContext, counterpartyPacks, finderOutreachDrafts, includeProfileContext, profileContext, detectedLanguage])
+  }, [sessionContext, counterpartyPacks, finderOutreachDrafts, includeProfileContext, profileContext, detectedLanguage, invalidateAssistant])
 
   useEffect(() => {
     if (manualSpeaker.speaking || !autoAnalysisAllowedRef.current) return
@@ -5851,7 +5846,7 @@ export const App = () => {
     localRecordingActive || realtimeStatus === 'connecting' ||
     realtimeStatus === 'connected' ||
     realtimeStatus === 'listening' ||
-    realtimeStatus === 'error'
+    realtimeStatus === 'stopping'
   const canStartMeetingTranscription = canStartListening
   const isMeetingRealtimeRunning =
     realtimeStatus === 'connecting' ||
@@ -6584,26 +6579,45 @@ export const App = () => {
   )
 
   const settingsNavItems = [
-    ['key', 'Key'],
-    ['monitor', 'Monitor'],
-    ['defaults', 'Defaults'],
-    ['test', 'Test'],
-    ['profile', 'Profile'],
-    ['cost', 'Cost'],
-    ['debug', 'Debug'],
-    ['about', 'About']
+    ['audio', 'Звук'],
+    ['defaults', 'Разговор'],
+    ['recording', 'Запись'],
+    ['profile', 'Мои данные'],
+    ['key', 'Подключение']
   ] as const
+  const advancedSettingsNavItems = [
+    ['cost', 'Расходы'], ['monitor', 'Интеграции'], ['test', 'Проверки'],
+    ['debug', 'Диагностика'], ['about', 'О приложении']
+  ] as const
+  const settingsNavButton = ([id, label]: readonly [typeof settingsSection, string]) => (
+    <button key={id} role="tab" aria-selected={settingsSection === id} className={settingsSection === id ? 'tab-active' : ''} onClick={() => setSettingsSection(id)} type="button">{label}</button>
+  )
 
   const settingsSectionContent = {
+    audio: <article className="settings-card">
+      <h2>Звук</h2>
+      <div className="stack">
+        <label className="settings-row"><span>Микрофон</span><select aria-label="Settings microphone" disabled={localRecordingActive || canStopListening} value={selectedAudioDeviceId} onChange={event => {setSelectedAudioDeviceId(event.target.value); storeSelectedAudioInputId(event.target.value)}}><option value="">Системный микрофон</option>{audioDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label || 'Audio input'}</option>)}</select></label>
+        <label className="settings-row"><span>Собеседник</span><select aria-label="Settings other side input" disabled={localRecordingActive || canStopListening} value={selectedSystemAudioBackupDeviceId} onChange={handleSystemAudioBackupDeviceChange}><option value="">Общий микрофон / громкая связь</option>{audioDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label || 'Audio input'}</option>)}</select></label>
+        {audioError && <p role="alert">{audioError}</p>}
+      </div>
+    </article>,
+    recording: <article className="settings-card">
+      <h2>Запись</h2>
+      <div className="stack">
+        <label className="settings-row settings-row-checkbox"><span>Транскрипт</span><input type="checkbox" checked={settingsForm.saveTranscriptByDefault} onChange={event => setSettingsForm(current => ({...current, saveTranscriptByDefault:event.target.checked}))} /><span>Сохранять по умолчанию</span></label>
+        <div className="button-row"><button disabled={isSavingSettings} onClick={() => void saveCurrentSettings()}>Save</button><button onClick={() => setActiveTab('transcribe')}>Открыть записи</button></div>
+      </div>
+    </article>,
     key: (
       <article className="panel-card settings-card">
         <div className="panel-header">
           <div>
-            <h2>API Key</h2>
+            <h2>Подключение OpenAI</h2>
           </div>
         </div>
         <div className="stack">
-          <div className="status-list">
+          <details className="settings-technical"><summary>{keyStatus.effectiveKeyAvailable ? 'Ключ настроен' : 'Нужен API-ключ'}</summary><div className="status-list">
             <div>
               Stored:{' '}
               <strong>
@@ -6620,9 +6634,9 @@ export const App = () => {
                 {keyStatus.effectiveKeyAvailable ? 'Available' : 'Missing'}
               </strong>
             </div>
-          </div>
+          </div></details>
           <label className="settings-row settings-row-input">
-            <span className="settings-row-label">Key</span>
+            <span className="settings-row-label">API-ключ</span>
             <input
               onChange={(event) => setApiKeyDraft(event.target.value)}
               placeholder="sk-..."
@@ -6777,7 +6791,7 @@ export const App = () => {
       <article className="panel-card settings-card">
         <div className="panel-header">
           <div>
-            <h2>Defaults</h2>
+            <h2>Разговор</h2>
           </div>
         </div>
         <div className="form-grid compact-form-grid">
@@ -6798,7 +6812,7 @@ export const App = () => {
             </select>
           </label>
           <label className="settings-row">
-            <span className="settings-row-label">Call</span>
+            <span className="settings-row-label">Язык собеседника</span>
             <select
               onChange={(event) =>
                 setSettingsForm((current) => ({
@@ -6814,7 +6828,7 @@ export const App = () => {
             </select>
           </label>
           <label className="settings-row">
-            <span className="settings-row-label">Answer</span>
+            <span className="settings-row-label">Язык ответа по умолчанию</span>
             <select
               onChange={(event) =>
                 setSettingsForm((current) => ({
@@ -6842,20 +6856,6 @@ export const App = () => {
               type="checkbox"
             />
             <span className="checkbox-label">Include profile</span>
-          </label>
-          <label className="settings-row settings-row-checkbox">
-            <span className="settings-row-label">Transcript</span>
-            <input
-              checked={settingsForm.saveTranscriptByDefault}
-              onChange={(event) =>
-                setSettingsForm((current) => ({
-                  ...current,
-                  saveTranscriptByDefault: event.target.checked
-                }))
-              }
-              type="checkbox"
-            />
-            <span className="checkbox-label">Save transcript</span>
           </label>
           <div className="button-row settings-actions">
             <button
@@ -7629,7 +7629,8 @@ export const App = () => {
 
   return (
     <div className={`app-shell density-${interfaceDensity} ${activeTab === 'live' && !liveExpanded ? 'call-focused-shell' : ''}`}>
-      <header className="app-bar">
+      {activeTab !== 'live' && <header className="app-bar mode-header">
+        {activeTab !== 'home' && <button className="mode-back" aria-label="Choose mode" title="Choose mode" disabled={localRecordingActive || ['connecting', 'stopping'].includes(realtimeStatus)} onClick={() => setActiveTab('home')}><ArrowLeft size={18} /></button>}
         <div className="app-bar-left" title={topStatusItems.join(' · ')}>
           <span className="app-brand">
             <img
@@ -7639,110 +7640,21 @@ export const App = () => {
             />
             <strong className="app-title">CoqPi</strong>
           </span>
-          <div
-            className={`health-pill health-${getHealthTone(realtimeHealthLabel)}`}
-          >
-            <span className="health-dot" />
-            {`${
-              realtimeStatus === 'idle'
-                ? 'Ready'
-                : realtimeHealthLabel.toLowerCase()
-            }`}
-          </div>
-          {topStatusItems.map((item) => (
-            <span className="status-chip" key={item}>
-              {item}
-            </span>
-          ))}
         </div>
 
-        <nav className="tab-bar" aria-label="Application sections">
-          <button
-            className={activeTab === 'live' ? 'tab-active' : ''}
-            onClick={() => setActiveTab('live')}
-            title="Live assistant"
-            type="button"
-          >
-            <Radio aria-hidden="true" size={15} />
-            <span className="nav-label">Live</span>
-          </button>
-          <button
-            className={activeTab === 'training' ? 'tab-active' : ''}
-            onClick={() => setActiveTab('training')}
-            title="Practice interview answers"
-            type="button"
-          >
-            <Sparkles aria-hidden="true" size={15} />
-            <span className="nav-label">Training</span>
-          </button>
-          <button
-            className={activeTab === 'transcribe' ? 'tab-active' : ''}
-            onClick={() => setActiveTab('transcribe')}
-            title="Meeting transcription"
-            type="button"
-          >
-            <FileAudio aria-hidden="true" size={15} />
-            <span className="nav-label">Transcribe</span>
-          </button>
-          <button
-            className={activeTab === 'prepare' ? 'tab-active' : ''}
-            onClick={() => setActiveTab('prepare')}
-            title="Prepare a session"
-            type="button"
-          >
-            <ClipboardList aria-hidden="true" size={15} />
-            <span className="nav-label">Prepare</span>
-          </button>
-          <button
-            className={activeTab === 'finder' ? 'tab-active' : ''}
-            onClick={() => setActiveTab('finder')}
-            title="Find and review targets"
-            type="button"
-          >
-            <Search aria-hidden="true" size={15} />
-            <span className="nav-label">Finder</span>
-          </button>
-          <button
-            className={activeTab === 'context' ? 'tab-active' : ''}
-            onClick={() => setActiveTab('context')}
-            title="Knowledge and context packs"
-            type="button"
-          >
-            <Database aria-hidden="true" size={15} />
-            <span className="nav-label">Knowledge</span>
-          </button>
-          <button
-            className={activeTab === 'settings' ? 'tab-active' : ''}
-            onClick={() => setActiveTab('settings')}
-            title="Settings"
-            type="button"
-          >
-            <Settings aria-hidden="true" size={15} />
-            <span className="nav-label">Settings</span>
-          </button>
-        </nav>
-        <button
-          aria-label={`Switch to ${
-            interfaceDensity === 'compact' ? 'comfortable' : 'compact'
-          } density`}
-          className="density-toggle"
-          onClick={() =>
-            setInterfaceDensity((current) =>
-              current === 'compact' ? 'comfortable' : 'compact'
-            )
-          }
-          title={`${
-            interfaceDensity === 'compact' ? 'Comfortable' : 'Compact'
-          } layout`}
-          type="button"
-        >
-          {interfaceDensity === 'compact' ? (
-            <Maximize2 aria-hidden="true" size={15} />
-          ) : (
-            <Minimize2 aria-hidden="true" size={15} />
-          )}
-        </button>
-      </header>
+      </header>}
+      {activeTab === 'home' && <ModeChooser onSelect={mode => {
+        if (mode === 'training') setTrainingPurpose('coach')
+        setActiveTab(mode === 'live' ? 'conversation-setup' : mode)
+      }} />}
+      {activeTab === 'conversation-setup' && <ConversationSetup devices={audioDevices} microphone={selectedAudioDeviceId} system={selectedSystemAudioBackupDeviceId} onBack={() => setActiveTab('home')} onReady={(microphone, system) => {
+        setSelectedAudioDeviceId(microphone)
+        setSelectedSystemAudioBackupDeviceId(system)
+        storeSelectedAudioInputId(microphone)
+        storeSelectedSystemAudioBackupInputId(system)
+        setLiveExpanded(false)
+        setActiveTab('live')
+      }} />}
 
       {activeTab === 'training' ? <Suspense fallback={<p>Loading practice…</p>}><TrainingPanel initialMode={trainingPurpose} /></Suspense> : null}
 
@@ -8044,7 +7956,10 @@ export const App = () => {
       {activeTab === 'live' ? (
         <section className={`live-layout ${liveExpanded ? '' : 'live-focused'}`}>
           <CallFocusPanel
+            onBack={() => setActiveTab('home')}
+            separateSources={Boolean(selectedSystemAudioBackupDeviceId)}
             result={assistantResult}
+            progress={assistantProgress?.generation === assistantGenerationRef.current && assistantState === 'analyzing' ? assistantProgress : null}
             heard={lastOtherUtterance?.text ?? ''}
             stale={isAssistantResultStale || Boolean(assistantResult && lastAnalyzeTranscriptText && lastOtherUtterance?.text && !lastAnalyzeTranscriptText.includes(lastOtherUtterance.text))}
             analyzing={assistantState === 'analyzing'}
@@ -12040,30 +11955,10 @@ export const App = () => {
 
           <section className="settings-shell">
             <nav className="settings-nav" aria-label="Settings sections">
-              {settingsNavItems.map(([id, label]) => (
-                <button
-                  className={settingsSection === id ? 'tab-active' : ''}
-                  key={id}
-                  onClick={() =>
-                    setSettingsSection(
-                      id as
-                        | 'key'
-                        | 'monitor'
-                        | 'defaults'
-                        | 'test'
-                        | 'profile'
-                        | 'cost'
-                        | 'debug'
-                        | 'about'
-                    )
-                  }
-                  type="button"
-                >
-                  {label}
-                </button>
-              ))}
+              <div role="tablist" aria-label="Основные настройки">{settingsNavItems.map(settingsNavButton)}</div>
+              <details className="settings-advanced"><summary>Дополнительно</summary><div role="tablist" aria-label="Дополнительные настройки">{advancedSettingsNavItems.map(settingsNavButton)}</div></details>
             </nav>
-            <div className="settings-content">
+            <div className="settings-content" role="tabpanel">
               {settingsSectionContent[settingsSection]}
             </div>
           </section>

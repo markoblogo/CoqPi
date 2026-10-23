@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppUserSettings,
   AssistantAnalysisRequest,
+  AssistantProgress,
   ContextSourceDraft,
   CortexBridgeExport,
   CounterpartyContextPackDraft,
@@ -295,6 +296,12 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:preparation-context:request', context)
   },
   assistant: {
+    cancel: (streamId: string) => ipcRenderer.send('coqpi:assistant:cancel', streamId),
+    onProgress: (callback: (progress: AssistantProgress) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, progress: AssistantProgress) => callback(progress)
+      ipcRenderer.on('coqpi:assistant:progress', listener)
+      return () => ipcRenderer.removeListener('coqpi:assistant:progress', listener)
+    },
     analyzeRecentTranscript: (request: AssistantAnalysisRequest) =>
       ipcRenderer.invoke('coqpi:assistant:analyze-recent-transcript', request)
   },

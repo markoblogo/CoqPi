@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "budgetUsd": 1,
+  "rules": [
+    "Separate agent contexts. Interviewer scripts are never supplied to the user simulator or CoqPi.",
+    "User simulator speaks only the exact visible suggestion; no useful suggestion means a failed turn.",
+    "Use the actual built application, OS audio devices and providers. Mock regressions are separate evidence.",
+    "Use isolated local data, synthetic candidate facts and explicit test audio only.",
+    "Never modify user credentials, audio device defaults or installed app during diagnosis.",
+    "PASS requires every expected result; blocked hardware and unexecuted scenarios never become PASS."
+  ],
+  "scenarios": [
+    {"id":"A","name":"English interview","steps":["Select conversation and audio route","Start","Interviewer speaks an unshared question","User simulator reads the visible answer verbatim","Follow-up and interruption","Stop and inspect archive"],"expected":["English answers grounded in selected facts","Russian meaning","Correct order and complete saved transcript","Exact visible/spoken answer pairs"]},
+    {"id":"B","name":"French interview","steps":["Repeat A in French"],"expected":["French answers","Russian meaning","No invented candidate facts"]},
+    {"id":"C","name":"Mixed languages","steps":["Start Auto","English then French then English","Speak user's reply between questions"],"expected":["Answer language follows OTHER only","ME does not switch language or trigger advice"]},
+    {"id":"D","name":"Headphone loopback call","steps":["Select physical microphone and separate loopback","Route counterpart playback to loopback","Listen through headphones","Run A"],"expected":["OTHER audible in system WAV","ME audible in mic WAV","No acoustic echo contamination"]},
+    {"id":"E","name":"Source separation","steps":["OTHER speaks","ME replies","Repeat with loudspeaker and Space"],"expected":["ME retained in archive but excluded from suggestions","No manual control required for dual-source route"]},
+    {"id":"F","name":"Pending answer invalidation","steps":["Ask a question","Stop while provider is pending","Reset","Start new session"],"expected":["Old success or error cannot overwrite new session"]},
+    {"id":"G","name":"STT interruption","steps":["Start real audio recording","Interrupt only test process network","Continue speech","Restore connection","Stop and recover"],"expected":["Audio keeps being saved","Error is visible","Recovered speech remains in journal"]},
+    {"id":"H","name":"Crash and recovery","steps":["Record known audio","Verify acknowledged bytes exist","Kill only isolated test process","Reopen same data","Recover through UI","Export"],"expected":["Pre-crash text and audio survive","WAV repaired","No duplicate recovered segments"]},
+    {"id":"I","name":"Recorder without key","steps":["Launch with empty isolated credentials","Select real loopback","Start","Play local synthetic speech","Stop","Check PCM header and samples","Reopen same session"],"expected":["No provider required for audio","Non-silent valid WAV","Closed manifest and stopped session","Recovery remains available"]},
+    {"id":"J","name":"Long conversation","steps":["Run at least 10 minutes within remaining budget","Use multiple questions and language changes","Refer back to an earlier authorized fact","Stop and inspect complete archive"],"expected":["No response reordering","No unjustified fact invention","No recording gaps","Latency samples include failures and timeouts"]}
+  ],
+  "measurements": {"latencyStart":"End of actual question playback","latencyEnd":"First visible usable suggestion; final answer separately","aggregation":"median, nearest-rank p95, worst, sample count, failures and timeouts","accuracy":"Word error rate against held-out reference, plus separate human semantic assessment","unavailable":"Use null, never zero"}
+}

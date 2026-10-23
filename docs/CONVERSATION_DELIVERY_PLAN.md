@@ -1,6 +1,6 @@
 # Conversation delivery order
 
-Updated: 2026-09-14. This plan supersedes transcript-first UI priorities and
+Updated: 2026-10-23. This plan supersedes transcript-first UI priorities and
 EN/FR-only Live assumptions. Source and fixture verification do not establish
 real microphone accuracy or provider latency.
 
@@ -71,9 +71,10 @@ real provider p50/p95 latency still require measurement.
 
 ## 3. Make Live answer-first
 
-Default Live displays the large current answer and a smaller incoming meaning,
-with start/stop, language hint, save health and one details action. Diagnostics,
-full transcript, secondary answer fields and configuration are behind details.
+Startup chooses Conversation, Recorder or Learning, then the audio route.
+Active Conversation displays a large current answer and smaller incoming meaning,
+with Stop and shared-input-only ME marking. Navigation, timers and branding are
+absent. Configuration and preparation remain outside the active-call surface.
 Stale answers leave the primary answer area. Training, opportunity, archive and
 preparation screens load on demand. Crawlee and Google API runtimes load only
 when their respective actions are invoked, not before the first window.
@@ -118,8 +119,11 @@ stale responses; real microphone accuracy and end-to-end latency are not proven.
 Next acceptance: one mixed-language speakerphone call; a temporary network
 interruption; Stop/restart and close/reopen; one lesson with corrected repeat;
 one vacancy + submitted CV selected in Prepare -> rehearsal -> Live.
-Measure speech-end to meaning and answer at p50/p95 before changing models or
-debounce values. Target budgets must be set from actual device/network results.
+Short real BlackHole/OpenAI checks now cover EN/FR switching, French numerical
+constraints, Stop and close/reopen. They are not p50/p95 evidence or a long-call
+certification. See [latency results](audits/2026-10-23/STT_LATENCY.md). Next measure
+real-user speech and network interruptions across repeated calls; do not infer a
+guaranteed response time from the short synthetic speech fixtures.
 
 Further work: make recovered chunk boundaries phrase-aware rather than only
 energy-aware, add virtual-device detection/health checks for system backup,

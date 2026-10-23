@@ -114,7 +114,7 @@ test('auto analyze re-schedules when selected outreach draft changes while trans
   assert.equal(withDraftB.fingerprint.includes('::draft:draft-B'), true)
 })
 
-test('buildAutoAnalysisSchedule extends delay by remaining cooldown window', () => {
+test('buildAutoAnalysisSchedule overlaps debounce with cooldown without bypassing either', () => {
   const latestFinal = makeUtterance({ id: 'u-6' })
   const now = Date.now()
   const base = buildAutoAnalysisSchedule({
@@ -129,7 +129,7 @@ test('buildAutoAnalysisSchedule extends delay by remaining cooldown window', () 
   })
 
   assert.equal(base.shouldRun, true)
-  assert.equal(base.delayMs, AUTO_ANALYSIS_DEBOUNCE_MS + 800)
+  assert.equal(base.delayMs, Math.max(AUTO_ANALYSIS_DEBOUNCE_MS, 800))
 
   const delayed = buildAutoAnalysisSchedule({
     latestFinalUtterance: latestFinal,
@@ -142,7 +142,7 @@ test('buildAutoAnalysisSchedule extends delay by remaining cooldown window', () 
     selectedCounterpartyPackIds: ['pack-B']
   })
   assert.equal(delayed.shouldRun, true)
-  assert.equal(delayed.delayMs, AUTO_ANALYSIS_DEBOUNCE_MS + 300)
+  assert.equal(delayed.delayMs, Math.max(AUTO_ANALYSIS_DEBOUNCE_MS, 300))
   assert.equal(
     delayed.fingerprint.includes('::packs:pack-B'),
     true
@@ -1355,5 +1355,5 @@ test('assistant run hint adds retry guidance with cooldown window', () => {
 })
 
 test('auto-analysis debounce constant stays as expected', () => {
-  assert.equal(AUTO_ANALYSIS_DEBOUNCE_MS, 900)
+  assert.equal(AUTO_ANALYSIS_DEBOUNCE_MS, 250)
 })

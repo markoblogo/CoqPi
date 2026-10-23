@@ -26,3 +26,10 @@ test('manual input selection remains available when the device is present', () =
 test('stale manual selection falls back to system default', () => {
   assert.equal(resolveAudioInputSelection('missing', ['mic-1']), '')
 })
+
+test('system loopback preserves call audio without microphone processing', () => {
+  assert.deepEqual(buildAudioInputConstraints('loopback', 'system'), {
+    deviceId:{exact:'loopback'}, echoCancellation:false, noiseSuppression:false, autoGainControl:false
+  })
+  assert.deepEqual(buildAudioInputConstraints('mic', 'microphone'), {deviceId:{exact:'mic'}})
+})

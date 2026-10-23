@@ -17,27 +17,62 @@
 
 > **MVP:** CoqPi is useful for local preparation and transcription, but it has not yet completed repeated real-call latency and speaker-attribution validation.
 
-### Local reliability update (0.3.3)
+### Compact communication workspace
+
+The current source opens with three modes: Conversation, Recorder and Learning.
+Conversation setup explicitly chooses headphones plus a separate call-audio input,
+or a single-input loudspeaker conversation. The active call has no navigation,
+branding or timers: small Russian meaning, a large answer and Stop. Manual ME/Space
+control is available only for the single-input route. Preparation, knowledge and
+settings remain reachable before starting, without Finder/mail in the main navigation.
+
+The default window is 640x320 (minimum 400x260). Settings separate Audio,
+Conversation, Recording, My data and Connection; technical tools are collapsed.
+The compact build was installed locally after short
+real BlackHole/OpenAI EN/FR, language-switch and persistence checks. Long-call and
+physical-headset acceptance remain open. See the [real-user acceptance report](docs/audits/2026-10-23/REAL_USER_TEST_REPORT.md)
+for actual audio evidence, synthetic regressions and outstanding scenarios.
+
+Live brief replies request only the displayed translation and answer. The scheduler
+uses 250 ms settling and overlaps it with cooldown, without bypassing cooldown or
+stale-response guards. Short real EN/FR probes measured roughly 3-5 seconds to a
+complete answer (about 4-5 seconds in the clean-input probes); this is not a long-call latency guarantee.
+OpenAI brief replies now stream translation and answer text into the current request's
+UI before final completion. Stop/context changes cancel that request and hide its
+partial text. Only validated final output is stored as an assistant result.
+First-text timing and full-answer timing are distinct; model comparisons remain open.
+
+Conversation transcription uses a 500 ms end-of-speech pause; recorder mode and
+the separate ME channel retain 800 ms. Explicit system audio bypasses microphone
+echo/noise/gain processing. The transcription model, auto language switching and
+independent audio backups are unchanged. See the [STT latency checks](docs/audits/2026-10-23/STT_LATENCY.md);
+shorter VAD pauses do not guarantee bounded cloud recognition latency.
+
+### Recording reliability
 
 - Stop/Reset invalidates pending assistant responses; delayed answers cannot reappear in the next conversation.
 - Audio capture starts before cloud transcription and continues through STT failures. Transcribe also records locally without an API key; use Recover later for text.
 - An explicitly selected loopback input now feeds Live as `OTHER`; the separate microphone feeds `ME`, which is recorded but excluded from suggestions. With both sources enabled, two cloud transcription streams are used.
 - Each acknowledged PCM chunk is synced locally with a usable WAV header. Recover can repair interrupted recordings and saves recovered text chunk by chunk.
 
-See [recording reliability and setup](docs/RECORDING_RELIABILITY_033.md). Hardware routing, actual recognition accuracy and real-call latency still require a human check. This local update is not a GitHub release.
+See [recording reliability and setup](docs/RECORDING_RELIABILITY_033.md). Hardware routing, recognition accuracy and long-call latency still require real-call checks. These changes are included in v0.3.4.
 
 ## What it does
 
 CoqPi keeps the communication loop in one desktop app:
 
 - **Live** transcribes an active microphone, follows EN/FR/RU/UK language changes, and prepares one short response.
-- **Monitor Live** can send finalized `OTHER` text to the selected MN7R client, show a temporary BID/OFFER draft and scrollable opposite-side market options, then save to Draft Inbox only after a click.
 - **Transcribe** records a plain local meeting transcript without assistant analysis.
 - **Training** supports interview rehearsal and language correction with local feedback history.
 - **Prepare** builds a reviewed session brief from explicitly selected context.
-- **Finder** collects and evaluates bounded job, partner, investor, and accelerator candidates.
 
-Your speech can be marked as **ME** by holding Space in the focused Live window or toggling **Говорю я**. It remains in the local transcript but is excluded from assistant suggestions.
+Finder, Gmail/Calendar and Monitor integrations remain legacy/optional backend
+capabilities, not primary modes. No stored data or approval boundaries have been
+removed; this release focuses on communication, recording and learning.
+
+With separate microphone and system inputs, your microphone is **ME** and call
+audio is **OTHER**. For shared speakerphone input, hold Space in the focused Live
+window or toggle **Говорю я**. ME remains recorded but excluded from suggestions.
 
 ## Privacy and authority
 
@@ -82,9 +117,11 @@ cp .env.example .env
 pnpm dev
 ```
 
-Set `OPENAI_API_KEY` in `.env`, or save it through Settings. Optional Brave Search and Google OAuth credentials enable their bounded Finder workflows.
+Set `OPENAI_API_KEY` in `.env`, or save it through Settings. Never commit the key.
 
-The default fast-response model is `gpt-5.6-luna`; the realtime transcription default is `gpt-realtime-whisper`. Both can be overridden in `.env`.
+The source default fast-response model is `gpt-5.6-luna`; realtime transcription
+defaults to `gpt-4o-transcribe`. Backend environment overrides can select different
+models; recorded measurements apply only to the actual tested configuration.
 
 ## First useful test
 
@@ -96,8 +133,6 @@ The default fast-response model is `gpt-5.6-luna`; the realtime transcription de
 5. Export it and confirm that the Markdown/TXT file contains the expected finalized text.
 6. Only then try a short Live call.
 
-For the brokerage bridge, open the selected Monitor client in Light or Detailed View, choose `Copy CoqPi setup`, paste it into `Settings → Monitor`, connect the normal Monitor account, confirm permission, enable the bridge, and save. During Live, use `Говорю я`/Space for your own speech. The market preview is temporary until `Save to Monitor Draft Inbox` is selected.
-
 For the real-provider checklist, use [Realtime smoke test](docs/REALTIME_SMOKE_TEST.md). For storage and recovery, use [Meeting transcription mode](docs/MEETING_TRANSCRIPTION_MODE.md).
 
 ## Speaker controls
@@ -106,18 +141,20 @@ For the real-provider checklist, use [Realtime smoke test](docs/REALTIME_SMOKE_T
 - Use **Говорю я** for longer answers or while switching to Meet/Zoom.
 - Stop the session before reviewing or exporting it.
 
-This is manual marking, not voice biometrics. If both speakers share one uninterrupted transcription item, CoqPi conservatively excludes that item from suggestions. See [Manual speaker mode](docs/MANUAL_SPEAKER_MODE.md).
+These controls apply to shared-input conversations, not the separate-source mode.
+There is no voice biometrics. If both speakers share one uninterrupted item,
+CoqPi conservatively excludes that item from suggestions. See [Manual speaker mode](docs/MANUAL_SPEAKER_MODE.md).
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  Mic["Selected microphone"] --> RT["OpenAI realtime transcription"]
+  Mic["Microphone / explicit system input"] --> RT["OpenAI realtime transcription"]
+  Mic --> Backup["Independent local WAV backup"]
   RT --> Log["Local durable transcript"]
   Log --> Gate["Language + privacy + speaker gates"]
   Gate --> Assistant["Short assistant response"]
   Context["Selected local context"] --> Gate
-  Finder["Reviewed Finder target"] --> Context
   Log --> Export["Markdown / TXT export"]
   Context -. "compact admitted handoff" .-> Cortex["CortexABV-private"]
 ```
@@ -157,11 +194,9 @@ pnpm test:pass2-live-smoke-readiness
   Stopped sessions can be manually recovered into timestamped journal chunks
   without duplicating a previous recovery, and recovery reports show recovered,
   failed, skipped, and empty chunks.
-- Speaker attribution is manual and cannot split one mixed speech item.
+- Speaker attribution follows explicit sources; shared-input marking cannot split one mixed speech item.
 - Monitor live preview depends on a selected client, an authenticated Monitor account, and correct manual `ME`/`OTHER` marking; it never creates or sends an operational BID/OFFER/TRADE.
 - Live quality and p50/p95 response latency still need repeated real-call measurement.
-- Finder is bounded and owner-triggered; no mass crawling or automatic outreach.
-- Gmail and Calendar integrations require local OAuth setup and explicit approval.
 - Local Ollama can provide controlled text fallback, but there is no offline realtime STT.
 
 ## Documentation
@@ -171,7 +206,7 @@ pnpm test:pass2-live-smoke-readiness
 - [Realtime smoke test](docs/REALTIME_SMOKE_TEST.md)
 - [Meeting transcription](docs/MEETING_TRANSCRIPTION_MODE.md)
 - [CortexABV boundary](docs/CORTEX_CONTEXT_CONTRACT.md)
-- [Opportunity-to-call workflow](docs/OPPORTUNITY_TO_CALL.md)
+- [v0.3.4 release and verification](docs/releases/v0.3.4.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)

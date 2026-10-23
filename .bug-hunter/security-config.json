@@ -1,0 +1,7 @@
+{
+  "scope": "v0.3.4 working-tree release",
+  "stack": ["Electron", "React", "TypeScript", "Node.js"],
+  "focus": ["IPC", "stream cancellation", "recording durability", "secret exposure", "dependency advisories"],
+  "minimumFindingConfidence": 0.8,
+  "runtimeDataMustRemainUntracked": true
+}

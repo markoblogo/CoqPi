@@ -9,14 +9,17 @@ minimumReleaseAgeExclude:
   - baseline-browser-mapping@2.11.0
   - brace-expansion@1.1.18 || 2.1.4 || 5.0.9
   - browserslist@4.28.7
-  - fast-uri@3.1.6
+  - fast-uri@3.1.8
+  - follow-redirects@1.16.1
+  - electron@44.5.0
+  - vite@6.4.4
   - joi@18.2.5
   - js-yaml@4.3.2
   - nanoid@3.3.18
   - postcss@8.5.23
   - qs@6.16.0
   - shell-quote@1.8.5
-  - stream-json@3.4.1
+  - stream-json@3.6.1
   - tar@7.5.21
   - undici@6.28.0
 onlyBuiltDependencies:
@@ -32,13 +35,14 @@ overrides:
   'brace-expansion@>=2 <2.1.4': ^2.1.4
   'brace-expansion@>=3 <5.0.9': ^5.0.9
   'browserslist@<=4.28.6': ^4.28.7
-  'fast-uri@<3.1.6': ^3.1.6
+  'fast-uri@<3.1.8': ^3.1.8
+  'follow-redirects@<1.16.1': ^1.16.1
   'joi@<18.2.5': ^18.2.5
   'js-yaml@<4.3.2': ^4.3.2
   'nanoid@<3.3.18': ^3.3.18
   'postcss@<=8.5.22': ^8.5.23
   'qs@<6.16.0': ^6.16.0
   'shell-quote@<=1.8.4': ^1.8.5
-  'stream-json@<=3.4.0': ^3.4.1
+  'stream-json@<=3.6.0': ^3.6.1
   'tar@<=7.5.20': ^7.5.21
   'undici@<6.28.0': ^6.28.0

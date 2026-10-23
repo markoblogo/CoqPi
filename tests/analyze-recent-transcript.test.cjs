@@ -118,7 +118,8 @@ const withStubbedProviderRoute = ({
   onRetrievalCall,
   onSelectedPackIds,
   onAnalyzeRequest,
-  onProviderProfiles
+  onProviderProfiles,
+  analysisOptions
 }) =>
   withElectronMock(async (services) => {
     process.env.COQPI_ASSISTANT_PROVIDER_TIMEOUT_MS = '120'
@@ -208,7 +209,7 @@ const withStubbedProviderRoute = ({
             : requestOverrides
         const request = makeRequest(resolvedOverrides)
         onAnalyzeRequest?.(request)
-        return services.assistantService.analyzeRecentTranscript(request)
+        return services.assistantService.analyzeRecentTranscript(request, analysisOptions)
       })
     } finally {
       if (previousProviderProfile === undefined) {
@@ -224,6 +225,56 @@ const withStubbedProviderRoute = ({
       }
     }
   })
+
+test('cancelling Ollama aborts the in-flight fetch without starting fallback', async () => {
+  const controller = new AbortController()
+  let calls = 0
+  let fetchAborted = false
+
+  await assert.rejects(withLocalKnowledgeWorkspace(() => withStubbedProviderRoute({
+    profileCount: 2,
+    analysisOptions: { signal: controller.signal },
+    fetchHandler: async (_url, options) => {
+      calls += 1
+      assert.ok(options.signal instanceof AbortSignal)
+      assert.equal(options.signal.aborted, false)
+      return new Promise((_resolve, reject) => {
+        options.signal.addEventListener('abort', () => {
+          fetchAborted = true
+          reject(options.signal.reason)
+        }, { once: true })
+        queueMicrotask(() => controller.abort())
+      })
+    }
+  })), { name: 'AbortError' })
+
+  assert.equal(fetchAborted, true)
+  assert.equal(calls, 1)
+})
+
+test('OpenAI stream finalizes typed output without output_text convenience field', async () => {
+  const text = JSON.stringify({meaningRu:'Как вы работаете?',answer:'I clarify the goals first.'})
+  const item = {id:'msg_fixture',type:'message',role:'assistant',status:'completed',content:[{type:'output_text',text,annotations:[]}]}
+  const response = {id:'resp_fixture',object:'response',created_at:1,model:'gpt-4o-mini',status:'completed',output:[item],usage:{total_tokens:30}}
+  const events = [
+    {type:'response.created',response:{...response,status:'in_progress',output:[]}},
+    {type:'response.output_item.added',output_index:0,item:{...item,status:'in_progress',content:[]}},
+    {type:'response.content_part.added',output_index:0,content_index:0,item_id:item.id,part:{type:'output_text',text:'',annotations:[]}},
+    {type:'response.output_text.delta',output_index:0,content_index:0,item_id:item.id,delta:text},
+    {type:'response.completed',response}
+  ]
+  const progress = []
+  const result = await withStubbedProviderRoute({
+    profileCount:1,
+    onProviderProfiles: profiles => {profiles[0].provider='openai'; profiles[0].model='gpt-4o-mini'},
+    requestOverrides:{responseStyle:'brief'},
+    analysisOptions:{onProgress:value=>progress.push(value)},
+    fetchHandler:async () => new Response(events.map(event=>`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`).join(''), {headers:{'content-type':'text/event-stream'}})
+  })
+  assert.equal(result.meaningRu, 'Как вы работаете?')
+  assert.equal(result.suggestedAnswers[0].text, 'I clarify the goals first.')
+  assert.ok(progress.some(value=>value.answer === 'I clarify the goals first.'))
+})
 
 const withLocalKnowledgeWorkspace = async (run) => {
   const directory = await fs.mkdtemp(
@@ -657,6 +708,7 @@ test('analyzeRecentTranscript assistant prompt matches session payload inspector
         return {
           ...makeRequest(),
           sessionContext: persisted.context,
+          responseStyle: 'brief',
           selectedCounterpartyPackIds: persisted.context.selectedCounterpartyPackIds,
           selectedFinderOutreachDraftId: persisted.context.selectedFinderOutreachDraftId
         }
@@ -717,6 +769,8 @@ test('analyzeRecentTranscript assistant prompt matches session payload inspector
   const expectedPromptPackTokens = inspector.includedPacks.map(
     (pack) => pack.sourceId
   )
+  assert.match(observed.capturedPrompt, /Preserve its conditions, numbers, deadlines, negations/)
+  assert.match(observed.capturedPrompt, /Never include template placeholders/)
   const droppedPromptPackTokens = inspector.droppedPacks
     .filter((pack) => pack.sourceId !== 'missing')
     .map((pack) => pack.sourceId)

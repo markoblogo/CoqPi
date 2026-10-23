@@ -957,6 +957,7 @@ export type SimpleAssistantScenarioId =
   (typeof simpleAssistantScenarioIds)[number]
 
 export interface AssistantAnalysisRequest {
+  streamId?: string
   responseStyle?: 'brief' | 'coaching' | 'review' | 'preparation'
   transcriptText: string
   callLanguage: AssistantCallLanguage
@@ -972,6 +973,12 @@ export interface AssistantAnalysisRequest {
   costMode: AssistantCostMode
   assistantContextMode?: AssistantContextMode
   scenarioId?: SimpleAssistantScenarioId
+}
+
+export interface AssistantProgress {
+  streamId: string
+  meaningRu: string
+  answer: string
 }
 
 export interface AssistantAnalysisResult {
@@ -1027,6 +1034,7 @@ export type RealtimeConnectionStatus =
 export interface RealtimeTranscriptionStartRequest {
   offerSdp: string
   callLanguage: 'auto' | 'en' | 'fr' | 'uk' | 'ru'
+  latencyMode?: 'conversation' | 'recording'
 }
 
 export interface RealtimeTranscriptionSdpResult {

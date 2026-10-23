@@ -1,6 +1,7 @@
 import type {
   AppUserSettings,
   AssistantAnalysisRequest,
+  AssistantProgress,
   AssistantAnalysisResponse,
   CortexBridgeExport,
   ContextSourceDraft,
@@ -280,6 +281,8 @@ declare global {
         request: (context: SessionContext) => Promise<PreparationContextResult>
       }
       assistant: {
+        cancel: (streamId: string) => void
+        onProgress: (callback: (progress: AssistantProgress) => void) => () => void
         analyzeRecentTranscript: (
           request: AssistantAnalysisRequest
         ) => Promise<AssistantAnalysisResponse>
