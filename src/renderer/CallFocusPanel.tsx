@@ -1,6 +1,7 @@
 import { ArrowLeft, Play, Square, Settings2, RefreshCw, Mic } from 'lucide-react'
 import type { AssistantAnalysisResult, CallLanguage, RealtimeConnectionStatus } from '@shared/app-types'
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { thinkingPhrase } from '@shared/thinking-phrase'
 
 interface Props {
   onBack: () => void
@@ -34,6 +35,21 @@ export const CallFocusPanel = (props: Props) => {
   const progress = props.analyzing && !props.error ? props.progress : null
   const answer = progress?.answer || (fresh ? props.result?.suggestedAnswers[0]?.text : undefined)
   const native = props.detectedLanguage === 'ru' || props.detectedLanguage === 'uk'
+  const phraseIndex = useRef(0)
+  const [pause, setPause] = useState<{ key: string; text: string } | null>(null)
+  const pauseKey = `${props.detectedLanguage}:${props.heard}`
+  const waiting = props.analyzing && props.canStop && !props.error && !props.speaking && !answer
+  useEffect(() => {
+    setPause(null)
+    if (!waiting) return
+    const timer = window.setTimeout(() => {
+      const text = thinkingPhrase(props.detectedLanguage, phraseIndex.current++)
+      setPause({ key: pauseKey, text })
+    }, 1800)
+    return () => window.clearTimeout(timer)
+  }, [waiting, pauseKey, props.detectedLanguage])
+  useEffect(() => { if (!props.canStop) phraseIndex.current = 0 }, [props.canStop])
+  const pauseText = waiting && pause?.key === pauseKey ? pause.text : ''
   return <section className="call-focus" aria-label="Conversation assistant">
     <div className="call-focus-toolbar">
       {!props.canStop && <button aria-label="Choose mode" title="Choose mode" onClick={props.onBack}><ArrowLeft size={17} /></button>}
@@ -61,8 +77,8 @@ export const CallFocusPanel = (props: Props) => {
       <p>{native ? props.heard || 'Ожидаю собеседника…' : progress?.meaningRu || (fresh && props.result ? props.result.meaningRu : props.heard ? 'Перевожу…' : 'Ожидаю собеседника…')}</p>
     </div>
     <div className="call-answer" aria-live="polite" aria-busy={props.analyzing}>
-      <div className="call-section-label">{props.analyzing ? 'Готовлю ответ…' : 'Ваш ответ'}</div>
-      <p>{answer || (props.analyzing ? '…' : '—')}</p>
+      <div className="call-section-label">{pauseText ? 'Можно сказать, пока готовится ответ' : props.analyzing ? 'Готовлю ответ…' : 'Ваш ответ'}</div>
+      <p>{answer || pauseText || (props.analyzing ? '…' : '—')}</p>
     </div>
     {props.expanded && props.marketPanel}
     {props.expanded && props.stale && props.result?.suggestedAnswers[0] && <details><summary>Previous answer</summary><p>{props.result.suggestedAnswers[0].text}</p></details>}

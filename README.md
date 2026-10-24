@@ -42,6 +42,20 @@ UI before final completion. Stop/context changes cancel that request and hide it
 partial text. Only validated final output is stored as an assistant result.
 First-text timing and full-answer timing are distinct; model comparisons remain open.
 
+### Interview answer safety
+
+EN/FR brief responses distinguish owner facts from interviewer assertions and
+proposed commitments. Recognized high-risk questions (work authorization,
+availability, accepting terms, asserted achievements and missing behavioral
+examples) receive a conservative local clarification instead of a fabricated
+answer. This is deliberately not a universal semantic safety guarantee.
+
+If a model answer takes more than 1.8 seconds, the existing answer area can show
+a rotating EN/FR thinking phrase. It disappears on answer, Stop, error or ME speech
+and is never persisted as an assistant answer. Typical interview structures guide
+generation, but are not a pre-approved personal answer cache. See
+[content safety checks and limits](docs/INTERVIEW_CONTENT_SAFETY.md).
+
 Conversation transcription uses a 500 ms end-of-speech pause; recorder mode and
 the separate ME channel retain 800 ms. Explicit system audio bypasses microphone
 echo/noise/gain processing. The transcription model, auto language switching and

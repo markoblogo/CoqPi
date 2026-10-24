@@ -61,7 +61,14 @@ const { start } = require('../test-support/recording-ui-harness.cjs')
     await p.waitForFunction(() => document.querySelector('.call-answer > p')?.textContent.startsWith('I would'))
     await p.keyboard.up('Space')
     await h.snap('compact-answer-headphones')
+    await p.evaluate(() => {
+      window.__audit.assistantDelay = 6000
+      window.__audit.channels[0].dispatchEvent(new MessageEvent('message', {data:JSON.stringify({type:'conversation.item.input_audio_transcription.completed',item_id:'slow-test',transcript:'Could you describe your approach to conflict resolution?'})}))
+    })
+    await p.getByText('Let me think for a moment.', {exact:true}).waitFor({timeout:20000})
+    await h.snap('compact-thinking-phrase')
     await p.getByRole('button', { name: 'Stop listening', exact: true }).click()
+    assert.equal(await p.getByText('Let me think for a moment.', {exact:true}).count(), 0)
     await p.evaluate(() => {
       const streamId = window.__audit.requests.at(-1).streamId
       for (const listener of window.__audit.progressListeners) listener({streamId,meaningRu:'STALE',answer:'STALE'})

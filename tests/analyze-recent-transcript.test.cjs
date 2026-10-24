@@ -2416,6 +2416,22 @@ test('session context save and reload prune stale selected counterparty pack ids
   )
 })
 
+test('brief high-risk clarification bypasses providers and does not fabricate owner facts', async () => {
+  for (const [answerLanguage, question] of [['en', 'Do you have unrestricted work authorization in Canada?'], ['fr', 'Pouvez-vous commencer lundi prochain ?']]) {
+    await withLocalKnowledgeWorkspace(async () => {
+      const result = await withStubbedProviderRoute({
+      profileCount: 1,
+      requestOverrides: {responseStyle:'brief', answerLanguage, latestIncomingUtterance:question, transcriptText:question},
+      fetchHandler: async () => assert.fail('Local clarification must not call a provider')
+      })
+      assert.equal(result.model, 'local-safety-clarification')
+      assert.equal(result.provider, 'local')
+      assert.equal(result.suggestedAnswers.length, 1)
+      assert.match(result.risk, /Clarification boundary/)
+    })
+  }
+})
+
 test('brief EN-FR-EN requests isolate the latest turn and preserve hard constraints', async () => {
   const turns = [
     ['en', 'How would you organize the first month?'],
