@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PersonalReplyBank } from './PersonalReplyBank'
 import type { AssistantAnalysisResult, SessionContext } from '@shared/app-types'
 
 export const MeetingPreparationBrief = ({ context, onPractice, onSaved }: {
@@ -37,6 +38,7 @@ export const MeetingPreparationBrief = ({ context, onPractice, onSaved }: {
   }
   return <section className="meeting-preparation-brief">
     <h2>Meeting strategy</h2>
+    <PersonalReplyBank context={context}/>
     <p>{context.company || 'No company selected'}{context.role ? ` · ${context.role}` : ''}</p>
     <div className="button-row">
       <select aria-label="Practice language" disabled={busy} value={language} onChange={event => { setLanguage(event.target.value as 'en' | 'fr'); setBrief(null) }}><option value="fr">French</option><option value="en">English</option></select>

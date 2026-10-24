@@ -117,3 +117,14 @@
   .settings-content .settings-row-checkbox { grid-template-columns: minmax(0, 1fr) auto; }
   .settings-content .settings-row-checkbox .checkbox-label { grid-column: 1 / -1; }
 }
+.personal-reply-bank fieldset {
+  min-width: 0;
+  border: 0;
+  padding: 8px 0;
+  display: grid;
+  gap: 12px;
+}
+.personal-reply-bank label { display: grid; gap: 4px; min-width: 0; }
+.personal-reply-bank textarea { box-sizing: border-box; width: 100%; min-width: 0; resize: vertical; }
+.personal-reply-bank select { width: 100%; min-width: 0; max-width: 100%; }
+.personal-reply-bank button { white-space: normal; max-width: 100%; }

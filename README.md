@@ -53,7 +53,11 @@ answer. This is deliberately not a universal semantic safety guarantee.
 If a model answer takes more than 1.8 seconds, the existing answer area can show
 a rotating EN/FR thinking phrase. It disappears on answer, Stop, error or ME speech
 and is never persisted as an assistant answer. Typical interview structures guide
-generation, but are not a pre-approved personal answer cache. See
+generation. A local EN/FR personal answer bank in Prepare now reuses explicitly
+reviewed answers for exact approved question variants, without a model request.
+Profile or selected-context changes invalidate approval; new constraints fall
+back to normal analysis. Personal drafts remain outside Git. See
+[personal answer bank](docs/PERSONAL_REPLY_BANK.md) and
 [content safety checks and limits](docs/INTERVIEW_CONTENT_SAFETY.md).
 
 Conversation transcription uses a 500 ms end-of-speech pause; recorder mode and

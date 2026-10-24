@@ -281,6 +281,8 @@ declare global {
         request: (context: SessionContext) => Promise<PreparationContextResult>
       }
       assistant: {
+        getPersonalReplyBank: (request: AssistantAnalysisRequest) => Promise<import('../shared/personal-reply-bank').PersonalReplyBank>
+        savePersonalReply: (request: AssistantAnalysisRequest, entry: import('../shared/personal-reply-bank').PersonalReply, approve: boolean) => Promise<import('../shared/personal-reply-bank').PersonalReplyBank>
         cancel: (streamId: string) => void
         onProgress: (callback: (progress: AssistantProgress) => void) => () => void
         analyzeRecentTranscript: (

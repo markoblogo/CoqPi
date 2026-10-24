@@ -64,10 +64,11 @@ free-form model output can still be wrong; streamed text is not independently
 fact-checked. Clarifications can be overly conservative. A follow-up question
 must not be treated as evidence of a missing personal fact.
 
-A reviewed, context-hash-bound personal answer bank is still pending. It must
-invalidate on profile/selected-material changes and must not replay a stored
-answer for a compound question with new constraints. Do not label the current
-strategy patterns as cached personalized answers.
+A reviewed, context-hash-bound [personal answer bank](PERSONAL_REPLY_BANK.md)
+now provides a separate local path. Only explicit approvals with matching
+question aliases, language and context can bypass generation. Compound questions
+with new constraints do not match. Human approval remains necessary: an exact
+supporting quote proves source presence, not semantic entailment of the answer.
 
 ## Research basis
 

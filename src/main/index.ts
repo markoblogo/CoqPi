@@ -55,7 +55,7 @@ import type {
   SmokeTestNotesResult,
   SettingsPayload
 } from '../shared/app-types'
-import { analyzeRecentTranscript } from '../backend/services/assistant-service'
+import { analyzeRecentTranscript, getPersonalReplyBank, savePersonalReply } from '../backend/services/assistant-service'
 import { isRetryableProviderError } from '../backend/services/assistant-service-retry-policy'
 import { getConfigStatus } from '../backend/services/config-service'
 import { getProfileContext } from '../backend/services/profile-service'
@@ -271,6 +271,8 @@ const registerIpcHandlers = () => {
     return getConfigStatus()
   })
 
+  ipcMain.handle('coqpi:personal-replies:list', (_, request) => getPersonalReplyBank(request))
+  ipcMain.handle('coqpi:personal-replies:save', (_, request, entry, approve) => savePersonalReply(request, entry, approve))
   ipcMain.handle('coqpi:profile:get-context', async () => {
     return getProfileContext()
   })

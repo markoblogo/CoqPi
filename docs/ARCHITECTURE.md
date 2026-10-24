@@ -16,6 +16,7 @@
 - **Preparation context adapter**: a thin local ABVX bridge that turns CoqPi `SessionContext` into a bounded `ContextRequest`, reads back a `ContextPack`, and returns only compact result fields to the renderer.
 - **React renderer**: renders the three UX modes, manages local transcript state, runs microphone selection and audio metering, and drives manual user actions.
 - **Backend services**: hold config validation, profile file handling, assistant analysis, realtime backend exchange, secure secret storage, and user settings persistence.
+- **Personal reply bank**: private atomic JSON store, explicit per-answer approval in Prepare, exact EN/FR latest-utterance matching and full context hash validation before local replay. See [contract and limits](PERSONAL_REPLY_BANK.md).
 - **Shared layer**: contains cross-process types plus transcript and cost estimation helpers.
 - **Opportunity services**: v2 overlay over the existing Finder append-only source, bounded Brave/Greenhouse/Lever/optional JobSpy discovery, immutable application packs, Google Workspace adapters, and approval-bound writes.
 

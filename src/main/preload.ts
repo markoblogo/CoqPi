@@ -296,6 +296,8 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:preparation-context:request', context)
   },
   assistant: {
+    getPersonalReplyBank: (request: AssistantAnalysisRequest) => ipcRenderer.invoke('coqpi:personal-replies:list', request),
+    savePersonalReply: (request: AssistantAnalysisRequest, entry: import('../shared/personal-reply-bank').PersonalReply, approve: boolean) => ipcRenderer.invoke('coqpi:personal-replies:save', request, entry, approve),
     cancel: (streamId: string) => ipcRenderer.send('coqpi:assistant:cancel', streamId),
     onProgress: (callback: (progress: AssistantProgress) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, progress: AssistantProgress) => callback(progress)

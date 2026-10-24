@@ -2416,6 +2416,34 @@ test('session context save and reload prune stale selected counterparty pack ids
   )
 })
 
+test('confirmed personal reply reaches analyze without a provider and invalidates on profile changes', async () => {
+  for (const [language,question,answer] of [['en','Tell me about yourself.','I designed a workflow for Acme.'],['fr','Présentez-vous.','J’ai conçu un workflow pour Acme.']]) {
+  await withLocalKnowledgeWorkspace(async () => {
+    let service, request, current, profile
+    const result = await withStubbedProviderRoute({
+      profileCount:1, requestOverrides:{responseStyle:'brief',answerLanguage:language,includeProfileContext:true,latestIncomingUtterance:question,transcriptText:question},
+      beforeAnalyze: async services => {
+        service = services.assistantService
+        profile = services.profileService
+        profile.getProfileContext = async () => ({content:'I designed a synthetic workflow for Acme.'})
+        request = makeRequest({responseStyle:'brief',answerLanguage:language,includeProfileContext:true,latestIncomingUtterance:question,transcriptText:question})
+        current = await service.getPersonalReplyBank(request)
+        assert.equal((await service.getPersonalReplyBank({...request,retrievalKinds:['job']})).scopeHash,current.scopeHash)
+        profile.getProfileContext = async () => ({content:'Updated owner facts'})
+        assert.notEqual((await service.getPersonalReplyBank(request)).scopeHash,current.scopeHash)
+        profile.getProfileContext = async () => ({content:'I designed a synthetic workflow for Acme.'})
+        assert.equal((await service.getPersonalReplyBank(request)).scopeHash,current.scopeHash)
+        assert.notEqual((await service.getPersonalReplyBank({...request,selectedCounterpartyPackIds:['missing-pack']})).scopeHash,current.scopeHash)
+        await service.savePersonalReply(request,{id:'',language,questions:[question],answer,evidence:['I designed a synthetic workflow for Acme.'],scopeHash:current.scopeHash,approvedHash:null},true)
+      },
+      fetchHandler: async () => assert.fail('Confirmed exact reply must not call a provider')
+    })
+    assert.equal(result.model,'reviewed-personal-reply')
+    assert.equal(result.suggestedAnswers[0].text,answer)
+  })
+  }
+})
+
 test('brief high-risk clarification bypasses providers and does not fabricate owner facts', async () => {
   for (const [answerLanguage, question] of [['en', 'Do you have unrestricted work authorization in Canada?'], ['fr', 'Pouvez-vous commencer lundi prochain ?']]) {
     await withLocalKnowledgeWorkspace(async () => {

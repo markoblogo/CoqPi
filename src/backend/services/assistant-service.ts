@@ -1,4 +1,8 @@
 import OpenAI from 'openai'
+import { createHash } from 'node:crypto'
+import { getAppInfo } from './app-state'
+import { readReplyBank, saveReply, matchPersonalReply } from './personal-reply-store'
+import { normalizeReplyQuestion, type PersonalReply, type PersonalReplyBank } from '../../shared/personal-reply-bank'
 import { getInterviewAnswerPattern } from '../../shared/interview-answer-patterns'
 import { getInterviewSafetyReply } from '../../shared/interview-safety-gate'
 import { BRIEF_ANALYSIS_SCHEMA, expandBriefAssistantOutput, readBriefProgress } from '../../shared/brief-assistant-output'
@@ -819,6 +823,32 @@ const attachAssistantFailureSource = (
   return withSource
 }
 
+export const getPersonalReplyBank = async (request: AssistantAnalysisRequest): Promise<PersonalReplyBank> => {
+  const context = request.sessionContext ?? (await getSessionContext()).context
+  const selectedIds = request.selectedCounterpartyPackIds ?? context?.selectedCounterpartyPackIds ?? []
+  const resolvedIds = await resolveSessionSelectedCounterpartyPackIds(selectedIds)
+  const ownerFacts = request.includeProfileContext ? (await getProfileContext()).content : ''
+  const snapshot = await buildUserPrompt({ ...request, sessionContext: context,
+    selectedCounterpartyPackIds: resolvedIds, transcriptText: 'Interview preparation context',
+    retrievalKinds: undefined, contextPackRetrievalKinds: undefined, retrievalProvider: 'legacy',
+    latestIncomingUtterance: undefined, responseStyle: 'brief', mode: 'full',
+    callLanguage: 'auto', answerLanguage: 'en', costMode: 'quality', recentWindowLabel: 'full' })
+  const packs = (await getCounterpartyContextPacks()).manifest.counterpartyPacks ?? []
+  const scopeHash = createHash('sha256').update(JSON.stringify({version:1, ownerFacts, snapshot,
+    context, selectedIds, packs:packs.filter(pack => selectedIds.includes(pack.id))})).digest('hex')
+  return {scopeHash, ownerFacts, entries: await readReplyBank(getAppInfo().sessionsDirectory)}
+}
+
+export const savePersonalReply = async (request: AssistantAnalysisRequest, entry: PersonalReply, approve: boolean) => {
+  if (!entry || typeof entry.id !== 'string' || typeof entry.answer !== 'string' ||
+      !Array.isArray(entry.questions) || !Array.isArray(entry.evidence)) throw new Error('Invalid personal reply')
+  if (request.assistantContextMode === 'simple') throw new Error('Use selected-context preparation for personal replies.')
+  const current = await getPersonalReplyBank(request)
+  const safe = sanitizeForExternalAssistant([entry.answer, ...entry.questions, ...entry.evidence].join('\n'))
+  if (safe.blocked || safe.safeText !== [entry.answer, ...entry.questions, ...entry.evidence].join('\n')) throw new Error('Remove sensitive data before saving this answer.')
+  return { ...current, entries: await saveReply(getAppInfo().sessionsDirectory, entry, current.scopeHash, current.ownerFacts, approve === true) }
+}
+
 export const analyzeRecentTranscript = async (
   request: AssistantAnalysisRequest,
   options: { onProgress?: (value: {meaningRu:string; answer:string}) => void; signal?: AbortSignal } = {}
@@ -860,6 +890,26 @@ export const analyzeRecentTranscript = async (
   const safetyReply = request.responseStyle === 'brief'
     ? getInterviewSafetyReply(request.latestIncomingUtterance?.trim() || request.transcriptText, request.answerLanguage)
     : null
+  if (request.responseStyle === 'brief' && request.includeProfileContext && request.assistantContextMode !== 'simple' &&
+      (!safetyReply || safetyReply.reason === 'behavioral-example')) {
+    // Read failures, ambiguity and stale approvals must never stop ordinary analysis.
+    try {
+      const entries = await readReplyBank(getAppInfo().sessionsDirectory)
+      const question = request.latestIncomingUtterance?.trim()
+      if (question && entries.some(entry => entry.approvedHash && entry.language === request.answerLanguage &&
+          entry.questions.some(alias => normalizeReplyQuestion(alias) === normalizeReplyQuestion(question)))) {
+        const current = await getPersonalReplyBank(resolvedRequest)
+        const reply = matchPersonalReply(current.entries, question, request.answerLanguage, current.scopeHash)
+        if (reply) {
+          options.signal?.throwIfAborted()
+          return { ...parseStructuredResponse(expandBriefAssistantOutput(JSON.stringify({
+            meaningRu: 'Подтверждённый персональный ответ.', answer: reply.answer
+          }))), model:'reviewed-personal-reply', provider:'local', promptVersion:'personal-bank-v1',
+          latencyMs:Math.round(performance.now() - analysisStartedAt), requestStartedAt, responseCompletedAt:new Date().toISOString() }
+        }
+      }
+    } catch { options.signal?.throwIfAborted() }
+  }
   if (safetyReply) {
     options.signal?.throwIfAborted()
     return {
