@@ -47,6 +47,16 @@ Stop invalidation at 400/520 px. A new physical-audio acceptance test was not ru
 Compatible undici updates (6.29.1 / 7.30.1) removed the newly reported dependency
 advisories; the dependency audit reported no known vulnerabilities afterwards.
 
+## Local delivery
+
+Full `pnpm check`: 379 tests passed, typecheck/lint/renderer build passed; dependency
+audit clean. Compact UI regression passed separately. The 0.3.6 macOS app was
+installed and launched from `/Applications/CoqPi.app`; startup showed key, profile
+and session ready. Installed ASAR matches the packaged build. Fourteen existing
+data/secret files were compared: only the intentionally expanded owner profile
+changed; recording and key files were unchanged. The prior app and profile were
+retained locally for rollback. No GitHub release or release tag was created.
+
 ## Limits and next work
 
 The gate uses patterns, not a semantic verifier. Unrecognized paraphrases and
