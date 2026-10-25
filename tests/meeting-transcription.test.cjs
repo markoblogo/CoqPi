@@ -21,6 +21,14 @@ const makeSession = (language = 'uk') =>
     now: '2026-08-13T10:00:00.000Z'
   })
 
+test('closing an already stopped recording preserves its original duration and timestamps', () => {
+  const stopped = stopMeetingTranscriptionSession(makeSession('fr'), '2026-08-13T10:05:00.000Z')
+  const closedLater = stopMeetingTranscriptionSession(stopped, '2026-10-24T12:00:00.000Z')
+  assert.equal(closedLater.endedAt, stopped.endedAt)
+  assert.equal(closedLater.stoppedAt, stopped.stoppedAt)
+  assert.equal(exportMeetingTranscriptMarkdown(closedLater), exportMeetingTranscriptMarkdown(stopped))
+})
+
 const apply = (session, event, now = '2026-08-13T10:00:04.000Z') =>
   applyMeetingTranscriptionRealtimeEvent({
     session,

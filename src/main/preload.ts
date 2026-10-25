@@ -1,4 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
+
+// A close acknowledgement must cover every active recorder, not the first subscriber.
+const recordingFlushCallbacks = new Set<() => Promise<void>>()
+ipcRenderer.on('coqpi:recording:flush-request', () => {
+  void Promise.allSettled([...recordingFlushCallbacks].map(callback => Promise.resolve().then(callback)))
+    .then(results => ipcRenderer.send('coqpi:recording:flushed', results.some(result => result.status === 'rejected')
+      ? 'Unable to save the latest recording. Export it before closing.' : null))
+})
 import type {
   AppUserSettings,
   AssistantAnalysisRequest,
@@ -313,9 +321,8 @@ contextBridge.exposeInMainWorld('coqpi', {
   },
   meetingTranscription: {
     onShutdown: (callback: () => Promise<void>) => {
-      const listener = () => { void callback().then(() => ipcRenderer.send('coqpi:recording:flushed', null)).catch(() => ipcRenderer.send('coqpi:recording:flushed', 'Unable to save the latest recording. Export it before closing.')) }
-      ipcRenderer.on('coqpi:recording:flush-request', listener)
-      return () => { ipcRenderer.removeListener('coqpi:recording:flush-request', listener) }
+      recordingFlushCallbacks.add(callback)
+      return () => { recordingFlushCallbacks.delete(callback) }
     },
     history: () => ipcRenderer.invoke('coqpi:meeting-transcription:history'),
     read: (id: string) => ipcRenderer.invoke('coqpi:meeting-transcription:read', id),
@@ -329,6 +336,15 @@ contextBridge.exposeInMainWorld('coqpi', {
       ipcRenderer.invoke('coqpi:meeting-transcription:backup-chunk', request),
     backupStop: (request: import('../shared/app-types').MeetingAudioBackupStopRequest) =>
       ipcRenderer.invoke('coqpi:meeting-transcription:backup-stop', request),
+    audioClip: (request: import('../shared/interview-audio-review').InterviewAudioRequest) => ipcRenderer.invoke('coqpi:practice:audio-clip', request),
+    repeatCreate: (request: import('../shared/interview-repeat').RepeatTarget) => ipcRenderer.invoke('coqpi:practice:repeat-create', request),
+    repeatList: (request: import('../shared/interview-repeat').RepeatTarget) => ipcRenderer.invoke('coqpi:practice:repeat-list', request),
+    repeatFinish: (request: { id: string; failed: boolean }) => ipcRenderer.invoke('coqpi:practice:repeat-finish', request),
+    repeatClip: (id: string) => ipcRenderer.invoke('coqpi:practice:repeat-clip', id),
+    repeatCompare: (request: { id: string; consent: true }) => ipcRenderer.invoke('coqpi:practice:repeat-compare', request),
+    audioReviewRead: (request: import('../shared/interview-audio-review').InterviewAudioRequest) => ipcRenderer.invoke('coqpi:practice:audio-review-read', request),
+    audioReview: (request: import('../shared/interview-audio-review').InterviewReviewRequest) => ipcRenderer.invoke('coqpi:practice:audio-review', request),
+    audioReviewDecide: (request: import('../shared/interview-audio-review').InterviewAudioRequest & { findingIndex: number; decision: 'confirmed' | 'dismissed' }) => ipcRenderer.invoke('coqpi:practice:audio-review-decide', request),
     recoverFromBackup: (request: MeetingTranscriptionRecoveryRequest) =>
       ipcRenderer.invoke('coqpi:meeting-transcription:recover-from-backup', request),
     clearCurrent: () =>

@@ -5,6 +5,7 @@ import { readReplyBank, saveReply, matchPersonalReply } from './personal-reply-s
 import { normalizeReplyQuestion, type PersonalReply, type PersonalReplyBank } from '../../shared/personal-reply-bank'
 import { getInterviewAnswerPattern } from '../../shared/interview-answer-patterns'
 import { getInterviewSafetyReply } from '../../shared/interview-safety-gate'
+import { virtualRequest } from '../../shared/virtual-interview'
 import { BRIEF_ANALYSIS_SCHEMA, expandBriefAssistantOutput, readBriefProgress } from '../../shared/brief-assistant-output'
 import type {
   AssistantCostMode,
@@ -568,6 +569,16 @@ const validateAssistantAnalysisResult = (
 }
 
 const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
+  if (request.practiceScenario === 'atelier-pilot-v1') {
+    const isolated = virtualRequest(request.answerLanguage === 'fr' ? 'fr' : 'en', request.latestIncomingUtterance ?? request.transcriptText, request.streamId ?? '')
+    const safe = sanitizeForExternalAssistant(JSON.stringify({
+      language: isolated.answerLanguage,
+      scenario: isolated.sessionContext,
+      latestIncomingUtterance: isolated.latestIncomingUtterance
+    }))
+    if (safe.blocked) throw new Error('Practice request blocked by privacy gate.')
+    return `Fictional interview rehearsal. Give a short ready-to-say proposed answer, not a coaching critique. Do not invent personal achievements. No real profile, memory, drafts or packs are included.\n${safe.safeText}`
+  }
   const processedTranscript = processTranscriptForAssistant(
     request.transcriptText,
     request.callLanguage
@@ -853,6 +864,9 @@ export const analyzeRecentTranscript = async (
   request: AssistantAnalysisRequest,
   options: { onProgress?: (value: {meaningRu:string; answer:string}) => void; signal?: AbortSignal } = {}
 ): Promise<AssistantAnalysisResult> => {
+  if (request.practiceScenario === 'atelier-pilot-v1') {
+    request = virtualRequest(request.answerLanguage === 'fr' ? 'fr' : 'en', request.latestIncomingUtterance ?? request.transcriptText, request.streamId ?? '')
+  }
   const analysisStartedAt = performance.now()
   const requestStartedAt = new Date().toISOString()
 
@@ -863,11 +877,11 @@ export const analyzeRecentTranscript = async (
   }
 
   const fallbackSessionContext =
-    request.assistantContextMode === 'simple'
+    request.assistantContextMode === 'simple' || request.practiceScenario === 'atelier-pilot-v1'
       ? undefined
       : (await getSessionContext()).context
   const selectedCounterpartyPackIds =
-    request.assistantContextMode === 'simple'
+    request.assistantContextMode === 'simple' || request.practiceScenario === 'atelier-pilot-v1'
       ? []
       : await resolveSessionSelectedCounterpartyPackIds(
           request.selectedCounterpartyPackIds ??
@@ -940,7 +954,7 @@ export const analyzeRecentTranscript = async (
       ? getInterviewAnswerPattern(request.latestIncomingUtterance || request.transcriptText)
       : '',
     request.responseStyle === 'coaching'
-      ? 'You are a language tutor. The transcript is the learner\'s answer. In meaningRu explain the most important language error in Russian (or say there is none). In detectedQuestion give the next short practice question in the requested language. In suggestedAnswers give one corrected natural version of the learner\'s answer. Put recurring error tags in keywordsToRemember. Do not invent biographical facts. Increase difficulty only if the supplied practice history shows success.'
+      ? 'You are a language tutor. The transcript is the learner\'s answer. TEXT ONLY; no audio evidence is supplied. Do not diagnose pronunciation, accent, stress, intonation or individual sounds from this transcript. A speech recognition error is not proof of a learner error. In risk state that pronunciation was not evaluated. In meaningRu explain the most important text-supported grammar or vocabulary issue in Russian (or say there is none); label uncertainty rather than invent an error. In detectedQuestion give the next short practice question in the requested language. In suggestedAnswers give one corrected natural version of the learner\'s answer, preserving its meaning; a valid paraphrase is not an error. Put only text-supported error tags in keywordsToRemember, never pronunciation diagnoses. Do not invent biographical facts. Increase difficulty only if the supplied practice history shows success; do not infer a certified proficiency level from a few turns.'
       : '',
     request.responseStyle === 'review'
       ? 'Review this completed conversation. In meaningRu give a short Russian recap. In detectedQuestion list the main unresolved question. In risk describe uncertainty or missing information. In suggestedAnswers give one optional follow-up message. Distinguish observed statements from inference; never invent outcomes.'

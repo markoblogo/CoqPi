@@ -11,6 +11,20 @@
 
 ## Main layers
 
+- **Virtual interview**: `VirtualInterviewSession` owns turn cancellation and
+  incremental recording; `VirtualInterviewPanel` adapts TTS, realtime microphone
+  and independent PCM backup. The existing Live analysis service enforces the
+  `atelier-pilot-v1` synthetic scope before profile/retrieval/bank access.
+- **Post-interview audio review**: backend-only `interview-audio-review` admits
+  stopped microphone ranges, sends a bounded WAV only after explicit consent,
+  and atomically stores hash-bound tentative feedback/owner decisions separately
+  from the transcript. It never participates in the Live hint critical path.
+- **Repeat practice**: `RepeatCapture` closes and flushes delayed microphone capture
+  through the shared shutdown barrier. Backend-issued attempt IDs bind separate
+  PCM backups to one hash-bound finding. A skeptical original-audio recheck gates
+  a paired-audio comparison; owner confirmation and evidence gates prevent
+  automatic improvement claims. Results never mutate interview recordings.
+
 - **Electron main process**: owns the desktop window, loads backend-only environment variables, registers IPC, and coordinates local services.
 - **Preload / IPC bridge**: exposes a narrow `window.coqpi` API with safe renderer access to config, profile, settings, secrets, assistant analysis, and realtime SDP exchange.
 - **Preparation context adapter**: a thin local ABVX bridge that turns CoqPi `SessionContext` into a bounded `ContextRequest`, reads back a `ContextPack`, and returns only compact result fields to the renderer.

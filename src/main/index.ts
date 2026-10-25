@@ -77,6 +77,8 @@ import {
   stopMeetingAudioBackup
 } from '../backend/services/meeting-recording-backup-service'
 import { recoverCurrentMeetingTranscriptFromBackup } from '../backend/services/meeting-transcription-recovery-service'
+import { readInterviewClip, readInterviewReview, reviewInterviewAudio, decideInterviewFinding } from '../backend/services/interview-audio-review'
+import { createInterviewRepeat, listInterviewRepeats, finishInterviewRepeat, readInterviewRepeatClip, compareInterviewRepeat } from '../backend/services/interview-repeat-service'
 import {
   deleteOpenAIKey,
   getOpenAIKeyStatus,
@@ -951,6 +953,16 @@ const registerIpcHandlers = () => {
     ): Promise<MeetingTranscriptionRecoveryResult> =>
       recoverCurrentMeetingTranscriptFromBackup(request)
   )
+
+  ipcMain.handle('coqpi:practice:audio-clip', (_event, request) => readInterviewClip(request))
+  ipcMain.handle('coqpi:practice:audio-review-read', (_event, request) => readInterviewReview(request))
+  ipcMain.handle('coqpi:practice:audio-review', (_event, request) => reviewInterviewAudio(request))
+  ipcMain.handle('coqpi:practice:audio-review-decide', (_event, request) => decideInterviewFinding(request))
+  ipcMain.handle('coqpi:practice:repeat-create', (_event, request) => createInterviewRepeat(request))
+  ipcMain.handle('coqpi:practice:repeat-list', (_event, request) => listInterviewRepeats(request))
+  ipcMain.handle('coqpi:practice:repeat-finish', (_event, request) => finishInterviewRepeat(request))
+  ipcMain.handle('coqpi:practice:repeat-clip', (_event, id) => readInterviewRepeatClip(id))
+  ipcMain.handle('coqpi:practice:repeat-compare', (_event, request) => compareInterviewRepeat(request))
 
   ipcMain.handle(
     'coqpi:meeting-transcription:clear-current',

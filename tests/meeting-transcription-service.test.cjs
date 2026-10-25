@@ -44,6 +44,35 @@ const withMeetingWorkspace = async (run) => {
   }
 }
 
+test('virtual interview journal restores timing, question, ME answer and hint after reopen', async () => {
+  await withMeetingWorkspace(async ({ service, shared }) => {
+    const { VirtualInterviewSession } = require('../dist-electron/shared/virtual-interview-session.js')
+    let count = 0
+    const interview = new VirtualInterviewSession({
+      id: () => `virtual-${++count}`, now: () => Date.now(), changed() {},
+      save: service.saveCurrentMeetingTranscriptionSession,
+      flush: service.flushMeetingTranscriptionWrites,
+      openAudio: async () => {}, closeAudio: async () => {}, speak: async () => {}, cancelSpeech() {},
+      listen: async () => {}, stopListening: async () => {}, cancel() {},
+      analyze: async () => ({ ok: true, data: { suggestedAnswers: [{ text: 'Synthetic hint' }], meaningRu: '', latencyMs: 20, model: 'fixture' } })
+    })
+    await interview.start('fr')
+    interview.receive({ type: 'input_audio_buffer.speech_stopped' })
+    interview.receive({ type: 'conversation.item.input_audio_transcription.completed', item_id: 'one', transcript: 'Synthetic learner answer' })
+    await interview.stop()
+    const restored = await service.getCurrentMeetingTranscriptionSession()
+    assert.equal(restored.practice.kind, 'virtual-interview')
+    assert.equal(restored.practice.turns[0].question, interview.session.practice.turns[0].question)
+    assert.equal(restored.practice.turns[0].answerStartedAt, interview.session.practice.turns[0].answerStartedAt)
+    assert.equal(restored.practice.turns[0].answerEndedAt, interview.session.practice.turns[0].answerEndedAt)
+    assert.equal(restored.practice.turns[0].expectedAnswer, 'Synthetic hint')
+    assert.equal(restored.segments[1].speaker, 'ME')
+    assert.equal(restored.assistantEvents[0].answer, 'Synthetic hint')
+    assert.match(shared.exportMeetingTranscriptMarkdown(restored), /Virtual interview timing/)
+    assert.match(shared.exportMeetingTranscriptMarkdown(restored), /Synthetic hint/)
+  })
+})
+
 test('a failed disk write does not poison subsequent transcript saves', async () => {
   await withMeetingWorkspace(async ({ service, shared, directory }) => {
     const sessions = path.join(directory, 'sessions')

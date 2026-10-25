@@ -1,0 +1,21 @@
+.virtual-interview { display: flex; flex: 1; flex-direction: column; gap: 12px; padding: 12px; min-width: 0; min-height: 0; overflow: auto; }
+.virtual-setup, .virtual-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.virtual-setup h2 { margin: 0; font-size: 18px; }
+.virtual-setup p { flex-basis: 100%; margin: 0; font-size: 13px; opacity: .8; }
+.virtual-controls > span { flex: 1; min-width: 0; }
+.virtual-toolbar { position: sticky; top: 0; z-index: 1; background: var(--surface-0); padding: 4px 0; }
+.virtual-interview button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; }
+.virtual-question { margin: 0; font-size: 15px; line-height: 1.4; opacity: .8; overflow-wrap: anywhere; }
+.virtual-hint { font-size: 24px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
+.virtual-answer { font-size: 13px; line-height: 1.4; max-height: 90px; overflow: auto; overflow-wrap: anywhere; }
+.virtual-results { font-size: 13px; overflow-wrap: anywhere; }
+.virtual-interview select, .virtual-interview textarea { max-width: 100%; }
+.virtual-interview button, .virtual-interview select, .virtual-interview textarea { appearance: none; border: 1px solid var(--surface-border-strong); border-radius: 6px; background: var(--surface-2); color: var(--text-soft); padding: 6px 10px; box-shadow: none; font-size: 13px; }
+.virtual-interview button:hover:not(:disabled) { background: var(--surface-3); border-color: var(--accent); }
+.virtual-interview button:disabled { opacity: .45; cursor: default; }
+.virtual-interview button:focus-visible, .virtual-interview select:focus-visible, .virtual-interview textarea:focus-visible, .virtual-interview summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.virtual-interview textarea { display: block; width: 100%; min-height: 70px; margin: 8px 0; }
+.virtual-interview summary { cursor: pointer; color: var(--text-muted); font-size: 13px; padding: 4px 0; }
+.virtual-interview [role="alert"] { color: var(--warning); font-size: 13px; margin: 0; }
+.virtual-finding { padding: 12px 0; border-top: 1px solid var(--border, #444); overflow-wrap: anywhere; }
+.virtual-results audio { width: 100%; margin: 8px 0; }

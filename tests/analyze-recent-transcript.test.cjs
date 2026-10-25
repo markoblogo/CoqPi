@@ -2496,10 +2496,32 @@ test('review and language coaching avoid unrelated profile and retrieval context
       fetchHandler: async (_url, init) => {
         const prompt = JSON.parse(init.body).messages[1].content
         assert.match(prompt, /Please review this practice answer/)
+        if (responseStyle === 'coaching') {
+          assert.match(prompt, /TEXT ONLY; no audio evidence is supplied/)
+          assert.match(prompt, /Do not diagnose pronunciation/)
+          assert.match(prompt, /speech recognition error is not proof/)
+        }
         return makeOllamaResponse({ message: { content: JSON.stringify({meaningRu:'Разбор',detectedQuestion:'What next?',intent:'practice',risk:'low',suggestedAnswers:[{label:'short',text:'I can explain my work clearly.',answerMeaningRu:'Я могу объяснить свою работу.'}],keywordsToRemember:[],openingPhrase:'Let us practice.'}) } })
       }
     }))
   }
+})
+
+test('virtual interview reaches Live provider with explicit fictional context and no owner biography', async () => {
+  const { virtualRequest, virtualQuestions } = require('../dist-electron/shared/virtual-interview.js')
+  await withLocalKnowledgeWorkspace(() => withStubbedProviderRoute({
+    profileCount: 1,
+    requestOverrides: { ...virtualRequest('fr', virtualQuestions.fr[2], 'virtual-test'), includeProfileContext: true, selectedCounterpartyPackIds: ['must-not-load'], sessionContext: { company: 'UNRELATED PRIVATE TARGET', context: 'MUST NOT LEAK', selectedCounterpartyPackIds: ['must-not-load'] } },
+    beforeAnalyze: async ({ profileService }) => { profileService.getProfileContext = async () => { throw new Error('Virtual interview must not read real biography') } },
+    onRetrievalCall: () => assert.fail('Virtual interview must not retrieve owner knowledge'),
+    fetchHandler: async (_url, init) => {
+      const prompt = JSON.stringify(JSON.parse(init.body).messages)
+      assert.match(prompt, /FICTIONAL EXERCISE ONLY/)
+      assert.match(prompt, /sans réduire les tests/)
+      assert.doesNotMatch(prompt, /UNRELATED PRIVATE TARGET|MUST NOT LEAK|must-not-load/)
+      return makeOllamaResponse({ message: { content: JSON.stringify({ meaningRu: 'Приоритеты без сокращения тестов', detectedQuestion: virtualQuestions.fr[2], intent: 'interview', risk: 'low', suggestedAnswers: [{ label: 'short', text: 'Je limiterais le périmètre du pilote sans réduire les tests.', answerMeaningRu: 'Я бы сократил объём пилота, но не тесты.' }], keywordsToRemember: [], openingPhrase: 'Je proposerais un pilote.' }) } })
+    }
+  }))
 })
 
 test('analyzeRecentTranscript returns structured result on valid Ollama JSON', async () => {

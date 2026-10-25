@@ -295,8 +295,17 @@ declare global {
         ) => Promise<RealtimeTranscriptionResponse>
       }
       meetingTranscription: {
+        repeatCreate: (request: import('../shared/interview-repeat').RepeatTarget) => Promise<import('../shared/interview-repeat').RepeatAttempt>
+        repeatList: (request: import('../shared/interview-repeat').RepeatTarget) => Promise<import('../shared/interview-repeat').RepeatAttempt[]>
+        repeatFinish: (request: { id: string; failed: boolean }) => Promise<import('../shared/interview-repeat').RepeatAttempt>
+        repeatClip: (id: string) => Promise<{ base64: string; durationMs: number }>
+        repeatCompare: (request: { id: string; consent: true }) => Promise<import('../shared/interview-repeat').RepeatAttempt>
+        audioClip: (request: import('../shared/interview-audio-review').InterviewAudioRequest) => Promise<{ base64: string; durationMs: number }>
+        audioReviewRead: (request: import('../shared/interview-audio-review').InterviewAudioRequest) => Promise<import('../shared/interview-audio-review').InterviewAudioReview | null>
+        audioReview: (request: import('../shared/interview-audio-review').InterviewReviewRequest) => Promise<import('../shared/interview-audio-review').InterviewAudioReview>
+        audioReviewDecide: (request: import('../shared/interview-audio-review').InterviewAudioRequest & { findingIndex: number; decision: 'confirmed' | 'dismissed' }) => Promise<import('../shared/interview-audio-review').InterviewAudioReview>
         onShutdown: (callback: () => Promise<void>) => () => void
-        history: () => Promise<Array<Pick<MeetingTranscriptionSession, 'id' | 'startedAt' | 'endedAt' | 'language' | 'mode'> & { segmentCount: number }>>
+        history: () => Promise<Array<Pick<MeetingTranscriptionSession, 'id' | 'startedAt' | 'endedAt' | 'language' | 'mode' | 'scenario'> & { segmentCount: number }>>
         read: (id: string) => Promise<MeetingTranscriptionSession | null>
         getCurrent: () => Promise<MeetingTranscriptionSession | null>
         saveCurrent: (

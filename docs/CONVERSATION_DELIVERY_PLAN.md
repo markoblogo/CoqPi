@@ -89,6 +89,12 @@ this is not a fifteen-minute voice test.
 
 ## 4. Practice, prepare, review
 
+The [training plan](TRAINING_REHEARSAL_PLAN.md) now has its first bounded
+virtual-interview loop: five EN/FR questions, actual Live hints, voice answers,
+incremental transcript, independent microphone backup and persisted timings.
+Next are audio-evidenced pronunciation, exact submitted-CV voice rehearsal and
+continuous tutoring. Pronunciation cannot be graded from STT text alone.
+
 Training now offers a language lesson and interview rehearsal. A lesson accepts
 voice or text, can read the question aloud through system speech synthesis,
 returns a corrected answer, Russian explanation and next question, and uses

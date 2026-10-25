@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Mic, Square, Volume2 } from 'lucide-react'
 import { RealtimeTranscriptionClient } from './realtime/realtime-transcription-client'
+import { VirtualInterviewPanel } from './VirtualInterviewPanel'
 import {
   simpleAssistantScenarioIds,
   type AssistantAnswerLanguage,
@@ -36,7 +37,7 @@ export const TrainingPanel = ({ initialMode = 'coach' }: { initialMode?: 'coach'
   const [scenarioId, setScenarioId] =
     useState<SimpleAssistantScenarioId>('france-job-interview')
   const [language, setLanguage] = useState<AssistantAnswerLanguage>('fr')
-  const [practiceMode, setPracticeMode] = useState<'coach' | 'rehearsal'>(initialMode)
+  const [practiceMode, setPracticeMode] = useState<'coach' | 'rehearsal' | 'virtual'>(initialMode)
   const [question, setQuestion] = useState('Parlez-moi de votre parcours professionnel.')
   const [listening, setListening] = useState(false)
   const voice = useRef<RealtimeTranscriptionClient | null>(null)
@@ -200,6 +201,8 @@ export const TrainingPanel = ({ initialMode = 'coach' }: { initialMode?: 'coach'
 
   const answer = result?.suggestedAnswers[0]
 
+  if (practiceMode === 'virtual') return <VirtualInterviewPanel onBack={() => setPracticeMode('coach')} />
+
   return (
     <main className="training-layout">
       <section className="panel training-intro">
@@ -208,7 +211,7 @@ export const TrainingPanel = ({ initialMode = 'coach' }: { initialMode?: 'coach'
             <p className="eyebrow">Training lab</p>
             <h1>Conversation practice</h1>
           </div>
-          <select aria-label="Practice mode" value={practiceMode} onChange={event => setPracticeMode(event.target.value as 'coach' | 'rehearsal')}><option value="coach">Language lesson</option><option value="rehearsal">Interview rehearsal</option></select>
+          <select aria-label="Practice mode" disabled={listening || isAnalyzing} value={practiceMode} onChange={event => setPracticeMode(event.target.value as 'coach' | 'rehearsal' | 'virtual')}><option value="coach">Language lesson</option><option value="virtual">Virtual interview</option><option value="rehearsal">Prepared interview (text)</option></select>
         </div>
       </section>
 

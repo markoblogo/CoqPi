@@ -1534,14 +1534,14 @@ export const App = () => {
   useEffect(() => {
     const flushMeetingTranscript = () => {
       void stopRawAudioBackup().catch(() => undefined)
-      if (meetingSessionRef.current) void window.coqpi.meetingTranscription.saveCurrent(meetingSessionRef.current)
+      if (activeTab !== 'training' && meetingSessionRef.current) void window.coqpi.meetingTranscription.saveCurrent(meetingSessionRef.current)
       void window.coqpi.meetingTranscription.flush()
     }
 
     window.addEventListener('beforeunload', flushMeetingTranscript)
     return () =>
       window.removeEventListener('beforeunload', flushMeetingTranscript)
-  }, [stopRawAudioBackup])
+  }, [stopRawAudioBackup, activeTab])
 
   useEffect(() => window.coqpi.meetingTranscription.onShutdown(async () => {
     recordingStartSequenceRef.current += 1
@@ -1549,13 +1549,13 @@ export const App = () => {
     try { await realtimeClientRef.current?.stop() }
     finally { await stopRawAudioBackup() }
     const current = meetingSessionRef.current
-    if (current) {
+    if (current && activeTab !== 'training') {
       const stopped = stopMeetingTranscriptionSession(current, new Date().toISOString())
       meetingSessionRef.current = stopped
       await window.coqpi.meetingTranscription.saveCurrent(stopped)
     }
     await window.coqpi.meetingTranscription.flush()
-  }), [stopRawAudioBackup, invalidateAssistant])
+  }), [stopRawAudioBackup, invalidateAssistant, activeTab])
 
   useEffect(() => {
     const loadInitialState = async () => {

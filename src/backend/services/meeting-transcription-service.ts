@@ -166,6 +166,14 @@ const sanitizeSession = (value: unknown): MeetingTranscriptionSession | null => 
 
   return {
     id,
+    practice: candidate.practice?.kind === 'virtual-interview' && Array.isArray(candidate.practice.turns)
+      ? { kind: 'virtual-interview', turns: candidate.practice.turns.slice(0, 5).filter(turn => turn && typeof turn.question === 'string' && typeof turn.requestedAt === 'string').map(turn => ({
+          question: turn.question.slice(0, 2000), requestedAt: turn.requestedAt,
+          input: turn.input === 'typed' ? 'typed' : 'voice',
+          ...Object.fromEntries(['questionAudioEndedAt', 'speechEndedAt', 'answerFinalAt', 'answerStartedAt', 'answerEndedAt', 'expectedAnswer', 'model', 'error'].filter(key => typeof (turn as unknown as Record<string, unknown>)[key] === 'string').map(key => [key, String((turn as unknown as Record<string, unknown>)[key]).slice(0, 2000)])),
+          ...Object.fromEntries(['firstHintMs', 'fullHintMs', 'modelMs', 'sttFinalMs'].filter(key => { const value = (turn as unknown as Record<string, unknown>)[key]; return typeof value === 'number' && Number.isFinite(value) && value >= 0 }).map(key => [key, (turn as unknown as Record<string, unknown>)[key]]))
+        })) }
+      : undefined,
     assistantEvents: Array.isArray(candidate.assistantEvents) ? candidate.assistantEvents
       .filter(event => event && typeof event.timestamp === 'string' && typeof event.answer === 'string')
       .map(event => ({ timestamp: event.timestamp, answer: event.answer, meaning: sanitizeText(event.meaning), model: sanitizeText(event.model), latencyMs: typeof event.latencyMs === 'number' ? event.latencyMs : undefined, language: sanitizeText(event.language) })) : [],
@@ -243,7 +251,7 @@ export const getMeetingTranscriptionHistory = async () => {
   }))
   return sessions.filter((session): session is MeetingTranscriptionSession => session !== null)
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt))
-    .map(({ id, startedAt, endedAt, language, mode, segments }) => ({ id, startedAt, endedAt, language, mode, segmentCount: segments.length }))
+    .map(({ id, startedAt, endedAt, language, mode, scenario, segments }) => ({ id, startedAt, endedAt, language, mode, scenario, segmentCount: segments.length }))
 }
 
 export const getArchivedMeetingTranscriptionSession = async (id: string) =>

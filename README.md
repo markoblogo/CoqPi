@@ -44,6 +44,18 @@ First-text timing and full-answer timing are distinct; model comparisons remain 
 
 ### Interview answer safety
 
+Learning now includes a [complete bounded virtual interview](docs/VIRTUAL_INTERVIEW.md):
+five spoken EN/FR questions, real Live hints, microphone answers, independent WAV
+backup, incremental transcript and saved timings. Fictional context is isolated
+from personal CVs and approved replies. After Stop, **Voice answer review** can
+send one explicitly selected microphone clip to OpenAI for tentative audio-backed
+feedback, replay the recording and speak a correct example. Confirm/Dismiss stays
+local. **Repeat & compare** saves a separate short attempt, rechecks the original
+recommendation and compares audio only after explicit consent. Identical audio,
+unconfirmed advice or insufficient evidence cannot count as improvement; model
+feedback remains experimental. No automatic mistake promotion or pronunciation score. Submitted-CV voice
+rehearsal remains a future pass. See [audio review](docs/INTERVIEW_AUDIO_REVIEW.md).
+
 EN/FR brief responses distinguish owner facts from interviewer assertions and
 proposed commitments. Recognized high-risk questions (work authorization,
 availability, accepting terms, asserted achievements and missing behavioral
@@ -81,7 +93,7 @@ CoqPi keeps the communication loop in one desktop app:
 
 - **Live** transcribes an active microphone, follows EN/FR/RU/UK language changes, and prepares one short response.
 - **Transcribe** records a plain local meeting transcript without assistant analysis.
-- **Training** supports interview rehearsal and language correction with local feedback history.
+- **Training** offers a five-question virtual interview with Live hints, voice answers, recording and timings; existing text rehearsal and language correction remain available. Audio pronunciation assessment, adaptive follow-ups and submitted-CV voice rehearsal remain in the [training plan](docs/TRAINING_REHEARSAL_PLAN.md).
 - **Prepare** builds a reviewed session brief from explicitly selected context.
 
 Finder, Gmail/Calendar and Monitor integrations remain legacy/optional backend
@@ -143,7 +155,7 @@ models; recorded measurements apply only to the actual tested configuration.
 
 ## First useful test
 
-1. Open **Training** and submit one short mock interview question.
+1. Open **Learning -> Virtual interview**, choose EN/FR and start the fictional five-question exercise.
 2. Check the answer, language, model, and latency.
 3. Open **Transcribe**, select the microphone and language, and record a short local sample.
 4. Stop the sample. If finalized text is missing but the audio backup completed,
