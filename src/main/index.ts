@@ -79,6 +79,9 @@ import {
 import { recoverCurrentMeetingTranscriptFromBackup } from '../backend/services/meeting-transcription-recovery-service'
 import { readInterviewClip, readInterviewReview, reviewInterviewAudio, decideInterviewFinding } from '../backend/services/interview-audio-review'
 import { createInterviewRepeat, listInterviewRepeats, finishInterviewRepeat, readInterviewRepeatClip, compareInterviewRepeat } from '../backend/services/interview-repeat-service'
+import { createRehearsalSnapshot, listRehearsalSnapshots } from '../backend/services/personal-rehearsal-context'
+import { nextRehearsalQuestion, reviewPersonalRehearsal, readPersonalRehearsalReport } from '../backend/services/personal-rehearsal-service'
+import { readRehearsalMaterialFile, loadRehearsalPublicPage } from '../backend/services/rehearsal-material-service'
 import {
   deleteOpenAIKey,
   getOpenAIKeyStatus,
@@ -265,6 +268,16 @@ const createMainWindow = async () => {
 }
 
 const registerIpcHandlers = () => {
+  ipcMain.handle('coqpi:rehearsal:create', (_event, draft) => createRehearsalSnapshot(draft))
+  ipcMain.handle('coqpi:rehearsal:list', () => listRehearsalSnapshots())
+  ipcMain.handle('coqpi:rehearsal:question', (_event, request) => nextRehearsalQuestion(request))
+  ipcMain.handle('coqpi:rehearsal:review', (_event, request) => reviewPersonalRehearsal(request))
+  ipcMain.handle('coqpi:rehearsal:review-read', (_event, request) => readPersonalRehearsalReport(request))
+  ipcMain.handle('coqpi:rehearsal:public-page', (_event, url) => loadRehearsalPublicPage(url))
+  ipcMain.handle('coqpi:rehearsal:pick-material', async () => {
+    const result = await dialog.showOpenDialog({ title: 'Choose exact interview material', properties: ['openFile'], filters: [{ name: 'Documents', extensions: ['txt', 'md', 'json', 'csv', 'pdf', 'docx', 'pptx', 'html'] }] })
+    return result.canceled || !result.filePaths[0] ? null : readRehearsalMaterialFile(result.filePaths[0])
+  })
   const assistantStreams = new Map<string, AbortController>()
   ipcMain.on('coqpi:assistant:cancel', (event, streamId: unknown) => {
     if (typeof streamId === 'string') assistantStreams.get(`${event.sender.id}:${streamId}`)?.abort()

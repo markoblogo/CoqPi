@@ -107,7 +107,7 @@ export interface MeetingTranscriptionInterim {
 }
 
 export interface MeetingTranscriptionSession {
-  practice?: { kind: 'virtual-interview'; turns: import('./virtual-interview').InterviewTurnTiming[] }
+  practice?: { kind: 'virtual-interview' | 'personal-interview'; snapshotId?: string; snapshotHash?: string; company?: string; turns: import('./virtual-interview').InterviewTurnTiming[] }
   assistantEvents?: Array<{ timestamp: string; answer: string; meaning: string; model?: string; latencyMs?: number; language?: string }>
   audioBackup?: {
     manifestId: string
@@ -525,7 +525,7 @@ export const exportMeetingTranscriptMarkdown = (
   }
 
   if (session.practice) {
-    lines.push('', '## Virtual interview timing', '', 'Fictional practice. First text is not a validated complete answer. Question audio is generated, not incoming-call STT. Optional audio feedback is stored separately from this transcript.', '')
+    lines.push('', session.practice.kind === 'personal-interview' ? '## Personal interview timing' : '## Virtual interview timing', '', session.practice.kind === 'personal-interview' ? `Company: ${session.practice.company ?? 'unknown'}; material snapshot: ${session.practice.snapshotId ?? 'unknown'}; hash: ${session.practice.snapshotHash ?? 'unknown'}.` : 'Fictional practice.', 'First text is not a validated complete answer. Question audio is generated, not incoming-call STT. Optional audio feedback is stored separately from this transcript.', '')
     session.practice.turns.forEach((turn, index) => lines.push(`${index + 1}. ${turn.question}`, `Input: ${turn.input}; first text: ${turn.firstHintMs ?? 'unavailable'} ms; full hint: ${turn.fullHintMs ?? 'unavailable'} ms; model: ${turn.modelMs ?? 'unavailable'} ms; STT after speech end: ${turn.sttFinalMs ?? 'unavailable'} ms${turn.error ? `; error: ${turn.error}` : ''}`))
     lines.push('', '## Suggested answers', '')
     for (const event of session.assistantEvents ?? []) lines.push(`[${formatSegmentOffset(session, event.timestamp)}] ${event.answer}`)

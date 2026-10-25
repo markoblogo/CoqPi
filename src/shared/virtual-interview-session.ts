@@ -18,10 +18,15 @@ export interface InterviewDependencies {
   id: () => string
   now: () => number
 }
+export interface PersonalInterviewScenario {
+  snapshotId: string; snapshotHash: string; company: string; maxTurns: number
+  question: (session: MeetingTranscriptionSession, index: number) => Promise<string>
+  request: (sessionId: string, language: 'en' | 'fr', question: string, streamId: string) => ReturnType<typeof virtualRequest>
+}
 
 export class VirtualInterviewSession {
   session: MeetingTranscriptionSession | null = null
-  phase: 'idle' | 'starting' | 'question' | 'connecting' | 'answer' | 'stopping' | 'stopped' = 'idle'
+  phase: 'idle' | 'starting' | 'preparing' | 'question-error' | 'question' | 'connecting' | 'answer' | 'stopping' | 'stopped' = 'idle'
   index = -1
   hint = ''
   error = ''
@@ -33,7 +38,8 @@ export class VirtualInterviewSession {
   private stopping: Promise<void> | null = null
   private seen = new Set<string>()
 
-  constructor(private readonly deps: InterviewDependencies) {}
+  constructor(private readonly deps: InterviewDependencies, private readonly scenario?: PersonalInterviewScenario) {}
+  get maxTurns() { return this.scenario?.maxTurns ?? 5 }
   private date() { return new Date(this.deps.now()).toISOString() }
   private notify() { this.deps.changed() }
   private persist() {
@@ -50,8 +56,8 @@ export class VirtualInterviewSession {
     this.seen.clear()
     const generation = ++this.generation
     this.session = { id: this.deps.id(), language, inputLabel: 'Microphone / virtual interviewer',
-      mode: 'copilot', scenario: 'FICTIONAL virtual interview', startedAt: this.date(), status: 'recording',
-      segments: [], interim: {}, assistantEvents: [], practice: { kind: 'virtual-interview', turns: [] } }
+      mode: 'copilot', scenario: this.scenario ? 'PERSONAL interview rehearsal' : 'FICTIONAL virtual interview', startedAt: this.date(), status: 'recording',
+      segments: [], interim: {}, assistantEvents: [], practice: this.scenario ? { kind: 'personal-interview', snapshotId: this.scenario.snapshotId, snapshotHash: this.scenario.snapshotHash, company: this.scenario.company, turns: [] } : { kind: 'virtual-interview', turns: [] } }
     this.notify()
     this.opening = (async () => { await this.persist(); if (generation === this.generation) await this.deps.openAudio(this.session!.id) })()
     try {
@@ -65,23 +71,29 @@ export class VirtualInterviewSession {
   }
 
   async next() {
-    if (!this.session || !['starting', 'answer'].includes(this.phase)) return
+    if (!this.session || !['starting', 'answer', 'question-error'].includes(this.phase)) return
     if (this.index >= 0 && !this.session.segments.some(segment => segment.sourceItemId?.startsWith(`turn-${this.index}:`))) return
-    if (this.index === 4) { await this.stop(); return }
+    if (this.index === this.maxTurns - 1) { await this.stop(); return }
     const generation = ++this.generation
     if (this.streamId) this.deps.cancel(this.streamId)
-    this.phase = 'question'; this.hint = ''; this.error = ''; this.notify()
+    this.phase = this.scenario ? 'preparing' : 'question'; this.hint = ''; this.error = ''; this.notify()
     await this.deps.stopListening()
     if (generation !== this.generation) return
     if (this.index >= 0) this.session.practice!.turns[this.index].answerEndedAt = this.date()
-    this.index++
     const language = this.session.language as 'en' | 'fr'
-    const question = virtualQuestions[language][this.index]
-    this.session.segments.push({ id: this.deps.id(), startTime: this.date(), text: question, speaker: 'VIRTUAL INTERVIEWER', source: 'unknown', language, isFinal: true })
+    let question: string
+    try {
+      if (this.scenario) await this.persist()
+      if (generation !== this.generation) return
+      question = this.scenario ? await this.scenario.question(this.session, this.index + 1) : virtualQuestions[language][this.index + 1]
+    } catch (error) { if (generation === this.generation) { this.phase = 'question-error'; this.error = 'Question unavailable. Retry or Stop; recording is preserved.'; this.notify() }; throw error }
+    if (generation !== this.generation) return
+    this.index++; this.phase = 'question'
+    this.session.segments.push({ id: this.deps.id(), startTime: this.date(), text: question, speaker: this.scenario ? 'PRACTICE INTERVIEWER' : 'VIRTUAL INTERVIEWER', source: 'unknown', language, isFinal: true })
     this.started = this.deps.now()
     this.session.practice!.turns.push({ question, requestedAt: this.date(), input: 'voice' })
     this.streamId = this.deps.id()
-    const request = virtualRequest(language, question, this.streamId)
+    const request = this.scenario ? this.scenario.request(this.session.id, language, question, this.streamId) : virtualRequest(language, question, this.streamId)
     await this.persist()
     if (generation !== this.generation) return
     this.notify()
@@ -133,7 +145,7 @@ export class VirtualInterviewSession {
   }
 
   receive(event: SpeechEvent) {
-    if (this.phase !== 'answer' || !this.session) return
+    if (this.phase !== 'answer' || !this.session || this.index < 0) return
     const turn = this.session.practice!.turns[this.index]
     if (event.type === 'input_audio_buffer.speech_stopped') { turn.speechEndedAt = this.date(); return }
     const item = event.item_id || 'pending'
@@ -153,7 +165,7 @@ export class VirtualInterviewSession {
   }
 
   typed(text: string) {
-    if (this.phase !== 'answer' || !text.trim()) return
+    if (this.phase !== 'answer' || this.index < 0 || !text.trim()) return
     this.session!.segments.push({ id: this.deps.id(), startTime: this.date(), text: text.trim(), isFinal: true,
       source: 'unknown', speaker: 'ME (typed)', language: this.session!.language, sourceItemId: `turn-${this.index}:typed-${this.deps.id()}` })
     const turn = this.session!.practice!.turns[this.index]

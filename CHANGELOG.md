@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — local build 0.3.11
+
+- Personal EN/FR interview rehearsal freezes the exact submitted CV, vacancy and
+  company materials, with explicit review and immutable scope hashes.
+- Adaptive questions reuse saved voice answers; hints use the real Live path
+  without global biography or unrelated context. Missing past-event evidence
+  calls for a conditional approach rather than an invented anecdote.
+- Independent WAV backup, incremental transcript, timings and existing audio
+  review also apply to personal rehearsals. Manual post-Stop reviews have exact
+  evidence quotes and can be reopened without another model call.
+- Fixed duplicate review-block identity and flex shrinking in compact practice views.
+
 ## 0.3.5 — 2026-10-23
 
 - Live requests explicitly separate the latest finalized incoming utterance from conversation history, avoiding repeated old questions after language switches.

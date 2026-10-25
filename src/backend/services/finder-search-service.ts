@@ -303,6 +303,12 @@ const defaultFinderPublicPageFetcher: FinderPublicPageFetcher = async (url) => {
 }
 
 let finderPublicPageFetcher: FinderPublicPageFetcher = defaultFinderPublicPageFetcher
+export const fetchPublicPreparationExcerpt = async (sourceUrl: string) => {
+  const normalizedUrl = validateFinderPublicPageUrl(sourceUrl)
+  const page = await finderPublicPageFetcher(normalizedUrl)
+  validateFinderPublicPageUrl(page.finalUrl)
+  return { label: page.title || page.heading || normalizedUrl, text: [page.title, page.description, page.excerpt].filter(Boolean).join('\n'), locator: page.finalUrl }
+}
 
 const buildFinderPublicPageSourceText = (page: FinderPublicPageSnapshot) =>
   [

@@ -294,6 +294,15 @@ declare global {
           request: RealtimeTranscriptionStartRequest
         ) => Promise<RealtimeTranscriptionResponse>
       }
+      rehearsal: {
+        create: (draft: import('../shared/personal-rehearsal').RehearsalDraft) => Promise<import('../shared/personal-rehearsal').RehearsalSummary>
+        list: () => Promise<import('../shared/personal-rehearsal').RehearsalSummary[]>
+        question: (request: { snapshotId: string; sessionId: string; index: number }) => Promise<import('../shared/personal-rehearsal').RehearsalQuestion>
+        review: (request: { snapshotId: string; sessionId: string }) => Promise<import('../shared/personal-rehearsal').RehearsalReport>
+        readReview: (request: { snapshotId: string; sessionId: string }) => Promise<import('../shared/personal-rehearsal').RehearsalReport | null>
+        publicPage: (url: string) => Promise<import('../shared/personal-rehearsal').RehearsalMaterial>
+        pickMaterial: () => Promise<import('../shared/personal-rehearsal').RehearsalMaterial | null>
+      }
       meetingTranscription: {
         repeatCreate: (request: import('../shared/interview-repeat').RepeatTarget) => Promise<import('../shared/interview-repeat').RepeatAttempt>
         repeatList: (request: import('../shared/interview-repeat').RepeatTarget) => Promise<import('../shared/interview-repeat').RepeatAttempt[]>
@@ -305,7 +314,7 @@ declare global {
         audioReview: (request: import('../shared/interview-audio-review').InterviewReviewRequest) => Promise<import('../shared/interview-audio-review').InterviewAudioReview>
         audioReviewDecide: (request: import('../shared/interview-audio-review').InterviewAudioRequest & { findingIndex: number; decision: 'confirmed' | 'dismissed' }) => Promise<import('../shared/interview-audio-review').InterviewAudioReview>
         onShutdown: (callback: () => Promise<void>) => () => void
-        history: () => Promise<Array<Pick<MeetingTranscriptionSession, 'id' | 'startedAt' | 'endedAt' | 'language' | 'mode' | 'scenario'> & { segmentCount: number }>>
+        history: () => Promise<Array<Pick<MeetingTranscriptionSession, 'id' | 'startedAt' | 'endedAt' | 'language' | 'mode' | 'scenario'> & { segmentCount: number; practiceCompany?: string }>>
         read: (id: string) => Promise<MeetingTranscriptionSession | null>
         getCurrent: () => Promise<MeetingTranscriptionSession | null>
         saveCurrent: (

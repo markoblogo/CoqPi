@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { app } from 'electron'
 
 const execFileAsync = promisify(execFile)
 const MARKITDOWN_TIMEOUT_MS = 60000
@@ -38,7 +39,9 @@ const resolveMarkItDownPython = async () => {
 
 const defaultMarkItDownRunner: MarkItDownRunner = async (filePath) => {
   const python = await resolveMarkItDownPython()
-  const scriptPath = path.join(process.cwd(), 'scripts', 'markitdown_adapter.py')
+  const scriptPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'app.asar.unpacked', 'scripts', 'markitdown_adapter.py')
+    : path.join(typeof app.getAppPath === 'function' ? app.getAppPath() : process.cwd(), 'scripts', 'markitdown_adapter.py')
   const { stdout } = await execFileAsync(python, [scriptPath, filePath], {
     timeout: MARKITDOWN_TIMEOUT_MS,
     maxBuffer: 10 * 1024 * 1024

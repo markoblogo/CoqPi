@@ -17,6 +17,9 @@
 
 > **MVP:** CoqPi is useful for local preparation and transcription, but it has not yet completed repeated real-call latency and speaker-attribution validation.
 
+Current source and locally verified app: **0.3.11**. GitHub Release downloads may
+lag behind source; this update is published as source, without a new release artifact.
+
 ### Compact communication workspace
 
 The current source opens with three modes: Conversation, Recorder and Learning.
@@ -53,8 +56,37 @@ feedback, replay the recording and speak a correct example. Confirm/Dismiss stay
 local. **Repeat & compare** saves a separate short attempt, rechecks the original
 recommendation and compares audio only after explicit consent. Identical audio,
 unconfirmed advice or insufficient evidence cannot count as improvement; model
-feedback remains experimental. No automatic mistake promotion or pronunciation score. Submitted-CV voice
-rehearsal remains a future pass. See [audio review](docs/INTERVIEW_AUDIO_REVIEW.md).
+feedback remains experimental. No automatic mistake promotion or pronunciation score.
+[Personal interview rehearsal](docs/PERSONAL_INTERVIEW_REHEARSAL.md) now freezes
+the exact submitted CV, vacancy and reviewed company information for adaptive
+EN/FR questions, the same Live hints, voice recording and an evidence-backed
+post-Stop review. General biography and approved replies cannot override that CV.
+See [audio review](docs/INTERVIEW_AUDIO_REVIEW.md).
+
+### Rehearse a specific interview
+
+1. Open **Learning → Personal interview** and choose English or French.
+2. Add the exact CV sent to that employer, the vacancy and reviewed company text.
+   Paste text or choose a file; public links can load an excerpt for review.
+3. Confirm the materials and OpenAI processing, then **Freeze reviewed materials**.
+4. Start a 3–10-question rehearsal. Listen, read or paraphrase the large hint,
+   answer aloud, then use Next or Stop.
+5. After Stop, request **Review interview**. Recording, timings and exports are
+   under **Recording & timing**; pronunciation review is a separate opt-in action.
+
+The submitted CV controls personal facts. Other CVs, global biography, memory and
+the approved reply bank are excluded from this mode. Missing specific experience
+must lead to a conditional approach, not an invented past event.
+
+The final review is **draft coaching**: exact citations do not prove that an
+assessment is correct. Generic language advice, overinterpretation and occasional
+English commentary remain known limitations. Advice is not automatically promoted
+into lessons or verified personal facts. PDF/Office conversion requires a local
+MarkItDown/Python runtime; reviewed pasted text works without it.
+
+The short real synthetic-speech EN/FR check saved four answers and both WAVs;
+first hint text took 0.8–1.9 s and complete hints 1.1–2.3 s, excluding interviewer
+question generation and speech playback. See the [acceptance evidence and limits](docs/audits/2026-10-25/PERSONAL_REHEARSAL.md).
 
 EN/FR brief responses distinguish owner facts from interviewer assertions and
 proposed commitments. Recognized high-risk questions (work authorization,
@@ -93,7 +125,7 @@ CoqPi keeps the communication loop in one desktop app:
 
 - **Live** transcribes an active microphone, follows EN/FR/RU/UK language changes, and prepares one short response.
 - **Transcribe** records a plain local meeting transcript without assistant analysis.
-- **Training** offers a five-question virtual interview with Live hints, voice answers, recording and timings; existing text rehearsal and language correction remain available. Audio pronunciation assessment, adaptive follow-ups and submitted-CV voice rehearsal remain in the [training plan](docs/TRAINING_REHEARSAL_PLAN.md).
+- **Training** offers a fictional five-question interview and a personal 3–10-question rehearsal using the exact submitted CV, vacancy and company materials. Both reuse Live hints, voice recording and timings. Personal follow-ups adapt to saved answers; the final review is requested after Stop. Optional audio review remains experimental. Tutor continuity is the next step in the [training plan](docs/TRAINING_REHEARSAL_PLAN.md).
 - **Prepare** builds a reviewed session brief from explicitly selected context.
 
 Finder, Gmail/Calendar and Monitor integrations remain legacy/optional backend
@@ -128,7 +160,7 @@ The current public build targets Apple Silicon Macs.
 3. Verify the checksum, extract the archive, and move `CoqPi.app` to Applications.
 4. Because the app is unsigned, open it with right click → **Open** when macOS asks.
 
-Replacing the app does not remove local data under `~/Library/Application Support/coqpi`.
+Replacing the app does not remove local data under `~/Library/Application Support/CoqPi`.
 
 ## Run from source
 

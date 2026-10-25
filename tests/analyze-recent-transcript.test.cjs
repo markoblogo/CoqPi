@@ -2507,6 +2507,35 @@ test('review and language coaching avoid unrelated profile and retrieval context
   }
 })
 
+test('personal rehearsal reaches the actual Live provider using only the exact CV snapshot', async () => {
+  let scoped
+  await withLocalKnowledgeWorkspace(() => withStubbedProviderRoute({
+    profileCount: 1,
+    beforeAnalyze: async ({ profileService }) => {
+      const context = require('../dist-electron/backend/services/personal-rehearsal-context.js')
+      const recording = require('../dist-electron/backend/services/meeting-transcription-service.js')
+      const summary = await context.createRehearsalSnapshot({ company: 'Synthetic Alpha', role: 'Product manager', goal: 'Rehearse discovery examples', language: 'en', maxTurns: 5, confirmed: true,
+        cv: { label: 'EXACT SUBMITTED CV', text: 'EXACT_OWNER_FACT: Led customer discovery for a booking product for two years. Coordinated interviews, worked with design and engineering, and documented pilot feedback.' },
+        vacancy: { label: 'Role', text: 'Alpha needs a product manager to run customer discovery and prioritisation for studio booking tools. The role works with design and engineering and plans a bounded pilot.' },
+        companyInfo: { label: 'Company', text: 'Alpha builds booking tools for independent studios and is planning a six-week pilot.' } })
+      await recording.saveCurrentMeetingTranscriptionSession({ id: 'personal-live-test', status: 'recording', startedAt: '2026-10-25T10:00:00Z', language: 'en', mode: 'copilot', inputLabel: 'Fixture', interim: {}, segments: [], practice: { kind: 'personal-interview', snapshotId: summary.id, snapshotHash: summary.hash, company: summary.company, turns: [{ question: 'How would you approach customer discovery for this role?', requestedAt: '2026-10-25T10:00:01Z', input: 'voice' }] } })
+      scoped = summary
+      profileService.getProfileContext = async () => { throw new Error('Personal rehearsal must not load global biography') }
+    },
+    requestOverrides: () => ({ practiceScenario: 'personal-interview-v1', rehearsalId: scoped.id, rehearsalSessionId: 'personal-live-test', transcriptText: 'STALE BIOGRAPHY', latestIncomingUtterance: 'How would you approach customer discovery for this role?', responseStyle: 'brief', answerLanguage: 'fr', includeProfileContext: true, selectedCounterpartyPackIds: ['FOREIGN PACK'], sessionContext: { company: 'FOREIGN COMPANY', context: 'UNRELATED CV MUST NOT LEAK' } }),
+    onRetrievalCall: () => assert.fail('Rehearsal must not use unrelated retrieval'),
+    fetchHandler: async (_url, init) => {
+      const prompt = JSON.stringify(JSON.parse(init.body).messages)
+      assert.match(prompt, /EXACT_OWNER_FACT|EXACT SUBMITTED CV/)
+      assert.match(prompt, /STRICT SUBMITTED-CV TESTIMONY RULE/)
+      assert.match(prompt, /generic responsibility does NOT support a specific anecdote/)
+      assert.match(prompt, /customer discovery/)
+      assert.doesNotMatch(prompt, /FOREIGN COMPANY|FOREIGN PACK|UNRELATED CV MUST NOT LEAK|STALE BIOGRAPHY/)
+      return makeOllamaResponse({ message: { content: JSON.stringify({ meaningRu: 'Подход к исследованию клиентов', detectedQuestion: 'How would you approach customer discovery for this role?', intent: 'interview', risk: 'low', suggestedAnswers: [{ label: 'short', text: 'I would build on my customer discovery experience and clarify the pilot assumptions first.', answerMeaningRu: 'Сначала уточню предположения пилота.' }], keywordsToRemember: [], openingPhrase: 'I would start with discovery.' }) } })
+    }
+  }))
+})
+
 test('virtual interview reaches Live provider with explicit fictional context and no owner biography', async () => {
   const { virtualRequest, virtualQuestions } = require('../dist-electron/shared/virtual-interview.js')
   await withLocalKnowledgeWorkspace(() => withStubbedProviderRoute({

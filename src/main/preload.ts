@@ -42,6 +42,15 @@ import type {
 } from '../shared/opportunity-contracts'
 
 contextBridge.exposeInMainWorld('coqpi', {
+  rehearsal: {
+    create: (draft: import('../shared/personal-rehearsal').RehearsalDraft) => ipcRenderer.invoke('coqpi:rehearsal:create', draft),
+    list: () => ipcRenderer.invoke('coqpi:rehearsal:list'),
+    question: (request: { snapshotId: string; sessionId: string; index: number }) => ipcRenderer.invoke('coqpi:rehearsal:question', request),
+    review: (request: { snapshotId: string; sessionId: string }) => ipcRenderer.invoke('coqpi:rehearsal:review', request),
+    readReview: (request: { snapshotId: string; sessionId: string }) => ipcRenderer.invoke('coqpi:rehearsal:review-read', request),
+    publicPage: (url: string) => ipcRenderer.invoke('coqpi:rehearsal:public-page', url),
+    pickMaterial: () => ipcRenderer.invoke('coqpi:rehearsal:pick-material')
+  },
   config: {
     getStatus: () => ipcRenderer.invoke('coqpi:config:get-status')
   },

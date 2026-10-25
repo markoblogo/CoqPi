@@ -27,7 +27,7 @@ export const sliceAnswerAudio = (wav: Buffer, startMs: number, endMs: number) =>
 const reviewPath = (request: InterviewAudioRequest) => path.join(getAppInfo().sessionsDirectory, 'practice-reviews', `${createHash('sha256').update(request.sessionId).digest('hex')}-${request.turnIndex}.json`)
 const inFlight = new Set<string>()
 export const loadInterviewAudioClip = async (request: InterviewAudioRequest) => {
-  if (!request || typeof request.sessionId !== 'string' || !Number.isInteger(request.turnIndex) || request.turnIndex < 0 || request.turnIndex > 4) throw new Error('Invalid practice answer.')
+  if (!request || typeof request.sessionId !== 'string' || !Number.isInteger(request.turnIndex) || request.turnIndex < 0 || request.turnIndex > 9) throw new Error('Invalid practice answer.')
   const session = await getArchivedMeetingTranscriptionSession(request.sessionId)
   const turn = session?.practice?.turns[request.turnIndex]
   if (!session || session.status !== 'stopped' || !turn || turn.input !== 'voice' || !['en', 'fr'].includes(session.language)) throw new Error('Stop and save a voice interview before reviewing audio.')

@@ -6,6 +6,7 @@ import { normalizeReplyQuestion, type PersonalReply, type PersonalReplyBank } fr
 import { getInterviewAnswerPattern } from '../../shared/interview-answer-patterns'
 import { getInterviewSafetyReply } from '../../shared/interview-safety-gate'
 import { virtualRequest } from '../../shared/virtual-interview'
+import { loadRehearsalSnapshot, personalRehearsalPrompt, resolvePersonalRehearsalRequest } from './personal-rehearsal-context'
 import { BRIEF_ANALYSIS_SCHEMA, expandBriefAssistantOutput, readBriefProgress } from '../../shared/brief-assistant-output'
 import type {
   AssistantCostMode,
@@ -569,6 +570,11 @@ const validateAssistantAnalysisResult = (
 }
 
 const buildUserPrompt = async (request: AssistantAnalysisRequest) => {
+  if (request.practiceScenario === 'personal-interview-v1') {
+    const safe = sanitizeForExternalAssistant(personalRehearsalPrompt(await loadRehearsalSnapshot(request.rehearsalId ?? '')))
+    if (safe.blocked) throw new Error('Rehearsal materials blocked by the privacy gate.')
+    return safe.safeText
+  }
   if (request.practiceScenario === 'atelier-pilot-v1') {
     const isolated = virtualRequest(request.answerLanguage === 'fr' ? 'fr' : 'en', request.latestIncomingUtterance ?? request.transcriptText, request.streamId ?? '')
     const safe = sanitizeForExternalAssistant(JSON.stringify({
@@ -864,6 +870,7 @@ export const analyzeRecentTranscript = async (
   request: AssistantAnalysisRequest,
   options: { onProgress?: (value: {meaningRu:string; answer:string}) => void; signal?: AbortSignal } = {}
 ): Promise<AssistantAnalysisResult> => {
+  if (request.practiceScenario === 'personal-interview-v1') request = await resolvePersonalRehearsalRequest(request)
   if (request.practiceScenario === 'atelier-pilot-v1') {
     request = virtualRequest(request.answerLanguage === 'fr' ? 'fr' : 'en', request.latestIncomingUtterance ?? request.transcriptText, request.streamId ?? '')
   }
@@ -877,11 +884,11 @@ export const analyzeRecentTranscript = async (
   }
 
   const fallbackSessionContext =
-    request.assistantContextMode === 'simple' || request.practiceScenario === 'atelier-pilot-v1'
+    request.assistantContextMode === 'simple' || request.practiceScenario === 'atelier-pilot-v1' || request.practiceScenario === 'personal-interview-v1'
       ? undefined
       : (await getSessionContext()).context
   const selectedCounterpartyPackIds =
-    request.assistantContextMode === 'simple' || request.practiceScenario === 'atelier-pilot-v1'
+    request.assistantContextMode === 'simple' || request.practiceScenario === 'atelier-pilot-v1' || request.practiceScenario === 'personal-interview-v1'
       ? []
       : await resolveSessionSelectedCounterpartyPackIds(
           request.selectedCounterpartyPackIds ??
@@ -961,6 +968,9 @@ export const analyzeRecentTranscript = async (
       : '',
     request.responseStyle === 'preparation'
       ? 'Prepare an interview/negotiation brief from the selected target and verified owner material. In meaningRu give a compact Russian strategy: goal, strongest relevant facts, likely objections. In detectedQuestion give 3 likely questions. In risk identify missing evidence or claims to avoid. In suggestedAnswers give one short opening in the requested language. In keywordsToRemember give key target-specific vocabulary. Never invent company research or claim to have browsed a URL.'
+      : '',
+    request.practiceScenario === 'personal-interview-v1'
+      ? 'STRICT SUBMITTED-CV TESTIMONY RULE: Every first-person claim about a past event, discovery, challenge, action or result must be explicitly documented in submittedCv. A generic responsibility does NOT support a specific anecdote. Interviewer questions and learner speech are NOT verified evidence of candidate achievements. If the question asks for details absent from submittedCv, acknowledge that no documented specific example is available and give a short CONDITIONAL approach (I would / je ferais), never a plausible invented past story. In particular, interviewed users does not prove what they said, conflicting feedback, feature preferences, outcomes or metrics. Do not claim these as facts. This rule overrides example-answer templates; keep the answer natural and ready to say.'
       : ''
   ].join('\n')
   const providerProfiles = getOrderedEnabledProviderProfiles()

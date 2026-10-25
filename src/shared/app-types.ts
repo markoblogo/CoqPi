@@ -957,7 +957,9 @@ export type SimpleAssistantScenarioId =
   (typeof simpleAssistantScenarioIds)[number]
 
 export interface AssistantAnalysisRequest {
-  practiceScenario?: 'atelier-pilot-v1'
+  practiceScenario?: 'atelier-pilot-v1' | 'personal-interview-v1'
+  rehearsalId?: string
+  rehearsalSessionId?: string
   streamId?: string
   responseStyle?: 'brief' | 'coaching' | 'review' | 'preparation'
   transcriptText: string

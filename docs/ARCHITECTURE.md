@@ -24,6 +24,12 @@
   PCM backups to one hash-bound finding. A skeptical original-audio recheck gates
   a paired-audio comparison; owner confirmation and evidence gates prevent
   automatic improvement claims. Results never mutate interview recordings.
+- **Personal rehearsal**: immutable reviewed CV/vacancy/company snapshots feed a
+  bounded adaptive interviewer and the existing Live hint path. Backend validates
+  session/snapshot hashes, latest question and recording state; global owner context
+  and reply-bank reuse are excluded. Incremental recording is independent of persona
+  calls. Post-Stop reports require exact evidence quotes and are cached by transcript
+  hash. See [personal rehearsal](PERSONAL_INTERVIEW_REHEARSAL.md).
 
 - **Electron main process**: owns the desktop window, loads backend-only environment variables, registers IPC, and coordinates local services.
 - **Preload / IPC bridge**: exposes a narrow `window.coqpi` API with safe renderer access to config, profile, settings, secrets, assistant analysis, and realtime SDP exchange.

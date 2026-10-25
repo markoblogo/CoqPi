@@ -1,11 +1,13 @@
 # Voice answer review
 
-After a virtual interview, press Finish/Stop and open **Voice answer review**.
+After a virtual or personal interview, press Finish/Stop and open **Voice answer review**.
 Select the answer, choose **Read the hint** or **My own wording**, then use
 **My recording** to replay the local clip. **Send clip to OpenAI for review**
 explicitly sends only that microphone range, language, question, saved hint when
 reading, and its background ASR text. It does not send the owner's CV, packs,
-other turns or the complete microphone recording.
+other turns or the complete microphone recording. New personal rehearsals support
+up to ten turns; the selected saved turn and audio boundaries are still required.
+The separate personal interview report is text-only and does not replace this review.
 
 Feedback contains at most three tentative audible issues, clip-relative time
 ranges and a correct example that can be spoken locally. Confirm/Dismiss saves

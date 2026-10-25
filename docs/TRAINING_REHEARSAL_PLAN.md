@@ -1,7 +1,7 @@
 # Training and rehearsal: delivery contract
 
-Owner scope, 2026-10-24. Pass 1 now has a bounded virtual interview implementation;
-the other paths below remain planned. Rehearsal is an acceptance environment,
+Owner scope, updated 2026-10-25. Passes 1–3 have bounded implementations;
+tutor continuity remains planned. Rehearsal is an acceptance environment,
 not proof that real meeting audio routing is reliable.
 
 ## Three practice paths
@@ -60,7 +60,8 @@ See [virtual interview runbook](VIRTUAL_INTERVIEW.md) for use and verification.
 ## Remaining tutor baseline
 
 - `TrainingPanel.tsx` supports EN/FR, system TTS, realtime STT, text coaching and
-  recent saved exercises. It does not yet implement a complete employer persona.
+  recent saved exercises. Personal rehearsal has a separate bounded employer persona;
+  the free tutor does not yet have an adaptive curriculum.
 - Legacy language-lesson voice input is accumulated into a text field. Its history
   labels entries `manual` / `other`; this is not accurate source provenance for
   microphone answers and must be migrated in the rehearsal pass.
@@ -111,20 +112,27 @@ intelligible accents and valid paraphrases. Limit immediate review to 1-3 useful
 corrections. Let the owner contest or confirm a finding before it enters recurring
 practice. Do not change real-call hint behavior in this pass.
 
-### Pass 3: Submitted-CV interview rehearsal
+### Pass 3: Submitted-CV interview rehearsal (implemented, bounded)
 
-Snapshot exact material versions and hashes for one interview; show missing
-information before starting. Company-specific submitted CV controls personal
-claims for this interview; general profile may supplement only compatible facts.
-Conflicts require clarification, not silent merging. Old confirmed bank answers
-must still satisfy their existing context hash before reuse.
+Immutable local snapshots bind the exact submitted CV, vacancy and reviewed
+company text to one rehearsal. Required fields and explicit confirmation gate
+Start. The submitted CV alone supports owner facts; global profile, memory,
+other packs and approved reply bank are excluded from this mode.
 
-The persona probes the actual role, CV and prior answers without inventing
-employer facts or outcomes. Each correction distinguishes language, pronunciation
-and substance. Material changes invalidate the exercise's stale hint/review.
-Acceptance: two different employer/CV combinations cannot leak into each other.
+The persona generates one question at a time, adapting to saved ME answers and
+requiring exact source quotes. Reports are requested after Stop and cached by
+snapshot/session/transcript hash. They distinguish substance and text-supported
+language advice; pronunciation requires the separate audio review. Editing Prepare
+does not mutate frozen materials: start a new snapshot for a different CV.
+Unit and UI regressions cover two employer/CV combinations and scope isolation.
+See [personal rehearsal runbook](PERSONAL_INTERVIEW_REHEARSAL.md).
 
 ### Pass 4: Tutor continuity and shared practice backlog
+
+Before automatic transfer, improve personal-report quality: Russian commentary,
+specific justified corrections rather than generic advice, and no inference of
+demonstrated ability from a conditional answer. Existing reports remain drafts;
+source quotes alone are not a semantic quality gate.
 
 Introduce reviewed mistake records: language, type, evidence reference, corrected
 form, confidence, review state, attempts and next review. Import only reviewed
